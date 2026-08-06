@@ -44,7 +44,7 @@ function reachable(map, start, target) {
   return false;
 }
 
-function useTile(state, zone, tile) {
+function interactAtTile(state, zone, tile) {
   const map = mapForZone(zone);
   const point = findTile(map, tile)[0];
   assert.ok(point, `${zone}: отсутствует ${tile}`);
@@ -96,22 +96,22 @@ test("все переходы и специальные точки достиж�
 
 test("переход с этажа 550 ведёт через всю цепочку до поселения 545", () => {
   let state = createInitialState();
-  state = useTile(state, "floor550", "D");
+  state = interactAtTile(state, "floor550", "D");
   assert.equal(state.zone, "floor549");
-  state = useTile(state, "floor549", "D");
+  state = interactAtTile(state, "floor549", "D");
   assert.equal(state.zone, "floor548");
-  state = useTile(state, "floor548", "D");
+  state = interactAtTile(state, "floor548", "D");
   assert.equal(state.zone, "floor547");
-  state = useTile(state, "floor547", "D");
+  state = interactAtTile(state, "floor547", "D");
   assert.equal(state.zone, "floor546");
-  state = useTile(state, "floor546", "D");
+  state = interactAtTile(state, "floor546", "D");
   assert.equal(state.zone, "floor545");
 });
 
 test("обратный маршрут возвращает героя с 545-го на 550-й", () => {
   let state = createInitialState();
   for (const zone of ["floor545", "floor546", "floor547", "floor548", "floor549"]) {
-    state = useTile(state, zone, "U");
+    state = interactAtTile(state, zone, "U");
   }
   assert.equal(state.zone, "floor550");
 });
@@ -143,7 +143,7 @@ test("Смотритель ГУ-46 проявляется как региона�
 });
 
 test("разрыв НИИ-547 ведёт в существующую войд-зону", () => {
-  const state = useTile(createInitialState(), "floor547", "P");
+  const state = interactAtTile(createInitialState(), "floor547", "P");
   assert.equal(state.zone, "voidLab");
 });
 
