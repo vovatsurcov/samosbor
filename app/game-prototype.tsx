@@ -58,7 +58,6 @@ import {
   inventoryWeight,
   InventoryEntry,
   isKnown,
-  isSamosborActiveIn,
   isSamosborLethalPhase,
   isSamosborProtectedAt,
   isSamosborWarningPhase,
