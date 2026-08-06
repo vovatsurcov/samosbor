@@ -1,0 +1,138 @@
++    createStaticEnemy("555-b1", "Ремонтный автомат РМ-55/2", "sentry", "floor555", { x: 19, y: 9 }, [{ x: 19, y: 9 }, { x: 22, y: 10 }]),
++    createStaticEnemy("555-b2", "Сборщик кабеля 55-Б", "stalker", "floor555", { x: 23, y: 9 }, [{ x: 23, y: 9 }, { x: 24, y: 12 }]),
++    createStaticEnemy("555-c1", "Складской автомат СК-55", "sentry", "floor555", { x: 31, y: 11 }, [{ x: 31, y: 11 }, { x: 29, y: 19 }]),
++    createStaticEnemy("555-c2", "Одичавший наладчик", "stalker", "floor555", { x: 27, y: 19 }, [{ x: 27, y: 19 }, { x: 24, y: 18 }]),
++    createStaticEnemy("555-c3", "Тяжёлый сборщик деталей", "collector", "floor555", { x: 31, y: 19 }, [{ x: 31, y: 19 }, { x: 33, y: 10 }], "enhanced"),
++    createStaticEnemy("557-a1", "Контурный жилец 557-8", "stalker", "floor557", { x: 10, y: 9 }, [{ x: 10, y: 9 }, { x: 12, y: 11 }]),
++    createStaticEnemy("557-a2", "Домовой автомат ДА-7", "sentry", "floor557", { x: 20, y: 8 }, [{ x: 20, y: 8 }, { x: 22, y: 11 }]),
++    createStaticEnemy("557-b1", "Контурный жилец 557-14", "stalker", "floor557", { x: 29, y: 13 }, [{ x: 29, y: 13 }, { x: 31, y: 18 }]),
++    createStaticEnemy("557-b2", "Постовой автомат Ж-557", "sentry", "floor557", { x: 20, y: 19 }, [{ x: 20, y: 19 }, { x: 23, y: 19 }]),
++    createStaticEnemy("void-collector", "Лабораторный сборщик ЛС-2", "collector", "voidLab", { x: 17, y: 9 }, [{ x: 17, y: 9 }, { x: 13, y: 7 }], "elite"),
++    createStaticEnemy("void-stalker", "Слепок сотрудника ВЖ-7", "stalker", "voidLab", { x: 8, y: 7 }, [{ x: 8, y: 7 }, { x: 11, y: 9 }], "enhanced"),
+   ];
+ }
+ 
+@@ -839,7 +736,6 @@ function tileAtZone(
+   if (zone === "floor556" && state.mutated) {
+     if (x === 4 && y === 3) return "#";
+     if (x === 4 && y === 4) return ".";
+-    if (x === 6 && y === 3) return "P";
+   }
+   return map.rows[y][x];
+ }
+@@ -2735,14 +2631,14 @@ function containerKey(state: GameState, point: Point): string {
+ }
+ 
+ function containerContents(key: string): { itemId: ItemId; quantity?: number; condition?: number }[] {
+-  if (key === "floor556:2:3") {
++  if (key === "floor556:17:8") {
+     return [
+       { itemId: "bandage" },
+       { itemId: "repairKit" },
+       { itemId: "keyWithoutDoor" },
+     ];
+   }
+-  if (key === "voidLab:2:3") {
++  if (key === "voidLab:8:5") {
+     return [
+       { itemId: "traumaInjector" },
+       { itemId: "filterCartridge", quantity: 2 },
+@@ -2795,7 +2691,7 @@ function nearestInteractive(state: GameState): { point: Point; tile: string } |
+     for (let x = 0; x < map.rows[0].length; x += 1) {
+       const point = { x, y };
+       const tile = tileAt(state, point);
+-      if (!["S", "H", "T", "A", "P", "U", "D", "L", "c", "B"].includes(tile)) continue;
++      if (!["S", "H", "T", "A", "P", "U", "D", "L", "c", "B", "N"].includes(tile)) continue;
+       const currentDistance = distance(hero, point);
+       if (currentDistance <= 1.2 && (!nearest || currentDistance < nearest.distance)) {
+         nearest = { point, tile, distance: currentDistance };
+@@ -2815,11 +2711,12 @@ export function interactionHint(state: GameState): string {
+     H: "Войти в гермосектор",
+     T: "Прочитать терминал",
+     A: "Извлечь артефакт",
+-    P: state.zone === "voidLab" ? "Вернуться на этаж 556" : "Войти в войд-зону",
++    P: state.zone === "voidLab" ? "Покинуть войд-зону через случайный разрыв" : "Войти в редкую войд-зону",
+     U: "Перейти на этаж выше",
+     D: "Перейти на этаж ниже",
+     L: "Проверить лифт",
+     c: "Осмотреть укрытие",
++    N: "Поговорить с диспетчером Орловой",
+     B: state.openedContainers.includes(containerKey(state, target.point))
+       ? "Проверить пустой шкаф"
+       : "Открыть аварийный шкаф",
+@@ -2913,20 +2810,46 @@ export function interact(state: GameState): GameState {
+       }
+     }
+   } else if (state.zone === "voidLab" && target.tile === "P") {
++    const destinations: { zone: ZoneId; position: Point; label: string }[] = [
++      { zone: "floor555", position: { x: 4, y: 19 }, label: "этаж 555" },
++      { zone: "floor556", position: { x: 30, y: 18 }, label: "этаж 556" },
++      { zone: "floor557", position: { x: 5, y: 19 }, label: "этаж 557" },
++    ];
++    const index = Math.abs(state.rngSeed + Math.floor(state.worldTimeMs / 1000)) % destinations.length;
++    const destination = destinations[index];
++    next = appendLog(
++      {
++        ...state,
++        zone: destination.zone,
++        rngSeed: (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0,
++        hero: {
++          ...state.hero,
++          path: [],
++          destination: null,
++          attackTargetId: null,
++          positions: { ...state.hero.positions, [destination.zone]: copyPoint(destination.position) },
++        },
++      },
++      `Войд-зона схлопнулась за спиной. Героя выбросило на ${destination.label}; обратный маршрут исчез.`,
++    );
++  } else if (state.zone !== "voidLab" && target.tile === "P") {
+     next = appendLog(
+       {
+         ...state,
+-        zone: "floor556",
++        zone: "voidLab",
++        voidStabilityMs: VOID_STABILITY_MS,
+         hero: {
+           ...state.hero,
+           path: [],
+           destination: null,
+           attackTargetId: null,
+-          positions: { ...state.hero.positions, floor556: { x: 6, y: 3 } },
++          positions: { ...state.hero.positions, voidLab: copyPoint(VOID_START) },
+         },
+       },
+-      "Герой вернулся на этаж 556.",
++      "Герой сознательно вошёл в редкую войд-зону. Обратный проход сразу исчез.",
+     );
++  } else if (state.zone === "floor556" && target.tile === "N") {
++    next = appendLog(state, "Диспетчер Орлова: «Сначала освойся в секторе. Проверь датчик СБ-04, затем доберись до гермоблока. В коридорах замечены четыре малые группы существ». ");
+   } else if (target.tile === "U" || target.tile === "D") {
+     next = transitionFloor(state, target.tile);
+   } else if (target.tile === "L") {
+@@ -2939,25 +2862,6 @@ export function interact(state: GameState): GameState {
+   return emitNoise(next, next.hero.positions[next.zone], 3.5, "взаимодействие");
+ }
+ 
+-function handlePortalEntry(state: GameState): GameState {
+-  if (state.zone !== "floor556" || tileAt(state, state.hero.positions.floor556) !== "P") return state;
+-  return appendLog(
+-    {
+-      ...state,
+-      zone: "voidLab",
+-      voidStabilityMs: VOID_STABILITY_MS,
+-      hero: {
+-        ...state.hero,
+-        path: [],
+-        destination: null,
+-        attackTargetId: null,
+-        positions: { ...state.hero.positions, voidLab: { ...VOID_START } },
+-      },
+-    },
+-    "Переход выполнен: войд-зона ВЖ-7, лабораторный слой 3 из 7.",
+-  );
+-}
+-
+ export function createInitialState(): GameState {
+   const state: GameState = {
+     zone: "floor556",
