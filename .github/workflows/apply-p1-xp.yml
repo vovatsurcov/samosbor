@@ -1,0 +1,31 @@
+name: Apply P1 experience patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.automation/p1-xp/**'
+      - '.github/workflows/apply-p1-xp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Assemble and apply patch
+        run: |
+          cat .automation/p1-xp/part-*.patch > /tmp/p1-xp.patch
+          git apply --check /tmp/p1-xp.patch
+          git apply /tmp/p1-xp.patch
+          rm -rf .automation/p1-xp
+          rm .github/workflows/apply-p1-xp.yml
+          git config user.name "OpenAI Codex"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git commit -m "Implement level 1-50 progression and quest experience"
+          git push origin HEAD:main
