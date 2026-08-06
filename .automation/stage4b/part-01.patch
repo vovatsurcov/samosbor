@@ -1,0 +1,124 @@
++    if (population.id === "elevator-pilgrims" && cycle % 4 === 0) {
++      zone = population.zone === "floor557" ? "floor556" : "floor557";
++      migrationMessage = zone === "floor556"
++        ? "Паломники лифтового ритма спустились на этаж 556."
++        : "Паломники лифтового ритма поднялись в жилой контур 557.";
++    }
++    return {
++      ...population,
++      zone,
++      count: clampPopulation(population.count + countDelta, 1, 30),
++      agitation: clampPopulation(population.agitation + agitationDelta, 0, 100),
++    };
++  });
++  const next = { ...state, populations, populationCycle: cycle };
++  return migrationMessage ? appendLog(next, migrationMessage) : next;
++}
++
++export function populationsForZone(state: GameState, zone: ZoneId = state.zone): WorldPopulation[] {
++  return state.populations
++    .filter((population) => population.zone === zone && population.count > 0)
++    .sort((left, right) => right.agitation - left.agitation || right.count - left.count);
++}
++
++export function populationPressureForZone(state: GameState, zone: ZoneId = state.zone): number {
++  return Math.round(
++    populationsForZone(state, zone).reduce(
++      (total, population) => total + population.count * (1 + population.agitation / 100),
++      0,
++    ),
++  );
++}
++
+ function createEnemies(): Enemy[] {
+   return [
+     {
+@@ -2559,9 +2672,11 @@ export function createInitialState(): GameState {
+     openedContainers: [],
+     groundLoot: [],
+     lootCounter: 0,
++    populations: createPopulations(),
++    populationCycle: 0,
+     log: [
+       "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
+-      "Учебный резерв этапа 4A: 18 очков для проверки чистых и гибридных сборок.",
++      "Учебный резерв этапа 4B: 18 очков для проверки чистых и гибридных сборок.",
+       "Директива: проверить датчик СБ-04 и укрыться в герметичном секторе.",
+       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
+     ],
+@@ -2611,6 +2726,11 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
+     );
+   }
+ 
++  const populationCycle = Math.floor(next.worldTimeMs / POPULATION_STEP_MS);
++  if (populationCycle > next.populationCycle) {
++    next = evolvePopulations(next, populationCycle);
++  }
++
+   const heroPosition = next.hero.positions[next.zone];
+   if (
+     next.hero.attackTargetId &&
+diff --git a/app/game-prototype.tsx b/app/game-prototype.tsx
+index 8590206..42e4009 100644
+--- a/app/game-prototype.tsx
++++ b/app/game-prototype.tsx
+@@ -58,6 +58,8 @@ import {
+   mapForZone,
+   maxHeroHp,
+   objectiveFor,
++  populationPressureForZone,
++  populationsForZone,
+   Point,
+   SKILL_DESCRIPTIONS,
+   SKILL_NAMES,
+@@ -73,7 +75,7 @@ import {
+   xpToNextLevel,
+ } from "./game-engine";
+ 
+-const SAVE_KEY = "samosbor-shift-556-stage-4a";
++const SAVE_KEY = "samosbor-shift-556-stage-4b";
+ const TILE_WIDTH = 82;
+ const TILE_HEIGHT = 41;
+ const DESKTOP_FRAME_INTERVAL = 16;
+@@ -131,6 +133,14 @@ const ENEMY_SIGNS: Record<Enemy["kind"], string> = {
+   collector: "С",
+ };
+ 
++const GENOME_LABELS = {
++  maintenance: "ремонтный",
++  bureaucratic: "ведомственный",
++  feral: "одичавший",
++  pilgrim: "паломнический",
++  anomalous: "аномальный",
++} as const;
++
+ const SKILL_BRANCHES = Object.keys(SKILL_NAMES) as SkillBranch[];
+ type TalentView = "core" | SkillBranch | "hybrid" | "legendary";
+ const PAPERDOLL_SLOTS: GearSlot[] = ["head", "body", "hands", "feet", "back", "weapon", "artifact"];
+@@ -251,6 +261,8 @@ export default function GamePrototype() {
+   const carriedWeight = inventoryWeight(state);
+   const weightLimit = carryCapacity(state);
+   const artifact = equippedArtifact(state);
++  const localPopulations = populationsForZone(state);
++  const localPopulationPressure = populationPressureForZone(state);
+   const bandageCount = state.hero.inventory.find((entry) => entry.itemId === "bandage")?.quantity ?? 0;
+   const visibleLoot = state.groundLoot.filter(
+     (loot) => loot.zone === state.zone && isKnown(state, loot.position),
+@@ -311,6 +323,8 @@ export default function GamePrototype() {
+             Array.isArray(parsed?.hero?.inventory) &&
+             Array.isArray(parsed.enemies) &&
+             Array.isArray(parsed.groundLoot) &&
++            Array.isArray(parsed.populations) &&
++            typeof parsed.populationCycle === "number" &&
+             typeof parsed.worldTimeMs === "number"
+           ) {
+             setState(parsed);
+@@ -585,7 +599,7 @@ export default function GamePrototype() {
+         <div>
+           <p className="eyebrow">ПРОТОКОЛ СМЕНЫ · СБ/556-04</p>
+           <h1>Самосбор: Смена 556</h1>
+-          <p className="game-subtitle">Action RPG прототип · этап 4A · связанные этажи и непрерывный мир</p>
++          <p className="game-subtitle">Action RPG прототип · этап 4B · фоновые популяции живого мира</p>
+         </div>
+         <div className="header-indicators">
+           <div className="live-indicator"><i />РЕАЛЬНОЕ ВРЕМЯ</div>
