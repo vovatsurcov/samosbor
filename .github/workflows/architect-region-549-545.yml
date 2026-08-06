@@ -34,6 +34,47 @@ jobs:
       - name: Apply exact integration patch
         run: python3 scripts/apply-region-549-545.py
 
+      - name: Remove integration-only imports
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/game-engine.ts")
+          text = path.read_text(encoding="utf-8")
+          old = '''import {
+            FLOOR_545_MAP,
+            FLOOR_546_MAP,
+            FLOOR_547_MAP,
+            FLOOR_548_MAP,
+            FLOOR_549_MAP,
+            REGION_CONTAINER_CONTENTS,
+            REGION_ENEMIES,
+            REGION_MAPS,
+            REGION_NPC_MESSAGES,
+            REGION_OBJECTIVES,
+            REGION_POPULATIONS,
+            REGION_SAFE_ZONES,
+            REGION_STARTS,
+            REGION_TERMINAL_MESSAGES,
+            REGION_TRANSITIONS,
+            type RegionZoneId,
+          } from "./game-region-549-545.ts";'''
+          new = '''import {
+            REGION_CONTAINER_CONTENTS,
+            REGION_ENEMIES,
+            REGION_MAPS,
+            REGION_NPC_MESSAGES,
+            REGION_OBJECTIVES,
+            REGION_POPULATIONS,
+            REGION_SAFE_ZONES,
+            REGION_STARTS,
+            REGION_TERMINAL_MESSAGES,
+            REGION_TRANSITIONS,
+            type RegionZoneId,
+          } from "./game-region-549-545.ts";'''
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Install dependencies
         run: npm ci
 
@@ -45,10 +86,13 @@ jobs:
       - name: Run engine tests
         run: npm run test:engine
 
+      - name: Run lint
+        run: npm run lint
+
       - name: Check patch cleanliness
         run: git diff --check
 
-      - name: Commit integrated region
+      - name: Commit verified cleanup
         run: |
           if git diff --quiet; then
             echo "No integration changes to commit"
@@ -57,5 +101,5 @@ jobs:
           git config user.name "samosbor-architect-bot"
           git config user.email "actions@users.noreply.github.com"
           git add app/game-engine.ts package.json
-          git commit -m "Integrate floors 549 through 545"
+          git commit -m "Clean region integration imports"
           git push origin HEAD:architect/region-549-545
