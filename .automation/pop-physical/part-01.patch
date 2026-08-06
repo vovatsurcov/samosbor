@@ -1,0 +1,88 @@
+tions.map((entry) =>
++      entry.id === enemy.populationId
++        ? {
++            ...entry,
++            count: nextCount,
++            agitation: clampPopulation(entry.agitation + 5, 0, 100),
++          }
++        : entry,
++    ),
++  };
++  return appendLog(next, `${population.name}: численность снижена до ${nextCount}, тревога растёт.`);
++}
++
+ function createEnemies(): Enemy[] {
+   return [
+     {
+@@ -1588,6 +1752,7 @@ function skillDamage(
+   next = addEffect(next, state.hero.positions[state.zone], enemy.position, kind, damage);
+   if (hp <= 0) {
+     next = dropEnemyLoot(next, enemy);
++    next = registerPopulationCasualty(next, enemy);
+     next = awardXp(next, enemy.xpValue);
+   }
+   return next;
+@@ -2055,6 +2220,7 @@ function heroAttackTick(state: GameState): GameState {
+       hero: { ...next.hero, attackTargetId: null, path: [], destination: null },
+     };
+     next = dropEnemyLoot(next, target);
++    next = registerPopulationCasualty(next, target);
+     next = awardXp(next, target.xpValue);
+     return appendLog(next, `${target.name} выведен из строя. Получено ${target.xpValue} опыта.`);
+   }
+@@ -2329,6 +2495,7 @@ function tickDrone(state: GameState): GameState {
+   next = addEffect(next, { x: hero.x + 0.2, y: hero.y - 0.25 }, target.position, "drone", droneDamage);
+   if (hp <= 0) {
+     next = dropEnemyLoot(next, target);
++    next = registerPopulationCasualty(next, target);
+     next = awardXp(next, target.xpValue);
+     return appendLog(next, `Рембот Р-3 отключил цель «${target.name}».`);
+   }
+@@ -2681,7 +2848,7 @@ export function createInitialState(): GameState {
+       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
+     ],
+   };
+-  return reveal(state);
++  return reveal(reconcilePopulationEnemies(state, 0));
+ }
+ 
+ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
+diff --git a/tests/game-engine.test.mjs b/tests/game-engine.test.mjs
+index 7ee6243..b5f18fd 100644
+--- a/tests/game-engine.test.mjs
++++ b/tests/game-engine.test.mjs
+@@ -194,6 +194,32 @@ test("фоновые популяции живут вне текущего эт
+   assert.match(state.log[0], /Паломники лифтового ритма/);
+ });
+ 
++test("популяции проявляются физическими противниками и теряют численность от убийств", () => {
++  let state = createInitialState();
++  const representative = state.enemies.find(
++    (enemy) => enemy.zone === state.zone && enemy.populationId && enemy.hp > 0,
++  );
++  assert.ok(representative);
++  const populationBefore = state.populations.find((population) => population.id === representative.populationId);
++  assert.ok(populationBefore);
++
++  state = heroAt(state, { x: Math.max(1, representative.position.x - 1), y: representative.position.y });
++  state = {
++    ...state,
++    enemies: state.enemies.map((enemy) =>
++      enemy.id === representative.id
++        ? { ...enemy, hp: 1, armor: -10, attackCooldownMs: 99999 }
++        : enemy,
++    ),
++  };
++  state = tickGame(commandAttack(state, representative.id), 100);
++
++  const populationAfter = state.populations.find((population) => population.id === representative.populationId);
++  assert.equal(populationAfter.count, populationBefore.count - 1);
++  assert.ok(populationAfter.agitation > populationBefore.agitation);
++  assert.match(state.log.join("\n"), /численность снижена/);
++});
++
+ test("перестройка этажа происходит по таймеру мира", () => {
+   const state = { ...createInitialState(), worldTimeMs: 14950 };
+   const mutated = tickGame(state, 100);
+-- 
+2.47.3
