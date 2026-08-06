@@ -38,7 +38,7 @@ export type {
 } from "./game-items.ts";
 export type { ActiveSkillId, SkillBranch, TalentNode } from "./game-skills.ts";
 
-export type ZoneId = "floor555" | "floor556" | "floor557" | "voidLab";
+export type ZoneId = "floor554" | "floor555" | "floor556" | "floor557" | "voidLab";
 
 export type Point = {
   x: number;
@@ -236,6 +236,50 @@ export type MapDefinition = {
   rows: string[];
 };
 
+export const FLOOR_554_MAP: MapDefinition = {
+  id: "floor554",
+  name: "Этаж 554 · верхние ворота Города 550",
+  subtitle: "Безопасный пограничный район в старом разломе · советский ампир и метрополитен",
+  rows: [
+    "########################################################",
+    "#......................................................#",
+    "#......................................................#",
+    "#......................####..####......................#",
+    "#....############......####..####......############....#",
+    "#....############......####..####......############....#",
+    "#....############......####..####......############....#",
+    "#....############......####..####......############....#",
+    "#....############......####..####......############....#",
+    "#....############......................############....#",
+    "#....#####.######........c....c........######.#####....#",
+    "#......................................................#",
+    "#.................c..................c.................#",
+    "#...................#..#..#..#..#..#...................#",
+    "#...................#..#..#..#..#..#...................#",
+    "#...###########.....#..#..#..#..#..#.....###########...#",
+    "#...###########..........................###########...#",
+    "#...###########.....#..#..#..#..#..#.....###########...#",
+    "#...###########.....#..#..#..#..#..#.....###########...#",
+    "#...###########..........................###########...#",
+    "#...###########.....#..#..#..#..#..#.....###########...#",
+    "#...###########.....#..#..#..#..#..#.....###########...#",
+    "#...#####.#####..........................#####.#####...#",
+    "#......................................................#",
+    "#.................c......c....c......c.................#",
+    "#......................................................#",
+    "#......######.######................######.######......#",
+    "#......#############................#############......#",
+    "#......#############................#############......#",
+    "#......#############................#############......#",
+    "#......#############................#############......#",
+    "#......#############................#############......#",
+    "#..U...................................................#",
+    "#........N.....T......B........................L....B..#",
+    "#......................................................#",
+    "########################################################",
+  ],
+};
+
 export const FLOOR_555_MAP: MapDefinition = {
   id: "floor555",
   name: "Этаж 555 · ремонтный пояс",
@@ -261,7 +305,7 @@ export const FLOOR_555_MAP: MapDefinition = {
     "#.....#####..c..####....####..####.#",
     "#.....#####.....####..........####.#",
     "#.L.T...........####....B...c......#",
-    "#..................................#",
+    "#................................D.#",
     "####################################",
   ],
 };
@@ -345,18 +389,22 @@ export const VOID_MAP: MapDefinition = {
   ],
 };
 
+export const FLOOR_554_START: Point = { x: 3, y: 32 };
 export const FLOOR_555_START: Point = { x: 2, y: 19 };
 export const FLOOR_START: Point = { x: 3, y: 18 };
 export const FLOOR_557_START: Point = { x: 2, y: 19 };
 export const VOID_START: Point = { x: 1, y: 1 };
 
 const ZONE_STARTS: Record<ZoneId, Point> = {
+  floor554: FLOOR_554_START,
   floor555: FLOOR_555_START,
   floor556: FLOOR_START,
   floor557: FLOOR_557_START,
   voidLab: VOID_START,
 };
 
+const FLOOR_554_UP: Point = { x: 3, y: 32 };
+const FLOOR_555_DOWN: Point = { x: 33, y: 20 };
 const FLOOR_555_UP: Point = { x: 32, y: 2 };
 const FLOOR_556_UP: Point = { x: 2, y: 2 };
 const FLOOR_556_DOWN: Point = { x: 32, y: 2 };
@@ -717,6 +765,7 @@ function createEnemies(): Enemy[] {
 }
 
 export function mapForZone(zone: ZoneId): MapDefinition {
+  if (zone === "floor554") return FLOOR_554_MAP;
   if (zone === "floor555") return FLOOR_555_MAP;
   if (zone === "floor556") return FLOOR_MAP;
   if (zone === "floor557") return FLOOR_557_MAP;
@@ -1296,7 +1345,7 @@ function advanceAlongPath(
 }
 
 export function commandMove(state: GameState, target: Point): GameState {
-  if (state.missionComplete || !isWalkable(state, target)) return state;
+  if (!isWalkable(state, target)) return state;
   const blocked = livingEnemyKeys(state, state.zone);
   const path = findPath(
     state,
@@ -2096,6 +2145,7 @@ function applyRescue(
     hero: {
       ...state.hero,
       positions: {
+        floor554: { ...FLOOR_554_START },
         floor555: { ...FLOOR_555_START },
         floor556: { ...FLOOR_START },
         floor557: { ...FLOOR_557_START },
@@ -2747,6 +2797,16 @@ function containerContents(key: string): { itemId: ItemId; quantity?: number; co
       { itemId: "keyWithoutDoor" },
     ];
   }
+  if (key === "floor554:22:33") {
+    return [
+      { itemId: "bandage", quantity: 2 },
+      { itemId: "fieldRation", quantity: 2 },
+      { itemId: "painkillers" },
+    ];
+  }
+  if (key === "floor554:52:33") {
+    return [{ itemId: "filterCartridge" }, { itemId: "repairKit" }];
+  }
   if (key === "voidLab:8:5") {
     return [
       { itemId: "traumaInjector" },
@@ -2821,11 +2881,11 @@ export function interactionHint(state: GameState): string {
     T: "Прочитать терминал",
     A: "Извлечь артефакт",
     P: state.zone === "voidLab" ? "Покинуть войд-зону через случайный разрыв" : "Войти в редкую войд-зону",
-    U: "Перейти на этаж выше",
-    D: "Перейти на этаж ниже",
+    U: state.zone === "floor554" ? "Подняться на этаж 555" : "Перейти на этаж выше",
+    D: state.zone === "floor555" ? "Спуститься к воротам Города 550 · этаж 554" : "Перейти на этаж ниже",
     L: "Проверить лифт",
     c: "Осмотреть укрытие",
-    N: "Поговорить с диспетчером Орловой",
+    N: state.zone === "floor554" ? "Поговорить с регистратором Города 550" : "Поговорить с диспетчером Орловой",
     B: state.openedContainers.includes(containerKey(state, target.point))
       ? "Проверить пустой шкаф"
       : "Открыть аварийный шкаф",
@@ -2834,7 +2894,11 @@ export function interactionHint(state: GameState): string {
 
 function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
   const transition =
-    state.zone === "floor555" && tile === "U"
+    state.zone === "floor554" && tile === "U"
+      ? { zone: "floor555" as const, position: FLOOR_555_DOWN, message: "Подъём выполнен: этаж 555, ремонтный пояс." }
+      : state.zone === "floor555" && tile === "D"
+        ? { zone: "floor554" as const, position: FLOOR_554_UP, message: "Спуск выполнен: этаж 554, верхние ворота Города 550." }
+        : state.zone === "floor555" && tile === "U"
       ? { zone: "floor556" as const, position: FLOOR_556_DOWN, message: "Подъём выполнен: этаж 556." }
       : state.zone === "floor556" && tile === "D"
         ? { zone: "floor555" as const, position: FLOOR_555_UP, message: "Спуск выполнен: этаж 555, ремонтный пояс." }
@@ -2866,7 +2930,6 @@ function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
 }
 
 export function interact(state: GameState): GameState {
-  if (state.missionComplete) return state;
   const loot = nearestGroundLoot(state);
   if (loot) return collectGroundLoot(state, loot);
   const target = nearestInteractive(state);
@@ -2881,10 +2944,12 @@ export function interact(state: GameState): GameState {
       next = appendLog(next, `Датчик СБ-04 восстановлен. Полевая задача: +${reward} опыта. Диспетчерская требует пройти в гермосектор.`);
     }
   } else if (state.zone === "floor556" && target.tile === "H") {
-    if (state.sensorFixed) {
+    if (state.missionComplete) {
+      next = appendLog(state, "Учебная операция уже закрыта. Открыт маршрут вниз, к ремонтному поясу 555.");
+    } else if (state.sensorFixed) {
       const reward = questXpReward(state, 0.4);
       next = awardXp(state, reward);
-      next = appendLog({ ...next, missionComplete: true }, `Смена завершена. Герметичный сектор закрыт. Операция: +${reward} опыта.`);
+      next = appendLog({ ...next, missionComplete: true }, `Учебная смена завершена. Операция: +${reward} опыта. Следующая директива: спуститься на этаж 555.`);
     } else {
       next = appendLog(state, "Гермодверь исправна, но директива ещё не выполнена.");
     }
@@ -2920,6 +2985,7 @@ export function interact(state: GameState): GameState {
     }
   } else if (state.zone === "voidLab" && target.tile === "P") {
     const destinations: { zone: ZoneId; position: Point; label: string }[] = [
+      { zone: "floor554", position: { x: 8, y: 33 }, label: "ворота Города 550, этаж 554" },
       { zone: "floor555", position: { x: 4, y: 19 }, label: "этаж 555" },
       { zone: "floor556", position: { x: 30, y: 18 }, label: "этаж 556" },
       { zone: "floor557", position: { x: 5, y: 19 }, label: "этаж 557" },
@@ -2959,10 +3025,16 @@ export function interact(state: GameState): GameState {
     );
   } else if (state.zone === "floor556" && target.tile === "N") {
     next = appendLog(state, "Диспетчер Орлова: «Сначала освойся в секторе. Проверь датчик СБ-04, затем доберись до гермоблока. В коридорах замечены четыре малые группы существ». ");
+  } else if (state.zone === "floor554" && target.tile === "N") {
+    next = appendLog(state, "Регистратор Климова: «Ворота Города 550 принимают новых обходчиков. Сдай маршрутный лист и пройди к внутренней линии. Районы 553–549 откроются по городской цепочке». ");
+  } else if (state.zone === "floor554" && target.tile === "T") {
+    next = appendLog(state, "Схема Города 550: этаж 554 — ворота; 553 — жильё и склад; 552 — рынок; 551 — производство; 550 — центральный разлом; 549 — медблок и ликвидаторы.");
   } else if (target.tile === "U" || target.tile === "D") {
     next = transitionFloor(state, target.tile);
   } else if (target.tile === "L") {
-    next = appendLog(state, "Лифт закреплён за городом П-46. Внешние маршруты закрыты.");
+    next = appendLog(state, state.zone === "floor554"
+      ? "Внутренняя линия Города 550 ожидает допуска регистратора. Нижние городские районы будут подключены следующим этапом."
+      : "Лифт закреплён за городом П-46. Внешние маршруты закрыты.");
   } else if (target.tile === "c") {
     next = appendLog(state, "Низкое укрытие даёт +2 к защите от дистанционных атак.");
   } else if (target.tile === "B") {
@@ -2976,6 +3048,7 @@ export function createInitialState(): GameState {
     zone: "floor556",
     hero: {
       positions: {
+        floor554: { ...FLOOR_554_START },
         floor555: { ...FLOOR_555_START },
         floor556: { ...FLOOR_START },
         floor557: { ...FLOOR_557_START },
@@ -3062,7 +3135,7 @@ export function createInitialState(): GameState {
     effects: [],
     effectCounter: 0,
     rngSeed: 5560401,
-    visited: { floor555: [], floor556: [], floor557: [], voidLab: [] },
+    visited: { floor554: [], floor555: [], floor556: [], floor557: [], voidLab: [] },
     openedContainers: [],
     milestoneLootDrops: [],
     groundLoot: [],
@@ -3080,7 +3153,6 @@ export function createInitialState(): GameState {
 }
 
 export function tickGame(state: GameState, rawDeltaMs: number): GameState {
-  if (state.missionComplete) return state;
   const deltaMs = Math.min(100, Math.max(0, rawDeltaMs));
   let next: GameState = {
     ...state,
@@ -3270,14 +3342,15 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
 }
 
 export function objectiveFor(state: GameState): string {
-  if (state.missionComplete) return "Смена завершена";
   if (state.zone === "voidLab") {
     return state.artifactRecovered
       ? "Вернуться к межэтажному переходу"
       : "Исследовать лабораторию или отступить";
   }
-  if (state.zone === "floor555") return "Исследовать ремонтный пояс или вернуться на этаж 556";
+  if (state.zone === "floor554") return "Зарегистрироваться у ворот Города 550";
+  if (state.zone === "floor555") return "Найти нижний переход и войти в Город 550 через этаж 554";
   if (state.zone === "floor557") return "Осмотреть жилой контур или вернуться на этаж 556";
+  if (state.missionComplete) return "Спуститься на этаж 555 и продолжить маршрут к Городу 550";
   return state.sensorFixed ? "Укрыться за гермодверью" : "Восстановить датчик СБ-04";
 }
 

@@ -22,6 +22,7 @@ import {
   effectiveInjury,
   equipItem,
   equipWeapon,
+  FLOOR_554_MAP,
   FLOOR_555_MAP,
   FLOOR_MAP,
   FLOOR_557_MAP,
@@ -58,6 +59,9 @@ function heroAt(state, point) {
 }
 
 test("карты прямоугольные, а базовое и легендарное оружие задают разные дистанции боя", () => {
+  assert.equal(new Set(FLOOR_554_MAP.rows.map((row) => row.length)).size, 1);
+  assert.equal(FLOOR_554_MAP.rows.length, 36);
+  assert.equal(FLOOR_554_MAP.rows[0].length, 56);
   assert.equal(new Set(FLOOR_555_MAP.rows.map((row) => row.length)).size, 1);
   assert.equal(new Set(FLOOR_MAP.rows.map((row) => row.length)).size, 1);
   assert.equal(new Set(FLOOR_557_MAP.rows.map((row) => row.length)).size, 1);
@@ -80,6 +84,16 @@ test("переходы вверх и вниз связывают этажи и �
   assert.equal(state.zone, "floor556");
   assert.deepEqual(state.hero.positions.floor556, { x: 32, y: 2 });
 
+  state = { ...state, zone: "floor555" };
+  state = heroAt(state, { x: 33, y: 20 });
+  state = interact(state);
+  assert.equal(state.zone, "floor554");
+  assert.deepEqual(state.hero.positions.floor554, { x: 3, y: 32 });
+  state = interact(state);
+  assert.equal(state.zone, "floor555");
+  assert.deepEqual(state.hero.positions.floor555, { x: 33, y: 20 });
+
+  state = { ...state, zone: "floor556" };
   state = heroAt(state, { x: 2, y: 2 });
   state = interact(state);
   assert.equal(state.zone, "floor557");
@@ -119,6 +133,18 @@ test("на стартовом этаже есть NPC и четыре учебн
   const withNpc = heroAt(state, { x: 4, y: 18 });
   const spoken = interact(withNpc);
   assert.match(spoken.log[0], /Диспетчер Орлова/);
+});
+
+test("завершение обучения не замораживает мир и открывает путь к городу", () => {
+  let state = createInitialState();
+  state = { ...state, sensorFixed: true, missionComplete: true };
+  state = heroAt(state, { x: 32, y: 2 });
+  const moved = interact(state);
+  assert.equal(moved.zone, "floor555");
+  const routed = commandMove(moved, { x: 30, y: 20 });
+  assert.ok(routed.hero.path.length > 0);
+  const advanced = tickGame(routed, 100);
+  assert.ok(advanced.worldTimeMs > moved.worldTimeMs);
 });
 test("стена перекрывает линию видимости, а открывшийся переход её восстанавливает", () => {
   const state = createInitialState();
