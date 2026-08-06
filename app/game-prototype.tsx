@@ -58,7 +58,10 @@ import {
   inventoryWeight,
   InventoryEntry,
   isKnown,
+  isSamosborActiveIn,
+  isSamosborLethalPhase,
   isSamosborProtectedAt,
+  isSamosborWarningPhase,
   isVisible,
   ITEMS,
   mapForZone,
@@ -70,6 +73,10 @@ import {
   populationPressureForZone,
   populationsForZone,
   Point,
+  samosborHighlightsShelters,
+  samosborPhaseHint,
+  samosborPhaseIn,
+  samosborPhaseLabel,
   SKILL_DESCRIPTIONS,
   SKILL_NAMES,
   SkillBranch,
@@ -356,6 +363,12 @@ export default function GamePrototype() {
   const weightLimit = carryCapacity(state);
   const artifact = equippedArtifact(state);
   const hermeticSafe = isSamosborProtectedAt(state, state.zone, hero);
+  const samosborPhase = samosborPhaseIn(state, state.zone);
+  const samosborLethal = isSamosborLethalPhase(samosborPhase);
+  const samosborWarning = isSamosborWarningPhase(samosborPhase);
+  const samosborAlarm = samosborLethal || samosborWarning;
+  const shelterHighlight = samosborHighlightsShelters(state, state.zone);
+  const samosborExposed = samosborLethal && !hermeticSafe;
   const localPopulations = populationsForZone(state);
   const localPopulationPressure = populationPressureForZone(state);
   const bandageEntry = quickConsumableEntry(state, "bandage");
@@ -806,9 +819,21 @@ export default function GamePrototype() {
           >
             {tvMode ? "ТВ · 30 FPS" : "Экран / пульт"}
           </button>
-          <div className={`header-status ${activeThreats.length ? "alert" : ""}`}>
+          <div className={`header-status ${samosborAlarm || activeThreats.length ? "alert" : ""} ${samosborAlarm ? "samosbor" : ""}`}>
             <span className="status-dot" />
-            <span>{state.hero.evadeMode ? "Отступление · автоатака отключена" : activeThreats.length ? `Тревога · ${activeThreats.length}` : "Связь нестабильна"}</span>
+            <span>
+              {samosborLethal
+                ? hermeticSafe
+                  ? "Самосбор · контур держит"
+                  : "Самосбор · открытое пространство смертельно"
+                : samosborWarning
+                  ? `Самосбор · ${samosborPhaseLabel(samosborPhase).toLowerCase()}`
+                  : state.hero.evadeMode
+                    ? "Отступление · автоатака отключена"
+                    : activeThreats.length
+                      ? `Тревога · ${activeThreats.length}`
+                      : "Связь нестабильна"}
+            </span>
           </div>
         </div>
       </header>
@@ -828,7 +853,7 @@ export default function GamePrototype() {
       </section>
 
       <section className="game-layout realtime-layout">
-        <div className={`map-card realtime-map-card ${state.zone === "voidLab" ? "void-card" : ""}`}>
+        <div className={`map-card realtime-map-card ${state.zone === "voidLab" ? "void-card" : ""} ${samosborLethal ? "samosbor-active" : samosborWarning ? "samosbor-warning" : ""}`}>
           <div className="map-heading realtime-heading">
             <div>
               <p className="map-kicker">ТЕКУЩАЯ ЛОКАЦИЯ</p>
@@ -842,6 +867,14 @@ export default function GamePrototype() {
               <small className={`safe-room-state ${hermeticSafe ? "active" : ""}`}>
                 {hermeticSafe ? "ГЕРМОКОНТУР · БЕЗОПАСНО" : "ГЕРМОКОНТУР · СНАРУЖИ"}
               </small>
+              {samosborAlarm ? (
+                <small
+                  className={`samosbor-state phase-${samosborPhase} ${samosborExposed ? "exposed" : ""}`}
+                  title={samosborPhaseHint(samosborPhase)}
+                >
+                  {`САМОСБОР · ${samosborPhaseLabel(samosborPhase)}`}
+                </small>
+              ) : null}
             </div>
           </div>
 
@@ -885,7 +918,10 @@ export default function GamePrototype() {
                   known &&
                   distance(hero, point) <= heroAttackRange(state) &&
                   hasLineOfSight(state, hero, point);
-                const stroke = inTargetAggro
+                const shelterMarked = shelterHighlight && known && (tile === "H" || tile === "g");
+                const stroke = shelterMarked
+                  ? "#7fe0c8"
+                  : inTargetAggro
                   ? "#d65e56"
                   : inTargetVision
                     ? "#c29c4d"
@@ -902,7 +938,7 @@ export default function GamePrototype() {
                 return (
                   <g
                     key={`${point.x}-${point.y}`}
-                    className={`iso-tile ${known ? "known" : "unknown"}`}
+                    className={`iso-tile ${known ? "known" : "unknown"} ${shelterMarked ? "shelter-marked" : ""}`}
                     onPointerDown={() => known && !isWall && interactAtPoint(point)}
                     onPointerEnter={() => known && !isWall && setHoverInfo({ title: TILE_LABELS[tile] ?? "Объект", description: tileDescription(tile, state.zone === "voidLab"), meta: `Координаты ${point.x}:${point.y}` })}
                     onPointerLeave={() => setHoverInfo(null)}
@@ -920,7 +956,7 @@ export default function GamePrototype() {
                       fill={tileColor(tile, state.zone === "voidLab", known)}
                       opacity={visible ? 1 : known ? 0.5 : 0.78}
                       stroke={stroke}
-                      strokeWidth={inTargetAggro ? 2.8 : inTargetVision || inWeaponRange ? 2 : 1.3}
+                      strokeWidth={shelterMarked ? 2.6 : inTargetAggro ? 2.8 : inTargetVision || inWeaponRange ? 2 : 1.3}
                       filter={(tile === "P" || tile === "U" || tile === "D") && visible ? "url(#void-glow)" : undefined}
                     />
                     {marker ? (
@@ -1282,7 +1318,7 @@ export default function GamePrototype() {
 
                 <div className="ledger-columns">
                   <div className="stat-ledger-card offense"><p className="panel-label">НАСТУПЛЕНИЕ</p><dl><div><dt>Урон</dt><dd>{heroAttackDamage(state)}</dd></div><div><dt>Дальность</dt><dd>{heroAttackRange(state).toFixed(1)}</dd></div><div><dt>Интервал атаки</dt><dd>{(heroAttackCooldown(state) / 1000).toFixed(2)} с</dd></div><div><dt>Оружие</dt><dd>{weapon.shortName}</dd></div></dl></div>
-                  <div className="stat-ledger-card defense"><p className="panel-label">ЗАЩИТА</p><dl><div><dt>Здоровье</dt><dd>{state.hero.hp}/{heroMaxHp}</dd></div><div><dt>Защита</dt><dd>{heroDefense(state)}</dd></div><div><dt>Скорость</dt><dd>{heroMoveSpeed(state).toFixed(1)}</dd></div><div><dt>Гермоконтур</dt><dd>{hermeticSafe ? "внутри" : "снаружи"}</dd></div></dl></div>
+                  <div className="stat-ledger-card defense"><p className="panel-label">ЗАЩИТА</p><dl><div><dt>Здоровье</dt><dd>{state.hero.hp}/{heroMaxHp}</dd></div><div><dt>Защита</dt><dd>{heroDefense(state)}</dd></div><div><dt>Скорость</dt><dd>{heroMoveSpeed(state).toFixed(1)}</dd></div><div><dt>Гермоконтур</dt><dd>{hermeticSafe ? "внутри" : "снаружи"}</dd></div><div><dt>Самосбор</dt><dd>{samosborPhaseLabel(samosborPhase).toLowerCase()}</dd></div></dl></div>
                   <div className="stat-ledger-card survival"><p className="panel-label">СОСТОЯНИЕ</p><dl><div><dt>Стресс</dt><dd>{Math.round(state.hero.stress)}%</dd></div><div><dt>Заражение</dt><dd>{Math.round(state.hero.contamination)}%</dd></div><div><dt>Груз</dt><dd>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)}</dd></div><div><dt>Автопротоколы</dt><dd>{unlockedSkills.length}</dd></div></dl></div>
                 </div>
 
