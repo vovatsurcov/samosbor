@@ -7,13 +7,20 @@ on:
     paths:
       - '.automation/approved-campaign/**'
       - '.github/workflows/apply-approved-campaign.yml'
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.automation/approved-campaign/**'
+      - '.github/workflows/apply-approved-campaign.yml'
 
 permissions:
   contents: write
 
 jobs:
   apply-and-verify:
-    if: hashFiles('.automation/approved-campaign/result.log') == ''
+    if: github.head_ref == 'architect/approved-campaign-floors-534' && hashFiles('.automation/approved-campaign/part-*') != '' && hashFiles('.automation/approved-campaign/result.log') == ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -30,7 +37,6 @@ jobs:
           tar -xzf /tmp/approved-campaign.tar.gz -C .
 
       - name: Verify engine lint and build
-        id: verify
         shell: bash
         run: |
           set +e
