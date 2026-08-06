@@ -194,6 +194,32 @@ test("фоновые популяции живут вне текущего эт�
   assert.match(state.log[0], /Паломники лифтового ритма/);
 });
 
+test("популяции проявляются физическими противниками и теряют численность от убийств", () => {
+  let state = createInitialState();
+  const representative = state.enemies.find(
+    (enemy) => enemy.zone === state.zone && enemy.populationId && enemy.hp > 0,
+  );
+  assert.ok(representative);
+  const populationBefore = state.populations.find((population) => population.id === representative.populationId);
+  assert.ok(populationBefore);
+
+  state = heroAt(state, { x: Math.max(1, representative.position.x - 1), y: representative.position.y });
+  state = {
+    ...state,
+    enemies: state.enemies.map((enemy) =>
+      enemy.id === representative.id
+        ? { ...enemy, hp: 1, armor: -10, attackCooldownMs: 99999 }
+        : enemy,
+    ),
+  };
+  state = tickGame(commandAttack(state, representative.id), 100);
+
+  const populationAfter = state.populations.find((population) => population.id === representative.populationId);
+  assert.equal(populationAfter.count, populationBefore.count - 1);
+  assert.ok(populationAfter.agitation > populationBefore.agitation);
+  assert.match(state.log.join("\n"), /численность снижена/);
+});
+
 test("перестройка этажа происходит по таймеру мира", () => {
   const state = { ...createInitialState(), worldTimeMs: 14950 };
   const mutated = tickGame(state, 100);

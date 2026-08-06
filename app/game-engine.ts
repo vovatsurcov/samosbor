@@ -62,6 +62,7 @@ export type EnemyMode =
   | "disabled";
 
 export type EnemyKind = "sentry" | "stalker" | "collector";
+export type EnemyRank = "common" | "enhanced" | "veteran" | "elite" | "boss";
 
 export type PopulationGenome =
   | "maintenance"
@@ -165,6 +166,8 @@ export type Enemy = {
   attackCooldownMs: number;
   thinkCooldownMs: number;
   xpValue: number;
+  rank?: EnemyRank;
+  populationId?: string;
   mode: EnemyMode;
   path: Point[];
   patrol: Point[];
@@ -429,8 +432,9 @@ function evolvePopulations(state: GameState, cycle: number): GameState {
       agitation: clampPopulation(population.agitation + agitationDelta, 0, 100),
     };
   });
-  const next = { ...state, populations, populationCycle: cycle };
-  return migrationMessage ? appendLog(next, migrationMessage) : next;
+  let next = reconcilePopulationEnemies({ ...state, populations, populationCycle: cycle }, cycle);
+  if (migrationMessage) next = appendLog(next, migrationMessage);
+  return next;
 }
 
 export function populationsForZone(state: GameState, zone: ZoneId = state.zone): WorldPopulation[] {
@@ -446,6 +450,166 @@ export function populationPressureForZone(state: GameState, zone: ZoneId = state
       0,
     ),
   );
+}
+
+function manifestedPopulationTarget(population: WorldPopulation): number {
+  if (population.count <= 0) return 0;
+  return Math.min(4, Math.max(1, Math.ceil(population.count / 5)));
+}
+
+function populationEnemyKind(genome: PopulationGenome): EnemyKind {
+  if (genome === "feral" || genome === "pilgrim") return "stalker";
+  if (genome === "anomalous") return "collector";
+  return "sentry";
+}
+
+function populationEnemyRank(population: WorldPopulation): EnemyRank {
+  if (population.agitation >= 82 || population.count >= 24) return "veteran";
+  if (population.agitation >= 55 || population.count >= 14) return "enhanced";
+  return "common";
+}
+
+function populationEnemyName(population: WorldPopulation, index: number): string {
+  const suffix = String(index + 1).padStart(2, "0");
+  if (population.genome === "maintenance") return `Ремонтный исполнитель ${suffix}`;
+  if (population.genome === "bureaucratic") return `Контролёр допуска ${suffix}`;
+  if (population.genome === "feral") return `Контурный жилец ${suffix}`;
+  if (population.genome === "pilgrim") return `Паломник кабины ${suffix}`;
+  return `Резонансный отросток ${suffix}`;
+}
+
+function populationSpawnCandidates(state: GameState, zone: ZoneId): Point[] {
+  const map = mapForZone(zone);
+  const reserved = new Set(
+    state.enemies
+      .filter((enemy) => enemy.zone === zone && enemy.hp > 0 && !enemy.populationId)
+      .map((enemy) => pointKey(gridPoint(enemy.position))),
+  );
+  const hero = state.hero.positions[zone];
+  const candidates: Point[] = [];
+  for (let y = 1; y < map.rows.length - 1; y += 1) {
+    for (let x = 1; x < map.rows[0].length - 1; x += 1) {
+      const point = { x, y };
+      const tile = tileAtZone(state, zone, point);
+      if (![".", "c"].includes(tile)) continue;
+      if (reserved.has(pointKey(point))) continue;
+      if (distance(point, hero) < 3.2) continue;
+      candidates.push(point);
+    }
+  }
+  return candidates;
+}
+
+function createPopulationEnemy(
+  state: GameState,
+  population: WorldPopulation,
+  index: number,
+  cycle: number,
+  occupied: Set<string>,
+): Enemy | null {
+  const candidates = populationSpawnCandidates(state, population.zone).filter(
+    (point) => !occupied.has(`${population.zone}:${pointKey(point)}`),
+  );
+  if (!candidates.length) return null;
+  const salt = [...population.id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const point = candidates[(salt + cycle * 7 + index * 11) % candidates.length];
+  occupied.add(`${population.zone}:${pointKey(point)}`);
+  const kind = populationEnemyKind(population.genome);
+  const rank = populationEnemyRank(population);
+  const rankScale = rank === "veteran" ? 1.55 : rank === "enhanced" ? 1.25 : 1;
+  const baseHp = kind === "collector" ? 16 : kind === "sentry" ? 11 : 9;
+  const baseDamage = kind === "collector" ? 4 : kind === "sentry" ? 2 : 3;
+  const id = `population:${population.id}:${cycle}:${index}`;
+  return {
+    id,
+    name: populationEnemyName(population, index),
+    kind,
+    zone: population.zone,
+    position: copyPoint(point),
+    home: copyPoint(point),
+    hp: Math.round(baseHp * rankScale),
+    maxHp: Math.round(baseHp * rankScale),
+    armor: kind === "collector" ? 2 : kind === "sentry" ? 1 : 0,
+    visionRadius: kind === "stalker" ? 5.5 : 4.5,
+    hearingRadius: kind === "stalker" ? 7 : 5,
+    aggroRadius: 3 + population.agitation / 50,
+    attackRange: kind === "sentry" ? 3.5 : kind === "collector" ? 1.8 : 1.35,
+    speed: kind === "stalker" ? 1.55 : kind === "collector" ? 0.9 : 1.1,
+    accuracy: rank === "veteran" ? 5 : rank === "enhanced" ? 4 : 3,
+    damage: Math.round(baseDamage * rankScale),
+    attackCooldownBaseMs: kind === "stalker" ? 1050 : kind === "collector" ? 1700 : 1400,
+    attackCooldownMs: 500 + index * 130,
+    thinkCooldownMs: index * 80,
+    xpValue: rank === "veteran" ? 30 : rank === "enhanced" ? 18 : 8,
+    rank,
+    populationId: population.id,
+    mode: "patrol",
+    path: [],
+    patrol: [copyPoint(point)],
+    patrolIndex: 0,
+    lastKnownHero: null,
+    memoryMs: 0,
+    markedUntilMs: 0,
+    resonanceStacks: 0,
+    dizzyStacks: 0,
+    dizzyUntilMs: 0,
+    stunnedUntilMs: 0,
+    castUntilMs: 0,
+  };
+}
+
+function reconcilePopulationEnemies(state: GameState, cycle = state.populationCycle): GameState {
+  const staticEnemies = state.enemies.filter((enemy) => !enemy.populationId);
+  const livingPopulationEnemies = state.enemies.filter((enemy) => enemy.populationId && enemy.hp > 0);
+  const occupied = new Set(
+    [...staticEnemies, ...livingPopulationEnemies].map(
+      (enemy) => `${enemy.zone}:${pointKey(gridPoint(enemy.position))}`,
+    ),
+  );
+  const retained: Enemy[] = [];
+  const spawned: Enemy[] = [];
+
+  for (const population of state.populations) {
+    const target = manifestedPopulationTarget(population);
+    const existing = livingPopulationEnemies
+      .filter((enemy) => enemy.populationId === population.id)
+      .slice(0, target)
+      .map((enemy, index) => {
+        if (enemy.zone === population.zone) return enemy;
+        const replacement = createPopulationEnemy(state, population, index, cycle, occupied);
+        return replacement ?? { ...enemy, zone: population.zone };
+      });
+    retained.push(...existing);
+    for (let index = existing.length; index < target; index += 1) {
+      const enemy = createPopulationEnemy(state, population, index, cycle, occupied);
+      if (enemy) spawned.push(enemy);
+    }
+  }
+
+  const next = { ...state, enemies: [...staticEnemies, ...retained, ...spawned] };
+  return spawned.length
+    ? appendLog(next, `Физический мир проявил ${spawned.length} новых представителей популяций.`)
+    : next;
+}
+
+function registerPopulationCasualty(state: GameState, enemy: Enemy): GameState {
+  if (!enemy.populationId) return state;
+  const population = state.populations.find((entry) => entry.id === enemy.populationId);
+  if (!population) return state;
+  const nextCount = Math.max(0, population.count - 1);
+  const next = {
+    ...state,
+    populations: state.populations.map((entry) =>
+      entry.id === enemy.populationId
+        ? {
+            ...entry,
+            count: nextCount,
+            agitation: clampPopulation(entry.agitation + 5, 0, 100),
+          }
+        : entry,
+    ),
+  };
+  return appendLog(next, `${population.name}: численность снижена до ${nextCount}, тревога растёт.`);
 }
 
 function createEnemies(): Enemy[] {
@@ -1588,6 +1752,7 @@ function skillDamage(
   next = addEffect(next, state.hero.positions[state.zone], enemy.position, kind, damage);
   if (hp <= 0) {
     next = dropEnemyLoot(next, enemy);
+    next = registerPopulationCasualty(next, enemy);
     next = awardXp(next, enemy.xpValue);
   }
   return next;
@@ -2055,6 +2220,7 @@ function heroAttackTick(state: GameState): GameState {
       hero: { ...next.hero, attackTargetId: null, path: [], destination: null },
     };
     next = dropEnemyLoot(next, target);
+    next = registerPopulationCasualty(next, target);
     next = awardXp(next, target.xpValue);
     return appendLog(next, `${target.name} выведен из строя. Получено ${target.xpValue} опыта.`);
   }
@@ -2329,6 +2495,7 @@ function tickDrone(state: GameState): GameState {
   next = addEffect(next, { x: hero.x + 0.2, y: hero.y - 0.25 }, target.position, "drone", droneDamage);
   if (hp <= 0) {
     next = dropEnemyLoot(next, target);
+    next = registerPopulationCasualty(next, target);
     next = awardXp(next, target.xpValue);
     return appendLog(next, `Рембот Р-3 отключил цель «${target.name}».`);
   }
@@ -2681,7 +2848,7 @@ export function createInitialState(): GameState {
       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
     ],
   };
-  return reveal(state);
+  return reveal(reconcilePopulationEnemies(state, 0));
 }
 
 export function tickGame(state: GameState, rawDeltaMs: number): GameState {
