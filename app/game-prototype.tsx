@@ -58,6 +58,8 @@ import {
   mapForZone,
   maxHeroHp,
   objectiveFor,
+  populationPressureForZone,
+  populationsForZone,
   Point,
   SKILL_DESCRIPTIONS,
   SKILL_NAMES,
@@ -73,7 +75,7 @@ import {
   xpToNextLevel,
 } from "./game-engine";
 
-const SAVE_KEY = "samosbor-shift-556-stage-4a";
+const SAVE_KEY = "samosbor-shift-556-stage-4b";
 const TILE_WIDTH = 82;
 const TILE_HEIGHT = 41;
 const DESKTOP_FRAME_INTERVAL = 16;
@@ -130,6 +132,14 @@ const ENEMY_SIGNS: Record<Enemy["kind"], string> = {
   stalker: "О",
   collector: "С",
 };
+
+const GENOME_LABELS = {
+  maintenance: "ремонтный",
+  bureaucratic: "ведомственный",
+  feral: "одичавший",
+  pilgrim: "паломнический",
+  anomalous: "аномальный",
+} as const;
 
 const SKILL_BRANCHES = Object.keys(SKILL_NAMES) as SkillBranch[];
 type TalentView = "core" | SkillBranch | "hybrid" | "legendary";
@@ -251,6 +261,8 @@ export default function GamePrototype() {
   const carriedWeight = inventoryWeight(state);
   const weightLimit = carryCapacity(state);
   const artifact = equippedArtifact(state);
+  const localPopulations = populationsForZone(state);
+  const localPopulationPressure = populationPressureForZone(state);
   const bandageCount = state.hero.inventory.find((entry) => entry.itemId === "bandage")?.quantity ?? 0;
   const visibleLoot = state.groundLoot.filter(
     (loot) => loot.zone === state.zone && isKnown(state, loot.position),
@@ -311,6 +323,8 @@ export default function GamePrototype() {
             Array.isArray(parsed?.hero?.inventory) &&
             Array.isArray(parsed.enemies) &&
             Array.isArray(parsed.groundLoot) &&
+            Array.isArray(parsed.populations) &&
+            typeof parsed.populationCycle === "number" &&
             typeof parsed.worldTimeMs === "number"
           ) {
             setState(parsed);
@@ -585,7 +599,7 @@ export default function GamePrototype() {
         <div>
           <p className="eyebrow">ПРОТОКОЛ СМЕНЫ · СБ/556-04</p>
           <h1>Самосбор: Смена 556</h1>
-          <p className="game-subtitle">Action RPG прототип · этап 4A · связанные этажи и непрерывный мир</p>
+          <p className="game-subtitle">Action RPG прототип · этап 4B · фоновые популяции живого мира</p>
         </div>
         <div className="header-indicators">
           <div className="live-indicator"><i />РЕАЛЬНОЕ ВРЕМЯ</div>
@@ -835,6 +849,23 @@ export default function GamePrototype() {
             <p className="panel-label">ТЕКУЩАЯ ДИРЕКТИВА</p>
             <h2>{objectiveFor(state)}</h2>
             <p>Перемещайтесь кликом, касанием, D-pad или стиком. Боевая директива: <strong>{state.hero.combatDirective === "mobileFire" ? "мобильный огонь" : state.hero.combatDirective === "splashGuard" ? "сбор пачки" : "ручная цель"}</strong>.</p>
+          </section>
+
+          <section className="panel-card population-card">
+            <div className="population-heading">
+              <div><p className="panel-label">ЖИВОЙ ЭТАЖ</p><h3>Давление популяций: {localPopulationPressure}</h3></div>
+              <span className={`population-pressure ${localPopulationPressure >= 25 ? "high" : ""}`}>{localPopulations.length}</span>
+            </div>
+            {localPopulations.length ? (
+              <ul className="population-list">
+                {localPopulations.map((population) => (
+                  <li key={population.id}>
+                    <div><strong>{population.name}</strong><small>{GENOME_LABELS[population.genome]} геном · цель: {population.goal}</small></div>
+                    <span><b>{population.count}</b><small>{Math.round(population.agitation)}% тревоги</small></span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p>В зоне не зафиксировано устойчивых групп.</p>}
           </section>
 
           <section className="panel-card hero-card">

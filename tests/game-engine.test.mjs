@@ -28,6 +28,8 @@ import {
   heroMoveSpeed,
   interact,
   inventoryWeight,
+  populationPressureForZone,
+  populationsForZone,
   tickGame,
   TALENT_NODES,
   VOID_MAP,
@@ -173,6 +175,23 @@ test("инженерная ветвь открывает рембота и ак�
   assert.equal(secondRank.hero.skills.engineer, 2);
   assert.equal(branchTalentPoints(secondRank, "engineer"), 2);
   assert.ok(Object.values(ACTIVE_SKILLS).some((skill) => skill.branch === "engineer" && skill.unlockAt === 1));
+});
+
+
+test("фоновые популяции живут вне текущего этажа и мигрируют по своему ритму", () => {
+  let state = createInitialState();
+  const initialPressure = populationPressureForZone(state, "floor557");
+  const initialPilgrims = state.populations.find((population) => population.id === "elevator-pilgrims");
+  assert.equal(initialPilgrims.zone, "floor557");
+
+  for (let frame = 0; frame < 200; frame += 1) state = tickGame(state, 100);
+
+  const pilgrims = state.populations.find((population) => population.id === "elevator-pilgrims");
+  assert.equal(state.zone, "floor556");
+  assert.equal(pilgrims.zone, "floor556");
+  assert.ok(populationPressureForZone(state, "floor557") !== initialPressure);
+  assert.ok(populationsForZone(state, "floor556").some((population) => population.id === "elevator-pilgrims"));
+  assert.match(state.log[0], /Паломники лифтового ритма/);
 });
 
 test("перестройка этажа происходит по таймеру мира", () => {

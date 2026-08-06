@@ -63,6 +63,23 @@ export type EnemyMode =
 
 export type EnemyKind = "sentry" | "stalker" | "collector";
 
+export type PopulationGenome =
+  | "maintenance"
+  | "bureaucratic"
+  | "feral"
+  | "pilgrim"
+  | "anomalous";
+
+export type WorldPopulation = {
+  id: string;
+  name: string;
+  genome: PopulationGenome;
+  zone: ZoneId;
+  count: number;
+  agitation: number;
+  goal: string;
+};
+
 export type Attributes = {
   body: number;
   reaction: number;
@@ -199,6 +216,8 @@ export type GameState = {
   openedContainers: string[];
   groundLoot: GroundLoot[];
   lootCounter: number;
+  populations: WorldPopulation[];
+  populationCycle: number;
   log: string[];
 };
 
@@ -295,6 +314,7 @@ const FLOOR_557_DOWN: Point = { x: 10, y: 1 };
 const GROUP_ALERT_RADIUS = 6;
 const MUTATION_AT_MS = 15000;
 const VOID_STABILITY_MS = 42000;
+const POPULATION_STEP_MS = 5000;
 
 const EMPTY_INJURIES: Injuries = {
   leg: 0,
@@ -333,6 +353,99 @@ export function distance(a: Point, b: Point): number {
 
 export function gridPoint(point: Point): Point {
   return { x: Math.round(point.x), y: Math.round(point.y) };
+}
+
+function createPopulations(): WorldPopulation[] {
+  return [
+    {
+      id: "repair-collective",
+      name: "Ремонтный коллектив 55-Б",
+      genome: "maintenance",
+      zone: "floor555",
+      count: 12,
+      agitation: 28,
+      goal: "восстановить затопленный цех",
+    },
+    {
+      id: "departmental-automata",
+      name: "Ведомственные автоматы КЛ",
+      genome: "bureaucratic",
+      zone: "floor556",
+      count: 7,
+      agitation: 42,
+      goal: "удерживать технический коридор",
+    },
+    {
+      id: "tenant-pack",
+      name: "Стая контурных жильцов",
+      genome: "feral",
+      zone: "floor557",
+      count: 10,
+      agitation: 56,
+      goal: "занять тёплые жилые секции",
+    },
+    {
+      id: "elevator-pilgrims",
+      name: "Паломники лифтового ритма",
+      genome: "pilgrim",
+      zone: "floor557",
+      count: 4,
+      agitation: 34,
+      goal: "найти кабину с живым сердцебиением",
+    },
+    {
+      id: "void-bloom",
+      name: "Цветение лабораторного слоя",
+      genome: "anomalous",
+      zone: "voidLab",
+      count: 16,
+      agitation: 67,
+      goal: "расширить устойчивую геометрию",
+    },
+  ];
+}
+
+function clampPopulation(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function evolvePopulations(state: GameState, cycle: number): GameState {
+  let migrationMessage: string | null = null;
+  const populations = state.populations.map((population, index) => {
+    const rhythm = (cycle + index * 3) % 6;
+    const countDelta = rhythm === 0 ? 1 : rhythm === 3 && population.count > 2 ? -1 : 0;
+    const agitationDelta = ((cycle + index) % 5) - 2;
+    let zone = population.zone;
+    if (population.id === "elevator-pilgrims" && cycle % 4 === 0) {
+      zone = population.zone === "floor557" ? "floor556" : "floor557";
+      migrationMessage = zone === "floor556"
+        ? "Паломники лифтового ритма спустились на этаж 556."
+        : "Паломники лифтового ритма поднялись в жилой контур 557.";
+    }
+    return {
+      ...population,
+      zone,
+      count: clampPopulation(population.count + countDelta, 1, 30),
+      agitation: clampPopulation(population.agitation + agitationDelta, 0, 100),
+    };
+  });
+  const next = { ...state, populations, populationCycle: cycle };
+  return migrationMessage ? appendLog(next, migrationMessage) : next;
+}
+
+export function populationsForZone(state: GameState, zone: ZoneId = state.zone): WorldPopulation[] {
+  return state.populations
+    .filter((population) => population.zone === zone && population.count > 0)
+    .sort((left, right) => right.agitation - left.agitation || right.count - left.count);
+}
+
+export function populationPressureForZone(state: GameState, zone: ZoneId = state.zone): number {
+  return Math.round(
+    populationsForZone(state, zone).reduce(
+      (total, population) => total + population.count * (1 + population.agitation / 100),
+      0,
+    ),
+  );
 }
 
 function createEnemies(): Enemy[] {
@@ -2559,9 +2672,11 @@ export function createInitialState(): GameState {
     openedContainers: [],
     groundLoot: [],
     lootCounter: 0,
+    populations: createPopulations(),
+    populationCycle: 0,
     log: [
       "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
-      "Учебный резерв этапа 4A: 18 очков для проверки чистых и гибридных сборок.",
+      "Учебный резерв этапа 4B: 18 очков для проверки чистых и гибридных сборок.",
       "Директива: проверить датчик СБ-04 и укрыться в герметичном секторе.",
       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
     ],
@@ -2609,6 +2724,11 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
       { ...next, mutated: true },
       "Топология этажа изменилась. Открыт проход в межэтажное пространство.",
     );
+  }
+
+  const populationCycle = Math.floor(next.worldTimeMs / POPULATION_STEP_MS);
+  if (populationCycle > next.populationCycle) {
+    next = evolvePopulations(next, populationCycle);
   }
 
   const heroPosition = next.hero.positions[next.zone];
