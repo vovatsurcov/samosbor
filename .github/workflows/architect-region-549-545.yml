@@ -1,0 +1,58 @@
+name: Integrate region 549-545
+
+on:
+  push:
+    branches:
+      - architect/region-549-545
+    paths:
+      - app/game-region-549-545.ts
+      - tests/region-549-545.test.mjs
+      - scripts/apply-region-549-545.py
+      - .github/workflows/architect-region-549-545.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: architect/region-549-545
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+
+      - name: Apply exact integration patch
+        run: python3 scripts/apply-region-549-545.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check TypeScript syntax
+        run: |
+          node --experimental-strip-types --check app/game-region-549-545.ts
+          node --experimental-strip-types --check app/game-engine.ts
+
+      - name: Run engine tests
+        run: npm run test:engine
+
+      - name: Check patch cleanliness
+        run: git diff --check
+
+      - name: Commit integrated region
+        run: |
+          if git diff --quiet; then
+            echo "No integration changes to commit"
+            exit 0
+          fi
+          git config user.name "samosbor-architect-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/game-engine.ts package.json
+          git commit -m "Integrate floors 549 through 545"
+          git push origin HEAD:architect/region-549-545
