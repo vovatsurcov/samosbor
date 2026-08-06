@@ -2885,3 +2885,21 @@ kbd {
   background: #252922;
   opacity: 0.55;
 }
+
+.map-hover-card {
+  position: absolute;
+  z-index: 12;
+  left: 18px;
+  bottom: 58px;
+  width: min(360px, calc(100% - 36px));
+  padding: 12px 14px;
+  border: 1px solid rgba(225, 200, 109, 0.48);
+  background: rgba(18, 20, 18, 0.94);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.46);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.map-hover-card strong { color: #f0d77c; font-size: 0.95rem; }
+.map-hover-card p { margin: 6px 0; color: #d8ddd4; line-height: 1.35; }
+.map-hover-card small { color: #8da096; }

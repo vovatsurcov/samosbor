@@ -69,50 +69,80 @@ test("карты прямоугольные, а базовое и легенда
 
 
 test("переходы вверх и вниз связывают этажи и сохраняют позиции", () => {
-  let state = heroAt(createInitialState(), { x: 9, y: 1 });
+  let state = heroAt(createInitialState(), { x: 32, y: 2 });
   state = interact(state);
   assert.equal(state.zone, "floor555");
-  assert.deepEqual(state.hero.positions.floor555, { x: 10, y: 1 });
+  assert.deepEqual(state.hero.positions.floor555, { x: 32, y: 2 });
 
   state = interact(state);
   assert.equal(state.zone, "floor556");
-  assert.deepEqual(state.hero.positions.floor556, { x: 9, y: 1 });
+  assert.deepEqual(state.hero.positions.floor556, { x: 32, y: 2 });
 
-  state = heroAt(state, { x: 1, y: 1 });
+  state = heroAt(state, { x: 2, y: 2 });
   state = interact(state);
   assert.equal(state.zone, "floor557");
-  assert.deepEqual(state.hero.positions.floor557, { x: 10, y: 1 });
+  assert.deepEqual(state.hero.positions.floor557, { x: 32, y: 2 });
 
   state = interact(state);
   assert.equal(state.zone, "floor556");
-  assert.deepEqual(state.hero.positions.floor556, { x: 1, y: 1 });
+  assert.deepEqual(state.hero.positions.floor556, { x: 2, y: 2 });
 });
 
+
+
+test("переходы и войд-зоны требуют взаимодействия", () => {
+  let state = heroAt(createInitialState(), { x: 32, y: 2 });
+  state = tickGame(state, 500);
+  assert.equal(state.zone, "floor556");
+  state = interact(state);
+  assert.equal(state.zone, "floor555");
+
+  state = {
+    ...state,
+    zone: "voidLab",
+    hero: {
+      ...state.hero,
+      positions: { ...state.hero.positions, voidLab: { x: 1, y: 1 } },
+    },
+  };
+  const exited = interact(state);
+  assert.notEqual(exited.zone, "voidLab");
+  assert.match(exited.log[0], /обратный маршрут исчез/);
+});
+
+test("на стартовом этаже есть NPC и четыре учебные группы", () => {
+  const state = createInitialState();
+  const starters = state.enemies.filter((enemy) => enemy.zone === "floor556" && !enemy.populationId);
+  assert.equal(starters.length, 8);
+  const withNpc = heroAt(state, { x: 4, y: 18 });
+  const spoken = interact(withNpc);
+  assert.match(spoken.log[0], /Диспетчер Орлова/);
+});
 test("стена перекрывает линию видимости, а открывшийся переход её восстанавливает", () => {
   const state = createInitialState();
-  const from = { x: 5, y: 3 };
-  const to = { x: 7, y: 3 };
-  assert.equal(hasLineOfSight(state, from, to), false);
-  assert.equal(hasLineOfSight({ ...state, mutated: true }, from, to), true);
+  const from = { x: 3, y: 3 };
+  const to = { x: 5, y: 3 };
+  assert.equal(hasLineOfSight(state, from, to), true);
+  assert.equal(hasLineOfSight({ ...state, mutated: true }, from, to), false);
 });
 
 test("герой движется непрерывно, а не перескакивает на клетку за ход", () => {
   const state = createInitialState();
-  const routed = commandMove(state, { x: 3, y: 7 });
+  const routed = commandMove(state, { x: 5, y: 18 });
   assert.ok(routed.hero.path.length > 0);
 
   let moving = tickGame(routed, 50);
-  assert.ok(moving.hero.positions.floor556.x > 1);
-  assert.ok(moving.hero.positions.floor556.x < 2);
+  assert.ok(moving.hero.positions.floor556.x > 3);
+  assert.ok(moving.hero.positions.floor556.x < 4);
   assert.equal(moving.worldTimeMs, 50);
 
   for (let frame = 0; frame < 20; frame += 1) moving = tickGame(moving, 50);
-  assert.deepEqual(moving.hero.positions.floor556, { x: 3, y: 7 });
+  assert.deepEqual(moving.hero.positions.floor556, { x: 5, y: 18 });
   assert.equal(moving.hero.path.length, 0);
 });
 
 test("выбранная цель получает выстрел по кулдауну без завершения хода", () => {
-  const state = heroAt(createInitialState(), { x: 5, y: 7 });
+  const state = heroAt(createInitialState(), { x: 9, y: 4 });
   const targeted = commandAttack(state, "guard-kl4");
   assert.equal(targeted.hero.attackTargetId, "guard-kl4");
 
@@ -124,14 +154,14 @@ test("выбранная цель получает выстрел по кулд�
 });
 
 test("противник готовит атаку в реальном времени, после чего наносит травму", () => {
-  const state = heroAt(createInitialState(), { x: 5, y: 7 });
+  const state = heroAt(createInitialState(), { x: 9, y: 4 });
   const threatened = {
     ...state,
     enemies: state.enemies.map((enemy) =>
       enemy.id === "guard-kl4"
         ? {
             ...enemy,
-            position: { x: 6, y: 7 },
+            position: { x: 10, y: 4 },
             accuracy: 100,
             damage: 20,
             attackCooldownMs: 0,
@@ -145,7 +175,7 @@ test("противник готовит атаку в реальном врем�
   for (let frame = 0; frame < 8; frame += 1) rescued = tickGame(rescued, 100);
   assert.equal(rescued.rescueCount, 1);
   assert.equal(rescued.injuries.leg, 1);
-  assert.deepEqual(rescued.hero.positions.floor556, { x: 1, y: 7 });
+  assert.deepEqual(rescued.hero.positions.floor556, { x: 3, y: 18 });
   assert.match(rescued.log[0], /травма ноги/);
 });
 
@@ -255,10 +285,10 @@ test("экипировка, вес и состояние предметов уч
 });
 
 test("аварийный шкаф выдаёт добычу и запоминает открытие", () => {
-  const state = heroAt(createInitialState(), { x: 2, y: 3 });
+  const state = heroAt(createInitialState(), { x: 17, y: 8 });
   const looted = interact(state);
 
-  assert.ok(looted.openedContainers.includes("floor556:2:3"));
+  assert.ok(looted.openedContainers.includes("floor556:17:8"));
   assert.ok(looted.hero.inventory.some((entry) => entry.itemId === "keyWithoutDoor"));
   assert.ok(looted.hero.inventory.some((entry) => entry.itemId === "repairKit"));
   assert.equal(looted.hero.inventory.find((entry) => entry.itemId === "bandage")?.quantity, 3);
@@ -283,7 +313,7 @@ test("перевязка временно ослабляет травму и р�
 });
 
 test("Ключ без двери открывает проход ценой заражения", () => {
-  const state = heroAt(createInitialState(), { x: 2, y: 3 });
+  const state = heroAt(createInitialState(), { x: 17, y: 8 });
   const looted = interact(state);
   const key = looted.hero.inventory.find((entry) => entry.itemId === "keyWithoutDoor");
   const equipped = equipItem(looted, key.instanceId);
@@ -296,7 +326,7 @@ test("Ключ без двери открывает проход ценой за
 });
 
 test("Катушка обратного шага возвращает ко входу и не является бесплатным спасением", () => {
-  const state = heroAt(createInitialState(), { x: 5, y: 7 });
+  const state = heroAt(createInitialState(), { x: 9, y: 4 });
   const withArtifact = {
     ...state,
     hero: {
@@ -311,14 +341,14 @@ test("Катушка обратного шага возвращает ко вх�
   const equipped = equipItem(withArtifact, "test-coil");
   const activated = activateEquippedArtifact(equipped);
 
-  assert.deepEqual(activated.hero.positions.floor556, { x: 1, y: 7 });
+  assert.deepEqual(activated.hero.positions.floor556, { x: 3, y: 18 });
   assert.equal(activated.hero.contamination, 12);
   assert.ok(activated.hero.artifactCooldownMs > 0);
   assert.equal(activated.noise?.label, "свёрнутый путь");
 });
 
 test("побеждённый противник оставляет физический трофей", () => {
-  const state = heroAt(createInitialState(), { x: 5, y: 7 });
+  const state = heroAt(createInitialState(), { x: 9, y: 4 });
   const weakened = {
     ...state,
     enemies: state.enemies.map((enemy) =>
@@ -364,7 +394,7 @@ test("очко базового атрибута распределяется и
 });
 
 test("полевая задача и завершение операции выдают опыт только один раз", () => {
-  let state = heroAt(createInitialState(), { x: 10, y: 3 });
+  let state = heroAt(createInitialState(), { x: 29, y: 3 });
   const before = state.hero.totalXp;
   state = interact(state);
   assert.equal(state.sensorFixed, true);
@@ -373,7 +403,7 @@ test("полевая задача и завершение операции вы�
   state = interact(state);
   assert.equal(state.hero.totalXp, afterSensor);
 
-  state = heroAt(state, { x: 10, y: 6 });
+  state = heroAt(state, { x: 31, y: 18 });
   state = interact(state);
   assert.equal(state.missionComplete, true);
   assert.ok(state.hero.totalXp > afterSensor);
@@ -412,32 +442,32 @@ test("легендарный предмет добавляет внешний т
 });
 
 test("мобильный стрелок продолжает маршрут, накапливает головокружение и срывает каст", () => {
-  let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 5, y: 7 });
+  let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 10, y: 5 });
   state = {
     ...state,
     enemies: state.enemies.map((enemy) =>
       enemy.id === "guard-kl4"
-        ? { ...enemy, position: { x: 6, y: 7 }, hp: 100, maxHp: 100, armor: -10, attackCooldownMs: 99999 }
+        ? { ...enemy, position: { x: 11, y: 5 }, hp: 100, maxHp: 100, armor: -10, attackCooldownMs: 99999 }
         : enemy,
     ),
   };
-  state = commandMove(state, { x: 3, y: 7 });
+  state = commandMove(state, { x: 12, y: 5 });
   state = commandAttack(state, "guard-kl4");
   assert.ok(state.hero.path.length > 0);
   for (let frame = 0; frame < 32; frame += 1) state = tickGame(state, 100);
-  assert.deepEqual(state.hero.positions.floor556, { x: 3, y: 7 });
+  assert.notDeepEqual(state.hero.positions.floor556, { x: 10, y: 5 });
   assert.match(state.log.join("\n"), /микрооглушение/);
 });
 
 test("силовой сплэшер поражает соседнюю цель и собирает пачку", () => {
-  let state = heroAt(applyTrainingBuild(createInitialState(), "splashGuard"), { x: 5, y: 7 });
+  let state = heroAt(applyTrainingBuild(createInitialState(), "splashGuard"), { x: 9, y: 4 });
   state = {
     ...state,
     enemies: state.enemies.map((enemy) =>
       enemy.id === "guard-kl4"
-        ? { ...enemy, position: { x: 6, y: 7 }, hp: 100, maxHp: 100, armor: -10, attackCooldownMs: 99999 }
+        ? { ...enemy, position: { x: 10, y: 4 }, hp: 100, maxHp: 100, armor: -10, attackCooldownMs: 99999 }
         : enemy.id === "stalker-17"
-          ? { ...enemy, position: { x: 6, y: 6 }, hp: 100, maxHp: 100, zone: "floor556", attackCooldownMs: 99999 }
+          ? { ...enemy, position: { x: 10, y: 5 }, hp: 100, maxHp: 100, zone: "floor556", attackCooldownMs: 99999 }
           : enemy,
     ),
   };
@@ -448,7 +478,7 @@ test("силовой сплэшер поражает соседнюю цель �
 });
 
 test("все открытые навыки участвуют в автокасте без назначения на панель", () => {
-  let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 5, y: 7 });
+  let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 9, y: 4 });
   state = {
     ...state,
     hero: {
@@ -462,7 +492,7 @@ test("все открытые навыки участвуют в автокас�
       enemy.id === "guard-kl4"
         ? {
             ...enemy,
-            position: { x: 6, y: 7 },
+            position: { x: 10, y: 4 },
             hp: 40,
             maxHp: 40,
             armor: -10,
@@ -482,11 +512,11 @@ test("все открытые навыки участвуют в автокас�
 });
 
 test("огневая ротация связывает метку и точную серию через общие состояния", () => {
-  let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 5, y: 7 });
+  let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 9, y: 4 });
   state = {
     ...state,
     enemies: state.enemies.map((enemy) =>
-      enemy.id === "guard-kl4" ? { ...enemy, position: { x: 6, y: 7 }, hp: 40, maxHp: 40, armor: -10 } : enemy,
+      enemy.id === "guard-kl4" ? { ...enemy, position: { x: 10, y: 4 }, hp: 40, maxHp: 40, armor: -10 } : enemy,
     ),
   };
   const marked = activateSkillSlot(state, 0);

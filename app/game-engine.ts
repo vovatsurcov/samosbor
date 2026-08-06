@@ -238,34 +238,60 @@ export type MapDefinition = {
 export const FLOOR_555_MAP: MapDefinition = {
   id: "floor555",
   name: "Этаж 555 · ремонтный пояс",
-  subtitle: "Затопленные мастерские и резервные линии П-46",
+  subtitle: "Просторные затопленные мастерские и резервные линии П-46",
   rows: [
-    "############",
-    "#....c....U#",
-    "#.##...##..#",
-    "#..B.#.....#",
-    "###..#.###.#",
-    "#....c.....#",
-    "#.##....##.#",
-    "#L....T....#",
-    "############",
+    "####################################",
+    "#..................................#",
+    "#...####.....B......####........U..#",
+    "#...####............####....#####..#",
+    "#...####....####....####....#####..#",
+    "#...##.#....####....#.##....#####..#",
+    "#...####....####....####....##.##..#",
+    "#...####....#.##....####....#####..#",
+    "#...........####..c.........#####..#",
+    "#........c..####..........c........#",
+    "#...........####...............H...#",
+    "#.......................####.......#",
+    "#.....#####.............####.......#",
+    "#.....#####.....####....#.##..####.#",
+    "#.....#####.....####....####..####.#",
+    "#.....##.##.....####....####..#.##.#",
+    "#.....#####.....#.##....####..####.#",
+    "#.....#####..c..####....####..####.#",
+    "#.....#####.....####..........####.#",
+    "#.L.T...........####....B...c......#",
+    "#..................................#",
+    "####################################",
   ],
 };
 
 export const FLOOR_MAP: MapDefinition = {
   id: "floor556",
-  name: "Этаж 556 · строение П-46",
-  subtitle: "Внешний технический пояс города П-46",
+  name: "Этаж 556 · учебный технический пояс",
+  subtitle: "Стартовый район: диспетчерская, служебные коридоры и гермоблок",
   rows: [
-    "############",
-    "#U.T..c..D.#",
-    "#.###...#.S#",
-    "#.Bc..#....#",
-    "###.#.####.#",
-    "#...#..c...#",
-    "#.#####.##.#",
-    "#L...c....H#",
-    "############",
+    "####################################",
+    "#.............###..................#",
+    "#.U....###....###...............D..#",
+    "#....T.###....#.#.....###....S.....#",
+    "#......###....###.....###..........#",
+    "#......#.#....###.c...###....####..#",
+    "#......###............###....#.##..#",
+    "#......###.c..........#.#....####..#",
+    "#................B....###..........#",
+    "#...........####......###..........#",
+    "#...........####.........c......c..#",
+    "#....####...#.##...........####....#",
+    "#....####...####...####....####....#",
+    "#....#.##...####...####....#.##....#",
+    "#....####...####...####....####....#",
+    "#....####.c........#.##....####....#",
+    "#....####..........####....####....#",
+    "#..................####............#",
+    "#.L.N.....##.##.c..####..B.....H...#",
+    "#.........#####....................#",
+    "#..................................#",
+    "####################################",
   ],
 };
 
@@ -274,37 +300,54 @@ export const FLOOR_557_MAP: MapDefinition = {
   name: "Этаж 557 · жилой контур",
   subtitle: "Полузакрытый квартал над техническим поясом",
   rows: [
-    "############",
-    "#....c....D#",
-    "#.###..##..#",
-    "#...B......#",
-    "#.#.####.#.#",
-    "#....c.....#",
-    "#.##....##.#",
-    "#L....H....#",
-    "############",
+    "####################################",
+    "#..................................#",
+    "#.........B..####............###D..#",
+    "#....####....####............####..#",
+    "#....####....#.##.....####...#.##..#",
+    "#....#.##....####.....####...####..#",
+    "#....####....####.....####...####..#",
+    "#....####....####.....#.##.........#",
+    "#....####..........c..####.........#",
+    "#..........c..........####.........#",
+    "#.....................####.........#",
+    "#..........................c.......#",
+    "#.............#####................#",
+    "#...#####.....#####................#",
+    "#...#####.....##.##.....####.......#",
+    "#...##.##.....#####.....####.......#",
+    "#...#####.....#####.....#.##.......#",
+    "#...#####.c...#####.....####.......#",
+    "#...#####...........B...####..T....#",
+    "#.L..H..................####.......#",
+    "#..................................#",
+    "####################################",
   ],
 };
 
 export const VOID_MAP: MapDefinition = {
   id: "voidLab",
   name: "Войд-зона ВЖ-7",
-  subtitle: "Стабилизированный слой 3 из 7 · бывшая лаборатория",
+  subtitle: "Редкий односторонний аномальный маршрут · обратного пути нет",
   rows: [
-    "#########",
-    "#P..c...#",
-    "#.###.#.#",
-    "#.B.#.#.#",
-    "###.#.c.#",
-    "#...#.A.#",
-    "#########",
+    "#####################",
+    "#P....#......#.....A#",
+    "#.##..#.####.#.###..#",
+    "#....c#....#.#...#..#",
+    "####.####..#...#.#..#",
+    "#....#..B..#####.#..#",
+    "#.##.#.###.......#..#",
+    "#....#.....c..##....#",
+    "#.######.#####.###..#",
+    "#........#..........#",
+    "#####################",
   ],
 };
 
-export const FLOOR_555_START: Point = { x: 1, y: 7 };
-export const FLOOR_START: Point = { x: 1, y: 7 };
-export const FLOOR_557_START: Point = { x: 1, y: 7 };
-export const VOID_START: Point = { x: 2, y: 1 };
+export const FLOOR_555_START: Point = { x: 2, y: 19 };
+export const FLOOR_START: Point = { x: 3, y: 18 };
+export const FLOOR_557_START: Point = { x: 2, y: 19 };
+export const VOID_START: Point = { x: 1, y: 1 };
 
 const ZONE_STARTS: Record<ZoneId, Point> = {
   floor555: FLOOR_555_START,
@@ -313,10 +356,10 @@ const ZONE_STARTS: Record<ZoneId, Point> = {
   voidLab: VOID_START,
 };
 
-const FLOOR_555_UP: Point = { x: 10, y: 1 };
-const FLOOR_556_UP: Point = { x: 1, y: 1 };
-const FLOOR_556_DOWN: Point = { x: 9, y: 1 };
-const FLOOR_557_DOWN: Point = { x: 10, y: 1 };
+const FLOOR_555_UP: Point = { x: 32, y: 2 };
+const FLOOR_556_UP: Point = { x: 2, y: 2 };
+const FLOOR_556_DOWN: Point = { x: 32, y: 2 };
+const FLOOR_557_DOWN: Point = { x: 32, y: 2 };
 
 const GROUP_ALERT_RADIUS = 6;
 const MUTATION_AT_MS = 15000;
@@ -616,205 +659,59 @@ function registerPopulationCasualty(state: GameState, enemy: Enemy): GameState {
   return appendLog(next, `${population.name}: численность снижена до ${nextCount}, тревога растёт.`);
 }
 
+function createStaticEnemy(
+  id: string,
+  name: string,
+  kind: EnemyKind,
+  zone: ZoneId,
+  position: Point,
+  patrol: Point[],
+  rank: EnemyRank = "common",
+): Enemy {
+  const sentry = kind === "sentry";
+  const collector = kind === "collector";
+  const hp = collector ? 18 : sentry ? 11 : 8;
+  return {
+    id, name, kind, zone, position: copyPoint(position), home: copyPoint(position),
+    hp, maxHp: hp, armor: collector ? 2 : sentry ? 1 : 0,
+    visionRadius: collector ? 4.5 : sentry ? 4.2 : 3.4,
+    hearingRadius: sentry ? 5 : 6, aggroRadius: sentry ? 2.8 : 2.3,
+    attackRange: collector ? 2.2 : sentry ? 3.2 : 1.2,
+    speed: collector ? 0.9 : sentry ? 1.05 : 1.55, accuracy: sentry ? 3 : 4,
+    damage: collector ? 4 : sentry ? 2 : 3,
+    attackCooldownBaseMs: collector ? 1650 : sentry ? 1450 : 980,
+    attackCooldownMs: 700, thinkCooldownMs: 0, xpValue: collector ? 24 : sentry ? 12 : 9, rank,
+    mode: "patrol", path: [], patrol, patrolIndex: patrol.length > 1 ? 1 : 0,
+    lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, dizzyStacks: 0,
+    dizzyUntilMs: 0, stunnedUntilMs: 0, castUntilMs: 0,
+  };
+}
+
 function createEnemies(): Enemy[] {
   return [
-    {
-      id: "guard-kl4",
-      name: "Постовой автомат КЛ-4",
-      kind: "sentry",
-      zone: "floor556",
-      position: { x: 7, y: 7 },
-      home: { x: 7, y: 7 },
-      hp: 12,
-      maxHp: 12,
-      armor: 1,
-      visionRadius: 5,
-      hearingRadius: 4,
-      aggroRadius: 3,
-      attackRange: 3.8,
-      speed: 1.15,
-      accuracy: 3,
-      damage: 2,
-      attackCooldownBaseMs: 1350,
-      attackCooldownMs: 700,
-      thinkCooldownMs: 0,
-      xpValue: 12,
-      mode: "patrol",
-      path: [],
-      patrol: [
-        { x: 7, y: 7 },
-        { x: 9, y: 7 },
-        { x: 7, y: 7 },
-        { x: 7, y: 5 },
-        { x: 5, y: 5 },
-      ],
-      patrolIndex: 1,
-      lastKnownHero: null,
-      memoryMs: 0,
-      markedUntilMs: 0,
-      resonanceStacks: 0,
-      dizzyStacks: 0,
-      dizzyUntilMs: 0,
-      stunnedUntilMs: 0,
-      castUntilMs: 0,
-    },
-    {
-      id: "stalker-17",
-      name: "Заблудший обходчик №17",
-      kind: "stalker",
-      zone: "floor556",
-      position: { x: 9, y: 3 },
-      home: { x: 9, y: 3 },
-      hp: 9,
-      maxHp: 8,
-      armor: 0,
-      visionRadius: 3,
-      hearingRadius: 6,
-      aggroRadius: 2.2,
-      attackRange: 1.15,
-      speed: 1.85,
-      accuracy: 4,
-      damage: 3,
-      attackCooldownBaseMs: 900,
-      attackCooldownMs: 500,
-      thinkCooldownMs: 0,
-      xpValue: 10,
-      mode: "patrol",
-      path: [],
-      patrol: [
-        { x: 9, y: 3 },
-        { x: 10, y: 3 },
-        { x: 10, y: 5 },
-        { x: 9, y: 5 },
-      ],
-      patrolIndex: 1,
-      lastKnownHero: null,
-      memoryMs: 0,
-      markedUntilMs: 0,
-      resonanceStacks: 0,
-      dizzyStacks: 0,
-      dizzyUntilMs: 0,
-      stunnedUntilMs: 0,
-      castUntilMs: 0,
-    },
-    {
-      id: "repair-sentry-555",
-      name: "Ремонтный автомат РМ-55",
-      kind: "sentry",
-      zone: "floor555",
-      position: { x: 8, y: 5 },
-      home: { x: 8, y: 5 },
-      hp: 11,
-      maxHp: 11,
-      armor: 1,
-      visionRadius: 4,
-      hearingRadius: 5,
-      aggroRadius: 2.8,
-      attackRange: 3.2,
-      speed: 1.05,
-      accuracy: 3,
-      damage: 2,
-      attackCooldownBaseMs: 1450,
-      attackCooldownMs: 800,
-      thinkCooldownMs: 0,
-      xpValue: 11,
-      mode: "patrol",
-      path: [],
-      patrol: [
-        { x: 8, y: 5 },
-        { x: 10, y: 5 },
-        { x: 10, y: 3 },
-        { x: 8, y: 3 },
-      ],
-      patrolIndex: 1,
-      lastKnownHero: null,
-      memoryMs: 0,
-      markedUntilMs: 0,
-      resonanceStacks: 0,
-      dizzyStacks: 0,
-      dizzyUntilMs: 0,
-      stunnedUntilMs: 0,
-      castUntilMs: 0,
-    },
-    {
-      id: "tenant-stalker-557",
-      name: "Контурный жилец №557-8",
-      kind: "stalker",
-      zone: "floor557",
-      position: { x: 8, y: 3 },
-      home: { x: 8, y: 3 },
-      hp: 10,
-      maxHp: 10,
-      armor: 0,
-      visionRadius: 3.4,
-      hearingRadius: 6,
-      aggroRadius: 2.4,
-      attackRange: 1.2,
-      speed: 1.7,
-      accuracy: 4,
-      damage: 3,
-      attackCooldownBaseMs: 980,
-      attackCooldownMs: 650,
-      thinkCooldownMs: 0,
-      xpValue: 12,
-      mode: "patrol",
-      path: [],
-      patrol: [
-        { x: 8, y: 3 },
-        { x: 10, y: 3 },
-        { x: 10, y: 5 },
-        { x: 8, y: 5 },
-      ],
-      patrolIndex: 1,
-      lastKnownHero: null,
-      memoryMs: 0,
-      markedUntilMs: 0,
-      resonanceStacks: 0,
-      dizzyStacks: 0,
-      dizzyUntilMs: 0,
-      stunnedUntilMs: 0,
-      castUntilMs: 0,
-    },
-    {
-      id: "collector-ls2",
-      name: "Лабораторный сборщик ЛС-2",
-      kind: "collector",
-      zone: "voidLab",
-      position: { x: 7, y: 4 },
-      home: { x: 7, y: 4 },
-      hp: 18,
-      maxHp: 18,
-      armor: 2,
-      visionRadius: 4,
-      hearingRadius: 5,
-      aggroRadius: 3,
-      attackRange: 2.2,
-      speed: 0.9,
-      accuracy: 3,
-      damage: 4,
-      attackCooldownBaseMs: 1650,
-      attackCooldownMs: 900,
-      thinkCooldownMs: 0,
-      xpValue: 24,
-      mode: "patrol",
-      path: [],
-      patrol: [
-        { x: 7, y: 4 },
-        { x: 7, y: 5 },
-        { x: 5, y: 5 },
-        { x: 5, y: 4 },
-        { x: 5, y: 3 },
-      ],
-      patrolIndex: 1,
-      lastKnownHero: null,
-      memoryMs: 0,
-      markedUntilMs: 0,
-      resonanceStacks: 0,
-      dizzyStacks: 0,
-      dizzyUntilMs: 0,
-      stunnedUntilMs: 0,
-      castUntilMs: 0,
-    },
+    // Этаж 556: четыре учебные группы по два противника.
+    createStaticEnemy("guard-kl4", "Постовой автомат КЛ-4/1", "sentry", "floor556", { x: 10, y: 4 }, [{ x: 10, y: 4 }, { x: 12, y: 4 }, { x: 12, y: 7 }]),
+    createStaticEnemy("stalker-17", "Заблудший обходчик 556-А", "stalker", "floor556", { x: 12, y: 6 }, [{ x: 12, y: 6 }, { x: 10, y: 8 }]),
+    createStaticEnemy("556-b1", "Постовой автомат КЛ-4/2", "sentry", "floor556", { x: 19, y: 4 }, [{ x: 19, y: 4 }, { x: 20, y: 8 }]),
+    createStaticEnemy("556-b2", "Заблудший обходчик 556-Б", "stalker", "floor556", { x: 20, y: 8 }, [{ x: 20, y: 8 }, { x: 18, y: 10 }]),
+    createStaticEnemy("556-c1", "Служебный автомат СА-6", "sentry", "floor556", { x: 31, y: 9 }, [{ x: 31, y: 9 }, { x: 33, y: 11 }]),
+    createStaticEnemy("556-c2", "Одичавший жилец 556-31", "stalker", "floor556", { x: 33, y: 12 }, [{ x: 33, y: 12 }, { x: 31, y: 14 }]),
+    createStaticEnemy("556-d1", "Ремонтный автомат РМ-6", "sentry", "floor556", { x: 16, y: 17 }, [{ x: 16, y: 17 }, { x: 18, y: 19 }]),
+    createStaticEnemy("556-d2", "Заблудший обходчик 556-Г", "stalker", "floor556", { x: 23, y: 19 }, [{ x: 23, y: 19 }, { x: 26, y: 19 }]),
+    // Этаж 555: три более плотные группы.
+    createStaticEnemy("555-a1", "Ремонтный автомат РМ-55/1", "sentry", "floor555", { x: 9, y: 4 }, [{ x: 9, y: 4 }, { x: 10, y: 9 }]),
+    createStaticEnemy("555-a2", "Сборщик кабеля 55-А", "stalker", "floor555", { x: 10, y: 8 }, [{ x: 10, y: 8 }, { x: 8, y: 10 }]),
+    createStaticEnemy("555-b1", "Ремонтный автомат РМ-55/2", "sentry", "floor555", { x: 19, y: 9 }, [{ x: 19, y: 9 }, { x: 22, y: 10 }]),
+    createStaticEnemy("555-b2", "Сборщик кабеля 55-Б", "stalker", "floor555", { x: 23, y: 9 }, [{ x: 23, y: 9 }, { x: 24, y: 12 }]),
+    createStaticEnemy("555-c1", "Складской автомат СК-55", "sentry", "floor555", { x: 31, y: 11 }, [{ x: 31, y: 11 }, { x: 29, y: 19 }]),
+    createStaticEnemy("555-c2", "Одичавший наладчик", "stalker", "floor555", { x: 27, y: 19 }, [{ x: 27, y: 19 }, { x: 24, y: 18 }]),
+    createStaticEnemy("555-c3", "Тяжёлый сборщик деталей", "collector", "floor555", { x: 31, y: 19 }, [{ x: 31, y: 19 }, { x: 33, y: 10 }], "enhanced"),
+    createStaticEnemy("557-a1", "Контурный жилец 557-8", "stalker", "floor557", { x: 10, y: 9 }, [{ x: 10, y: 9 }, { x: 12, y: 11 }]),
+    createStaticEnemy("557-a2", "Домовой автомат ДА-7", "sentry", "floor557", { x: 20, y: 8 }, [{ x: 20, y: 8 }, { x: 22, y: 11 }]),
+    createStaticEnemy("557-b1", "Контурный жилец 557-14", "stalker", "floor557", { x: 29, y: 13 }, [{ x: 29, y: 13 }, { x: 31, y: 18 }]),
+    createStaticEnemy("557-b2", "Постовой автомат Ж-557", "sentry", "floor557", { x: 20, y: 19 }, [{ x: 20, y: 19 }, { x: 23, y: 19 }]),
+    createStaticEnemy("void-collector", "Лабораторный сборщик ЛС-2", "collector", "voidLab", { x: 17, y: 9 }, [{ x: 17, y: 9 }, { x: 13, y: 7 }], "elite"),
+    createStaticEnemy("void-stalker", "Слепок сотрудника ВЖ-7", "stalker", "voidLab", { x: 8, y: 7 }, [{ x: 8, y: 7 }, { x: 11, y: 9 }], "enhanced"),
   ];
 }
 
@@ -839,7 +736,6 @@ function tileAtZone(
   if (zone === "floor556" && state.mutated) {
     if (x === 4 && y === 3) return "#";
     if (x === 4 && y === 4) return ".";
-    if (x === 6 && y === 3) return "P";
   }
   return map.rows[y][x];
 }
@@ -2735,14 +2631,14 @@ function containerKey(state: GameState, point: Point): string {
 }
 
 function containerContents(key: string): { itemId: ItemId; quantity?: number; condition?: number }[] {
-  if (key === "floor556:2:3") {
+  if (key === "floor556:17:8") {
     return [
       { itemId: "bandage" },
       { itemId: "repairKit" },
       { itemId: "keyWithoutDoor" },
     ];
   }
-  if (key === "voidLab:2:3") {
+  if (key === "voidLab:8:5") {
     return [
       { itemId: "traumaInjector" },
       { itemId: "filterCartridge", quantity: 2 },
@@ -2795,7 +2691,7 @@ function nearestInteractive(state: GameState): { point: Point; tile: string } | 
     for (let x = 0; x < map.rows[0].length; x += 1) {
       const point = { x, y };
       const tile = tileAt(state, point);
-      if (!["S", "H", "T", "A", "P", "U", "D", "L", "c", "B"].includes(tile)) continue;
+      if (!["S", "H", "T", "A", "P", "U", "D", "L", "c", "B", "N"].includes(tile)) continue;
       const currentDistance = distance(hero, point);
       if (currentDistance <= 1.2 && (!nearest || currentDistance < nearest.distance)) {
         nearest = { point, tile, distance: currentDistance };
@@ -2815,11 +2711,12 @@ export function interactionHint(state: GameState): string {
     H: "Войти в гермосектор",
     T: "Прочитать терминал",
     A: "Извлечь артефакт",
-    P: state.zone === "voidLab" ? "Вернуться на этаж 556" : "Войти в войд-зону",
+    P: state.zone === "voidLab" ? "Покинуть войд-зону через случайный разрыв" : "Войти в редкую войд-зону",
     U: "Перейти на этаж выше",
     D: "Перейти на этаж ниже",
     L: "Проверить лифт",
     c: "Осмотреть укрытие",
+    N: "Поговорить с диспетчером Орловой",
     B: state.openedContainers.includes(containerKey(state, target.point))
       ? "Проверить пустой шкаф"
       : "Открыть аварийный шкаф",
@@ -2913,20 +2810,46 @@ export function interact(state: GameState): GameState {
       }
     }
   } else if (state.zone === "voidLab" && target.tile === "P") {
+    const destinations: { zone: ZoneId; position: Point; label: string }[] = [
+      { zone: "floor555", position: { x: 4, y: 19 }, label: "этаж 555" },
+      { zone: "floor556", position: { x: 30, y: 18 }, label: "этаж 556" },
+      { zone: "floor557", position: { x: 5, y: 19 }, label: "этаж 557" },
+    ];
+    const index = Math.abs(state.rngSeed + Math.floor(state.worldTimeMs / 1000)) % destinations.length;
+    const destination = destinations[index];
     next = appendLog(
       {
         ...state,
-        zone: "floor556",
+        zone: destination.zone,
+        rngSeed: (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0,
         hero: {
           ...state.hero,
           path: [],
           destination: null,
           attackTargetId: null,
-          positions: { ...state.hero.positions, floor556: { x: 6, y: 3 } },
+          positions: { ...state.hero.positions, [destination.zone]: copyPoint(destination.position) },
         },
       },
-      "Герой вернулся на этаж 556.",
+      `Войд-зона схлопнулась за спиной. Героя выбросило на ${destination.label}; обратный маршрут исчез.`,
     );
+  } else if (state.zone !== "voidLab" && target.tile === "P") {
+    next = appendLog(
+      {
+        ...state,
+        zone: "voidLab",
+        voidStabilityMs: VOID_STABILITY_MS,
+        hero: {
+          ...state.hero,
+          path: [],
+          destination: null,
+          attackTargetId: null,
+          positions: { ...state.hero.positions, voidLab: copyPoint(VOID_START) },
+        },
+      },
+      "Герой сознательно вошёл в редкую войд-зону. Обратный проход сразу исчез.",
+    );
+  } else if (state.zone === "floor556" && target.tile === "N") {
+    next = appendLog(state, "Диспетчер Орлова: «Сначала освойся в секторе. Проверь датчик СБ-04, затем доберись до гермоблока. В коридорах замечены четыре малые группы существ». ");
   } else if (target.tile === "U" || target.tile === "D") {
     next = transitionFloor(state, target.tile);
   } else if (target.tile === "L") {
@@ -2937,25 +2860,6 @@ export function interact(state: GameState): GameState {
     next = openContainer(state, target.point);
   }
   return emitNoise(next, next.hero.positions[next.zone], 3.5, "взаимодействие");
-}
-
-function handlePortalEntry(state: GameState): GameState {
-  if (state.zone !== "floor556" || tileAt(state, state.hero.positions.floor556) !== "P") return state;
-  return appendLog(
-    {
-      ...state,
-      zone: "voidLab",
-      voidStabilityMs: VOID_STABILITY_MS,
-      hero: {
-        ...state.hero,
-        path: [],
-        destination: null,
-        attackTargetId: null,
-        positions: { ...state.hero.positions, voidLab: { ...VOID_START } },
-      },
-    },
-    "Переход выполнен: войд-зона ВЖ-7, лабораторный слой 3 из 7.",
-  );
 }
 
 export function createInitialState(): GameState {
@@ -3172,7 +3076,6 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
     }
   }
 
-  next = handlePortalEntry(next);
   next = reveal(next);
 
   if (!next.hero.attackTargetId) {
