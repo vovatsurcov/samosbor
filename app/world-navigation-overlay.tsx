@@ -9,7 +9,6 @@ import {
   globalMapSnapshot,
   localMapSnapshot,
   migrateGameState,
-  TRAVEL_NODES,
   type RepairMaterialId,
   type TravelNodeId,
 } from "./game-engine";
@@ -70,9 +69,12 @@ export default function WorldNavigationOverlay() {
     const timer = window.setInterval(update, 600);
     const onStorage = () => update();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== "m") return;
-      event.preventDefault();
-      setGlobalOpen((open) => !open);
+      if (event.key.toLowerCase() === "m") {
+        event.preventDefault();
+        setGlobalOpen((open) => !open);
+      } else if (event.key === "Escape") {
+        setGlobalOpen(false);
+      }
     };
     window.addEventListener("storage", onStorage);
     window.addEventListener("keydown", onKey);
