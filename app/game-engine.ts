@@ -1,0 +1,2595 @@
+import {
+  type AttributeId,
+  type GearSlot,
+  type ItemDefinition,
+  type ItemId,
+  ITEMS,
+  type WeaponDefinition,
+  type WeaponId,
+  WEAPONS,
+} from "./game-items.ts";
+import {
+  ACTIVE_SKILLS,
+  type ActiveSkillId,
+  branchForTalent,
+  type SkillBranch,
+  TALENT_BY_ID,
+  TALENT_NODES,
+  type TalentBonusKey,
+} from "./game-skills.ts";
+
+export { ITEMS, SLOT_NAMES, WEAPONS } from "./game-items.ts";
+export {
+  ACTIVE_SKILLS,
+  BASE_TALENT_COUNT,
+  LEGENDARY_TALENTS,
+  SKILL_DESCRIPTIONS,
+  SKILL_NAMES,
+  TALENT_BY_ID,
+  TALENT_NODES,
+} from "./game-skills.ts";
+export type {
+  AttributeId,
+  GearSlot,
+  ItemDefinition,
+  ItemId,
+  WeaponDefinition,
+  WeaponId,
+} from "./game-items.ts";
+export type { ActiveSkillId, SkillBranch, TalentNode } from "./game-skills.ts";
+
+export type ZoneId = "floor556" | "voidLab";
+
+export type Point = {
+  x: number;
+  y: number;
+};
+
+export type Injuries = {
+  leg: number;
+  arm: number;
+  head: number;
+  torso: number;
+  eye: number;
+};
+
+export type EnemyMode =
+  | "patrol"
+  | "suspicious"
+  | "hunting"
+  | "combat"
+  | "retreat"
+  | "disabled";
+
+export type EnemyKind = "sentry" | "stalker" | "collector";
+
+export type Attributes = {
+  body: number;
+  reaction: number;
+  attention: number;
+  technique: number;
+  will: number;
+};
+
+export type Skills = Record<SkillBranch, number>;
+export type CombatDirective = "manual" | "mobileFire" | "splashGuard";
+export type TrainingBuild = "mobileFire" | "splashGuard";
+
+export type InventoryEntry = {
+  instanceId: string;
+  itemId: ItemId;
+  quantity: number;
+  condition: number;
+};
+
+export type GroundLoot = {
+  id: string;
+  zone: ZoneId;
+  position: Point;
+  itemId: ItemId;
+  quantity: number;
+  condition: number;
+};
+
+export type Hero = {
+  positions: Record<ZoneId, Point>;
+  path: Point[];
+  destination: Point | null;
+  attackTargetId: string | null;
+  attackCooldownMs: number;
+  repathCooldownMs: number;
+  stepNoiseCooldownMs: number;
+  droneCooldownMs: number;
+  hp: number;
+  level: number;
+  xp: number;
+  skillPoints: number;
+  attributes: Attributes;
+  skills: Skills;
+  talents: string[];
+  discoveredTalents: string[];
+  activeSkillSlots: (ActiveSkillId | null)[];
+  activeSkillCooldowns: Partial<Record<ActiveSkillId, number>>;
+  combatDirective: CombatDirective;
+  braceUntilMs: number;
+  silentUntilMs: number;
+  overclockUntilMs: number;
+  isolatedTargetId: string | null;
+  isolatedUntilMs: number;
+  secondBeatReady: boolean;
+  inventory: InventoryEntry[];
+  equipment: Record<GearSlot, string | null>;
+  itemCounter: number;
+  contamination: number;
+  stress: number;
+  artifactCooldownMs: number;
+  relievedInjury: keyof Injuries | null;
+  injuryReliefUntilMs: number;
+};
+
+export type Enemy = {
+  id: string;
+  name: string;
+  kind: EnemyKind;
+  zone: ZoneId;
+  position: Point;
+  home: Point;
+  hp: number;
+  maxHp: number;
+  armor: number;
+  visionRadius: number;
+  hearingRadius: number;
+  aggroRadius: number;
+  attackRange: number;
+  speed: number;
+  accuracy: number;
+  damage: number;
+  attackCooldownBaseMs: number;
+  attackCooldownMs: number;
+  thinkCooldownMs: number;
+  xpValue: number;
+  mode: EnemyMode;
+  path: Point[];
+  patrol: Point[];
+  patrolIndex: number;
+  lastKnownHero: Point | null;
+  memoryMs: number;
+  markedUntilMs: number;
+  resonanceStacks: number;
+  dizzyStacks: number;
+  dizzyUntilMs: number;
+  stunnedUntilMs: number;
+  castUntilMs: number;
+};
+
+export type NoiseEvent = {
+  zone: ZoneId;
+  position: Point;
+  radius: number;
+  label: string;
+  ttlMs: number;
+};
+
+export type CombatEffect = {
+  id: number;
+  from: Point;
+  to: Point;
+  kind: "hero-hit" | "enemy-hit" | "miss" | "drone" | "splash" | "control" | "skill";
+  value: number;
+  ttlMs: number;
+};
+
+export type GameState = {
+  zone: ZoneId;
+  hero: Hero;
+  worldTimeMs: number;
+  mutated: boolean;
+  sensorFixed: boolean;
+  artifactRecovered: boolean;
+  missionComplete: boolean;
+  voidStabilityMs: number;
+  injuries: Injuries;
+  rescueCount: number;
+  enemies: Enemy[];
+  noise: NoiseEvent | null;
+  effects: CombatEffect[];
+  effectCounter: number;
+  rngSeed: number;
+  visited: Record<ZoneId, string[]>;
+  openedContainers: string[];
+  groundLoot: GroundLoot[];
+  lootCounter: number;
+  log: string[];
+};
+
+export type MapDefinition = {
+  id: ZoneId;
+  name: string;
+  subtitle: string;
+  rows: string[];
+};
+
+export const FLOOR_MAP: MapDefinition = {
+  id: "floor556",
+  name: "Этаж 556 · строение П-46",
+  subtitle: "Внешний технический пояс города П-46",
+  rows: [
+    "############",
+    "#..T..c....#",
+    "#.###...#.S#",
+    "#.Bc..#....#",
+    "###.#.####.#",
+    "#...#..c...#",
+    "#.#####.##.#",
+    "#L...c....H#",
+    "############",
+  ],
+};
+
+export const VOID_MAP: MapDefinition = {
+  id: "voidLab",
+  name: "Войд-зона ВЖ-7",
+  subtitle: "Стабилизированный слой 3 из 7 · бывшая лаборатория",
+  rows: [
+    "#########",
+    "#P..c...#",
+    "#.###.#.#",
+    "#.B.#.#.#",
+    "###.#.c.#",
+    "#...#.A.#",
+    "#########",
+  ],
+};
+
+export const FLOOR_START: Point = { x: 1, y: 7 };
+export const VOID_START: Point = { x: 2, y: 1 };
+
+const GROUP_ALERT_RADIUS = 6;
+const MUTATION_AT_MS = 15000;
+const VOID_STABILITY_MS = 42000;
+
+const EMPTY_INJURIES: Injuries = {
+  leg: 0,
+  arm: 0,
+  head: 0,
+  torso: 0,
+  eye: 0,
+};
+
+const DIRECTIONS: Point[] = [
+  { x: 1, y: 0 },
+  { x: -1, y: 0 },
+  { x: 0, y: 1 },
+  { x: 0, y: -1 },
+  { x: 1, y: 1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 1 },
+  { x: -1, y: -1 },
+];
+
+function copyPoint(point: Point): Point {
+  return { x: point.x, y: point.y };
+}
+
+function pointKey(point: Point): string {
+  return `${point.x}:${point.y}`;
+}
+
+function sameGridPoint(a: Point, b: Point): boolean {
+  return Math.round(a.x) === Math.round(b.x) && Math.round(a.y) === Math.round(b.y);
+}
+
+export function distance(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function gridPoint(point: Point): Point {
+  return { x: Math.round(point.x), y: Math.round(point.y) };
+}
+
+function createEnemies(): Enemy[] {
+  return [
+    {
+      id: "guard-kl4",
+      name: "Постовой автомат КЛ-4",
+      kind: "sentry",
+      zone: "floor556",
+      position: { x: 7, y: 7 },
+      home: { x: 7, y: 7 },
+      hp: 12,
+      maxHp: 12,
+      armor: 1,
+      visionRadius: 5,
+      hearingRadius: 4,
+      aggroRadius: 3,
+      attackRange: 3.8,
+      speed: 1.15,
+      accuracy: 3,
+      damage: 2,
+      attackCooldownBaseMs: 1350,
+      attackCooldownMs: 700,
+      thinkCooldownMs: 0,
+      xpValue: 12,
+      mode: "patrol",
+      path: [],
+      patrol: [
+        { x: 7, y: 7 },
+        { x: 9, y: 7 },
+        { x: 7, y: 7 },
+        { x: 7, y: 5 },
+        { x: 5, y: 5 },
+      ],
+      patrolIndex: 1,
+      lastKnownHero: null,
+      memoryMs: 0,
+      markedUntilMs: 0,
+      resonanceStacks: 0,
+      dizzyStacks: 0,
+      dizzyUntilMs: 0,
+      stunnedUntilMs: 0,
+      castUntilMs: 0,
+    },
+    {
+      id: "stalker-17",
+      name: "Заблудший обходчик №17",
+      kind: "stalker",
+      zone: "floor556",
+      position: { x: 9, y: 3 },
+      home: { x: 9, y: 3 },
+      hp: 9,
+      maxHp: 8,
+      armor: 0,
+      visionRadius: 3,
+      hearingRadius: 6,
+      aggroRadius: 2.2,
+      attackRange: 1.15,
+      speed: 1.85,
+      accuracy: 4,
+      damage: 3,
+      attackCooldownBaseMs: 900,
+      attackCooldownMs: 500,
+      thinkCooldownMs: 0,
+      xpValue: 10,
+      mode: "patrol",
+      path: [],
+      patrol: [
+        { x: 9, y: 3 },
+        { x: 10, y: 3 },
+        { x: 10, y: 5 },
+        { x: 9, y: 5 },
+      ],
+      patrolIndex: 1,
+      lastKnownHero: null,
+      memoryMs: 0,
+      markedUntilMs: 0,
+      resonanceStacks: 0,
+      dizzyStacks: 0,
+      dizzyUntilMs: 0,
+      stunnedUntilMs: 0,
+      castUntilMs: 0,
+    },
+    {
+      id: "collector-ls2",
+      name: "Лабораторный сборщик ЛС-2",
+      kind: "collector",
+      zone: "voidLab",
+      position: { x: 7, y: 4 },
+      home: { x: 7, y: 4 },
+      hp: 18,
+      maxHp: 18,
+      armor: 2,
+      visionRadius: 4,
+      hearingRadius: 5,
+      aggroRadius: 3,
+      attackRange: 2.2,
+      speed: 0.9,
+      accuracy: 3,
+      damage: 4,
+      attackCooldownBaseMs: 1650,
+      attackCooldownMs: 900,
+      thinkCooldownMs: 0,
+      xpValue: 24,
+      mode: "patrol",
+      path: [],
+      patrol: [
+        { x: 7, y: 4 },
+        { x: 7, y: 5 },
+        { x: 5, y: 5 },
+        { x: 5, y: 4 },
+        { x: 5, y: 3 },
+      ],
+      patrolIndex: 1,
+      lastKnownHero: null,
+      memoryMs: 0,
+      markedUntilMs: 0,
+      resonanceStacks: 0,
+      dizzyStacks: 0,
+      dizzyUntilMs: 0,
+      stunnedUntilMs: 0,
+      castUntilMs: 0,
+    },
+  ];
+}
+
+export function mapForZone(zone: ZoneId): MapDefinition {
+  return zone === "floor556" ? FLOOR_MAP : VOID_MAP;
+}
+
+function tileAtZone(
+  state: Pick<GameState, "mutated">,
+  zone: ZoneId,
+  point: Point,
+): string {
+  const map = mapForZone(zone);
+  const x = Math.round(point.x);
+  const y = Math.round(point.y);
+  if (y < 0 || y >= map.rows.length || x < 0 || x >= map.rows[0].length) {
+    return "#";
+  }
+  if (zone === "floor556" && state.mutated) {
+    if (x === 4 && y === 3) return "#";
+    if (x === 4 && y === 4) return ".";
+    if (x === 6 && y === 3) return "P";
+  }
+  return map.rows[y][x];
+}
+
+export function tileAt(state: GameState, point: Point): string {
+  return tileAtZone(state, state.zone, point);
+}
+
+function isWalkableIn(state: GameState, zone: ZoneId, point: Point): boolean {
+  return tileAtZone(state, zone, point) !== "#";
+}
+
+export function isWalkable(state: GameState, point: Point): boolean {
+  return isWalkableIn(state, state.zone, point);
+}
+
+export function coverBonus(state: GameState, point: Point): number {
+  return tileAt(state, point) === "c" ? 2 : 0;
+}
+
+export function hasLineOfSight(state: GameState, from: Point, to: Point): boolean {
+  const start = gridPoint(from);
+  const end = gridPoint(to);
+  let x = start.x;
+  let y = start.y;
+  const dx = Math.abs(end.x - start.x);
+  const dy = Math.abs(end.y - start.y);
+  const sx = start.x < end.x ? 1 : -1;
+  const sy = start.y < end.y ? 1 : -1;
+  let error = dx - dy;
+
+  while (x !== end.x || y !== end.y) {
+    const doubled = error * 2;
+    if (doubled > -dy) {
+      error -= dy;
+      x += sx;
+    }
+    if (doubled < dx) {
+      error += dx;
+      y += sy;
+    }
+    if ((x !== end.x || y !== end.y) && tileAt(state, { x, y }) === "#") {
+      return false;
+    }
+  }
+  return true;
+}
+
+function appendLog(state: GameState, message: string): GameState {
+  return { ...state, log: [message, ...state.log].slice(0, 14) };
+}
+
+function addEffect(
+  state: GameState,
+  from: Point,
+  to: Point,
+  kind: CombatEffect["kind"],
+  value: number,
+): GameState {
+  const id = state.effectCounter + 1;
+  return {
+    ...state,
+    effectCounter: id,
+    effects: [
+      ...state.effects,
+      { id, from: copyPoint(from), to: copyPoint(to), kind, value, ttlMs: 360 },
+    ].slice(-8),
+  };
+}
+
+function emitNoise(
+  state: GameState,
+  position: Point,
+  radius: number,
+  label: string,
+): GameState {
+  return {
+    ...state,
+    noise: {
+      zone: state.zone,
+      position: copyPoint(position),
+      radius,
+      label,
+      ttlMs: 1100,
+    },
+  };
+}
+
+function rollD20(state: GameState): { state: GameState; roll: number } {
+  const seed = (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0;
+  return { state: { ...state, rngSeed: seed }, roll: (seed % 20) + 1 };
+}
+
+export function branchTalentPoints(state: GameState, branch: SkillBranch): number {
+  return state.hero.talents.reduce((total, talentId) => {
+    const node = TALENT_BY_ID[talentId];
+    return total + (node?.scope === branch ? node.cost : 0);
+  }, 0);
+}
+
+export function hasTalent(state: GameState, talentId: string): boolean {
+  return state.hero.talents.includes(talentId);
+}
+
+export function talentBonus(state: GameState, key: TalentBonusKey): number {
+  return state.hero.talents.reduce((total, talentId) => {
+    return total + (TALENT_BY_ID[talentId]?.bonuses[key] ?? 0);
+  }, 0);
+}
+
+export function canAllocateTalent(state: GameState, talentId: string): boolean {
+  const node = TALENT_BY_ID[talentId];
+  if (!node || state.hero.skillPoints < node.cost || hasTalent(state, talentId)) return false;
+  if (node.scope === "legendary") {
+    return state.hero.discoveredTalents.includes(talentId);
+  }
+  if (node.scope === "hybrid") {
+    if (!node.pair) return false;
+    return node.pair.every((branch) => branchTalentPoints(state, branch) >= 8);
+  }
+  const branch = branchForTalent(node);
+  if (!branch) return true;
+  return branchTalentPoints(state, branch) >= (node.requiredBranchPoints ?? 0);
+}
+
+export function allocateTalent(state: GameState, talentId: string): GameState {
+  if (!canAllocateTalent(state, talentId)) return state;
+  const node = TALENT_BY_ID[talentId];
+  const branch = branchForTalent(node);
+  const talents = [...state.hero.talents, talentId];
+  const skills = branch
+    ? { ...state.hero.skills, [branch]: state.hero.skills[branch] + node.cost }
+    : state.hero.skills;
+  let next: GameState = {
+    ...state,
+    hero: {
+      ...state.hero,
+      talents,
+      skills,
+      skillPoints: state.hero.skillPoints - node.cost,
+    },
+  };
+  next = { ...next, hero: { ...next.hero, hp: Math.min(maxHeroHp(next), next.hero.hp) } };
+  return appendLog(next, `Освоен талант «${node.name}».`);
+}
+
+export function unlockedActiveSkills(state: GameState): ActiveSkillId[] {
+  return (Object.keys(ACTIVE_SKILLS) as ActiveSkillId[]).filter((skillId) => {
+    const skill = ACTIVE_SKILLS[skillId];
+    return branchTalentPoints(state, skill.branch) >= skill.unlockAt;
+  });
+}
+
+export function assignActiveSkill(
+  state: GameState,
+  slot: number,
+  skillId: ActiveSkillId | null,
+): GameState {
+  if (slot < 0 || slot > 3) return state;
+  if (skillId && !unlockedActiveSkills(state).includes(skillId)) return state;
+  const slots = [...state.hero.activeSkillSlots];
+  if (skillId) {
+    const occupied = slots.indexOf(skillId);
+    if (occupied >= 0) slots[occupied] = null;
+  }
+  slots[slot] = skillId;
+  return {
+    ...state,
+    hero: { ...state.hero, activeSkillSlots: slots },
+  };
+}
+
+export function setCombatDirective(
+  state: GameState,
+  combatDirective: CombatDirective,
+): GameState {
+  return appendLog(
+    { ...state, hero: { ...state.hero, combatDirective } },
+    combatDirective === "mobileFire"
+      ? "Директива: мобильный огонь. Герой сам поддерживает цель, игрок управляет позицией."
+      : combatDirective === "splashGuard"
+        ? "Директива: сбор пачки. Герой удерживает ближайшие цели площадными ударами."
+        : "Директива: ручное назначение целей.",
+  );
+}
+
+export function inventoryEntryById(
+  state: GameState,
+  instanceId: string | null,
+): InventoryEntry | null {
+  if (!instanceId) return null;
+  return state.hero.inventory.find((entry) => entry.instanceId === instanceId) ?? null;
+}
+
+export function equippedEntry(state: GameState, slot: GearSlot): InventoryEntry | null {
+  return inventoryEntryById(state, state.hero.equipment[slot]);
+}
+
+export function itemDefinition(entry: InventoryEntry): ItemDefinition {
+  return ITEMS[entry.itemId];
+}
+
+function conditionEffectiveness(entry: InventoryEntry): number {
+  if (entry.condition >= 50) return 1;
+  if (entry.condition >= 20) return 0.5;
+  return 0.25;
+}
+
+function equipmentScalar(
+  state: GameState,
+  key: "armor" | "maxHp" | "moveSpeed" | "carry" | "stealth",
+): number {
+  return (Object.keys(state.hero.equipment) as GearSlot[]).reduce((total, slot) => {
+    const entry = equippedEntry(state, slot);
+    if (!entry) return total;
+    const value = ITEMS[entry.itemId].stats?.[key] ?? 0;
+    return total + value * conditionEffectiveness(entry);
+  }, 0);
+}
+
+export function effectiveAttribute(state: GameState, attribute: AttributeId): number {
+  const gearBonus = (Object.keys(state.hero.equipment) as GearSlot[]).reduce((total, slot) => {
+    const entry = equippedEntry(state, slot);
+    if (!entry) return total;
+    const value = ITEMS[entry.itemId].stats?.attributes?.[attribute] ?? 0;
+    return total + value * conditionEffectiveness(entry);
+  }, 0);
+  return state.hero.attributes[attribute] + gearBonus;
+}
+
+export function effectiveInjury(state: GameState, injury: keyof Injuries): number {
+  const relief =
+    state.hero.relievedInjury === injury && state.hero.injuryReliefUntilMs > state.worldTimeMs
+      ? 1
+      : 0;
+  return Math.max(0, state.injuries[injury] - relief);
+}
+
+export function inventoryWeight(state: GameState): number {
+  return state.hero.inventory.reduce(
+    (total, entry) => total + ITEMS[entry.itemId].weight * entry.quantity,
+    0,
+  );
+}
+
+export function carryCapacity(state: GameState): number {
+  return 12 + effectiveAttribute(state, "body") * 2 + equipmentScalar(state, "carry") + talentBonus(state, "carry");
+}
+
+export function weaponEntry(state: GameState): InventoryEntry | null {
+  const entry = equippedEntry(state, "weapon");
+  return entry && entry.itemId in WEAPONS ? entry : null;
+}
+
+export function weaponFor(state: GameState): WeaponDefinition {
+  const entry = weaponEntry(state);
+  return entry ? WEAPONS[entry.itemId as WeaponId] : WEAPONS.servicePistol;
+}
+
+export function equippedArtifact(state: GameState): InventoryEntry | null {
+  const entry = equippedEntry(state, "artifact");
+  return entry && ITEMS[entry.itemId].kind === "artifact" ? entry : null;
+}
+
+export function maxHeroHp(state: GameState): number {
+  const torsoPenalty = Math.min(2, effectiveInjury(state, "torso")) * 2;
+  const contaminationPenalty = Math.floor(state.hero.contamination / 40);
+  return Math.max(
+    4,
+    8 -
+      torsoPenalty -
+      contaminationPenalty +
+      talentBonus(state, "maxHp") +
+      Math.round(equipmentScalar(state, "maxHp")),
+  );
+}
+
+export function heroMoveSpeed(state: GameState): number {
+  const injuryFactor = 1 - Math.min(2, effectiveInjury(state, "leg")) * 0.16;
+  const overload = Math.max(0, inventoryWeight(state) - carryCapacity(state));
+  const overloadFactor = Math.max(0.55, 1 - overload * 0.08);
+  return Math.max(
+    0.65,
+    (2.35 +
+      effectiveAttribute(state, "reaction") * 0.08 +
+      equipmentScalar(state, "moveSpeed") +
+      talentBonus(state, "moveSpeed")) *
+      injuryFactor *
+      overloadFactor,
+  );
+}
+
+export function heroDefense(state: GameState): number {
+  const stressPenalty = state.hero.stress >= 75 ? 1 : 0;
+  const braced = state.hero.braceUntilMs > state.worldTimeMs ? 3 : 0;
+  return Math.max(
+    8,
+    9 +
+      Math.floor(effectiveAttribute(state, "reaction") / 2) +
+      talentBonus(state, "armor") +
+      braced +
+      Math.floor(equipmentScalar(state, "armor")) -
+      effectiveInjury(state, "head") -
+      stressPenalty +
+      coverBonus(state, state.hero.positions[state.zone]),
+  );
+}
+
+export function heroAttackRange(state: GameState): number {
+  return weaponFor(state).range;
+}
+
+export function heroAttackCooldown(state: GameState): number {
+  const technique = effectiveAttribute(state, "technique") * 0.018;
+  const talentSpeed = talentBonus(state, "attackSpeed");
+  const overclock = state.hero.overclockUntilMs > state.worldTimeMs ? 0.18 : 0;
+  const damagedWeapon = weaponEntry(state)?.condition ?? 100;
+  const conditionPenalty = damagedWeapon < 40 ? 0.22 : damagedWeapon < 70 ? 0.08 : 0;
+  return Math.max(
+    360,
+    weaponFor(state).cooldownMs * (1 - technique - talentSpeed - overclock + conditionPenalty),
+  );
+}
+
+export function heroAttackDamage(state: GameState): number {
+  const weapon = weaponFor(state);
+  const branchBonus = weapon.category === "melee"
+    ? talentBonus(state, "meleeDamage")
+    : talentBonus(state, "rangedDamage");
+  const conditionPenalty = (weaponEntry(state)?.condition ?? 100) < 35 ? 1 : 0;
+  return Math.max(1, weapon.damage + branchBonus - effectiveInjury(state, "arm") - conditionPenalty);
+}
+
+export function xpToNextLevel(state: GameState): number {
+  return state.hero.level * 25;
+}
+
+function visibleRadius(state: GameState): number {
+  return Math.max(
+    2,
+    5 + Math.floor(effectiveAttribute(state, "attention") / 2) - effectiveInjury(state, "eye"),
+  );
+}
+
+function reveal(state: GameState): GameState {
+  const hero = state.hero.positions[state.zone];
+  const map = mapForZone(state.zone);
+  const known = new Set(state.visited[state.zone]);
+  const radius = visibleRadius(state);
+  for (let y = 0; y < map.rows.length; y += 1) {
+    for (let x = 0; x < map.rows[0].length; x += 1) {
+      const point = { x, y };
+      if (distance(hero, point) <= radius && hasLineOfSight(state, hero, point)) {
+        known.add(pointKey(point));
+      }
+    }
+  }
+  return {
+    ...state,
+    visited: { ...state.visited, [state.zone]: [...known] },
+  };
+}
+
+export function isKnown(state: GameState, point: Point): boolean {
+  return state.visited[state.zone].includes(pointKey(gridPoint(point)));
+}
+
+export function isVisible(state: GameState, point: Point): boolean {
+  const hero = state.hero.positions[state.zone];
+  return distance(hero, point) <= visibleRadius(state) && hasLineOfSight(state, hero, point);
+}
+
+export function enemyVisibleToHero(state: GameState, enemy: Enemy): boolean {
+  return enemy.zone === state.zone && enemy.hp > 0 && isVisible(state, enemy.position);
+}
+
+export function enemyById(state: GameState, enemyId: string | null): Enemy | null {
+  if (!enemyId) return null;
+  return state.enemies.find((enemy) => enemy.id === enemyId && enemy.hp > 0) ?? null;
+}
+
+function livingEnemyKeys(state: GameState, zone: ZoneId, exceptId?: string): Set<string> {
+  return new Set(
+    state.enemies
+      .filter((enemy) => enemy.zone === zone && enemy.hp > 0 && enemy.id !== exceptId)
+      .map((enemy) => pointKey(gridPoint(enemy.position))),
+  );
+}
+
+function canUseDiagonal(state: GameState, zone: ZoneId, from: Point, to: Point): boolean {
+  if (from.x === to.x || from.y === to.y) return true;
+  return (
+    isWalkableIn(state, zone, { x: to.x, y: from.y }) &&
+    isWalkableIn(state, zone, { x: from.x, y: to.y })
+  );
+}
+
+function findPath(
+  state: GameState,
+  zone: ZoneId,
+  from: Point,
+  target: Point,
+  blocked: Set<string>,
+): Point[] | null {
+  const start = gridPoint(from);
+  const goal = gridPoint(target);
+  if (!isWalkableIn(state, zone, goal) || blocked.has(pointKey(goal))) return null;
+  const open: Point[] = [start];
+  const cameFrom = new Map<string, Point | null>([[pointKey(start), null]]);
+  const cost = new Map<string, number>([[pointKey(start), 0]]);
+
+  while (open.length > 0) {
+    open.sort((a, b) => {
+      const costA = (cost.get(pointKey(a)) ?? Infinity) + distance(a, goal);
+      const costB = (cost.get(pointKey(b)) ?? Infinity) + distance(b, goal);
+      return costA - costB;
+    });
+    const current = open.shift() as Point;
+    if (sameGridPoint(current, goal)) break;
+
+    for (const direction of DIRECTIONS) {
+      const next = { x: current.x + direction.x, y: current.y + direction.y };
+      const key = pointKey(next);
+      if (
+        !isWalkableIn(state, zone, next) ||
+        blocked.has(key) ||
+        !canUseDiagonal(state, zone, current, next)
+      ) {
+        continue;
+      }
+      const nextCost =
+        (cost.get(pointKey(current)) ?? 0) +
+        (direction.x !== 0 && direction.y !== 0 ? Math.SQRT2 : 1);
+      if (nextCost < (cost.get(key) ?? Infinity)) {
+        cost.set(key, nextCost);
+        cameFrom.set(key, current);
+        if (!open.some((point) => sameGridPoint(point, next))) open.push(next);
+      }
+    }
+  }
+
+  if (!cameFrom.has(pointKey(goal))) return null;
+  const path: Point[] = [];
+  let cursor: Point | null = goal;
+  while (cursor) {
+    path.unshift(copyPoint(cursor));
+    cursor = cameFrom.get(pointKey(cursor)) ?? null;
+  }
+  return path;
+}
+
+function advanceAlongPath(
+  position: Point,
+  path: Point[],
+  travelDistance: number,
+): { position: Point; path: Point[] } {
+  let current = copyPoint(position);
+  const route = path.map(copyPoint);
+  let remaining = travelDistance;
+  while (route.length > 0 && remaining > 0) {
+    const target = route[0];
+    const segment = distance(current, target);
+    if (segment <= 0.001) {
+      current = copyPoint(target);
+      route.shift();
+      continue;
+    }
+    if (segment <= remaining) {
+      current = copyPoint(target);
+      remaining -= segment;
+      route.shift();
+    } else {
+      const ratio = remaining / segment;
+      current = {
+        x: current.x + (target.x - current.x) * ratio,
+        y: current.y + (target.y - current.y) * ratio,
+      };
+      remaining = 0;
+    }
+  }
+  return { position: current, path: route };
+}
+
+export function commandMove(state: GameState, target: Point): GameState {
+  if (state.missionComplete || !isWalkable(state, target)) return state;
+  const blocked = livingEnemyKeys(state, state.zone);
+  const path = findPath(
+    state,
+    state.zone,
+    state.hero.positions[state.zone],
+    gridPoint(target),
+    blocked,
+  );
+  if (!path) return appendLog(state, "Маршрут перекрыт.");
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      path: path.slice(1),
+      destination: gridPoint(target),
+      attackTargetId: null,
+    },
+  };
+}
+
+function approachPath(state: GameState, enemy: Enemy, range: number): Point[] | null {
+  const map = mapForZone(state.zone);
+  const hero = state.hero.positions[state.zone];
+  const blocked = livingEnemyKeys(state, state.zone, enemy.id);
+  blocked.add(pointKey(gridPoint(enemy.position)));
+  const candidates: { path: Point[]; score: number }[] = [];
+  for (let y = 0; y < map.rows.length; y += 1) {
+    for (let x = 0; x < map.rows[0].length; x += 1) {
+      const point = { x, y };
+      if (
+        distance(point, enemy.position) > Math.max(0.9, range * 0.92) ||
+        !isWalkableIn(state, state.zone, point) ||
+        !hasLineOfSight(state, point, enemy.position)
+      ) {
+        continue;
+      }
+      const path = findPath(state, state.zone, hero, point, blocked);
+      if (path) candidates.push({ path, score: path.length + distance(point, enemy.position) * 0.1 });
+    }
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  return candidates[0]?.path ?? null;
+}
+
+export function commandAttack(state: GameState, enemyId: string): GameState {
+  const enemy = enemyById(state, enemyId);
+  if (!enemy || enemy.zone !== state.zone || !enemyVisibleToHero(state, enemy)) return state;
+  const inRange =
+    distance(state.hero.positions[state.zone], enemy.position) <= heroAttackRange(state) &&
+    hasLineOfSight(state, state.hero.positions[state.zone], enemy.position);
+  const route = inRange ? [] : approachPath(state, enemy, heroAttackRange(state));
+  const keepKitingRoute =
+    inRange &&
+    state.hero.combatDirective === "mobileFire" &&
+    weaponFor(state).category === "ranged" &&
+    talentBonus(state, "movingFire") >= 1;
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      attackTargetId: enemyId,
+      path: keepKitingRoute ? state.hero.path : route ? route.slice(1) : [],
+      destination: keepKitingRoute ? state.hero.destination : route?.at(-1) ?? null,
+      repathCooldownMs: 0,
+    },
+  };
+}
+
+export function commandAttackNearest(state: GameState): GameState {
+  const hero = state.hero.positions[state.zone];
+  const nearest = state.enemies
+    .filter((enemy) => enemyVisibleToHero(state, enemy))
+    .sort((a, b) => distance(hero, a.position) - distance(hero, b.position))[0];
+  return nearest ? commandAttack(state, nearest.id) : appendLog(state, "Видимых целей нет.");
+}
+
+export function cancelHeroAction(state: GameState): GameState {
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      path: [],
+      destination: null,
+      attackTargetId: null,
+    },
+  };
+}
+
+export function canCarryItem(state: GameState, itemId: ItemId, quantity = 1): boolean {
+  return inventoryWeight(state) + ITEMS[itemId].weight * quantity <= carryCapacity(state) + 0.001;
+}
+
+function discoverTalentsFromItem(state: GameState, itemId: ItemId): GameState {
+  const discoveries = ITEMS[itemId].grantedTalents ?? [];
+  const newDiscoveries = discoveries.filter(
+    (talentId) => TALENT_BY_ID[talentId] && !state.hero.discoveredTalents.includes(talentId),
+  );
+  if (!newDiscoveries.length) return state;
+  return appendLog(
+    {
+      ...state,
+      hero: {
+        ...state.hero,
+        discoveredTalents: [...state.hero.discoveredTalents, ...newDiscoveries],
+      },
+    },
+    `Легендарный протокол добавлен во внешнее кольцо дерева: ${newDiscoveries.map((id) => TALENT_BY_ID[id].name).join(", ")}.`,
+  );
+}
+
+function addInventoryItem(
+  state: GameState,
+  itemId: ItemId,
+  quantity = 1,
+  condition = 100,
+): { state: GameState; added: boolean } {
+  if (quantity <= 0 || !canCarryItem(state, itemId, quantity)) {
+    return { state, added: false };
+  }
+  const definition = ITEMS[itemId];
+  if (definition.stackable) {
+    const existing = state.hero.inventory.find((entry) => entry.itemId === itemId);
+    if (existing) {
+      const stacked: GameState = {
+        ...state,
+        hero: {
+          ...state.hero,
+          inventory: state.hero.inventory.map((entry) =>
+            entry.instanceId === existing.instanceId
+              ? { ...entry, quantity: entry.quantity + quantity }
+              : entry,
+          ),
+        },
+      };
+      return {
+        added: true,
+        state: discoverTalentsFromItem(stacked, itemId),
+      };
+    }
+  }
+
+  let itemCounter = state.hero.itemCounter;
+  const additions: InventoryEntry[] = [];
+  const entryCount = definition.stackable ? 1 : quantity;
+  for (let index = 0; index < entryCount; index += 1) {
+    itemCounter += 1;
+    additions.push({
+      instanceId: `itm-${itemCounter}`,
+      itemId,
+      quantity: definition.stackable ? quantity : 1,
+      condition: Math.max(0, Math.min(100, condition)),
+    });
+  }
+  const addedState: GameState = {
+    ...state,
+    hero: {
+      ...state.hero,
+      itemCounter,
+      inventory: [...state.hero.inventory, ...additions],
+    },
+  };
+  return {
+    added: true,
+    state: discoverTalentsFromItem(addedState, itemId),
+  };
+}
+
+function consumeEntry(state: GameState, instanceId: string, quantity = 1): GameState {
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      inventory: state.hero.inventory.flatMap((entry) => {
+        if (entry.instanceId !== instanceId) return [entry];
+        const remaining = entry.quantity - quantity;
+        return remaining > 0 ? [{ ...entry, quantity: remaining }] : [];
+      }),
+    },
+  };
+}
+
+export function dropInventoryItem(state: GameState, instanceId: string): GameState {
+  const entry = inventoryEntryById(state, instanceId);
+  if (!entry) return state;
+  if (Object.values(state.hero.equipment).includes(instanceId)) {
+    return appendLog(state, "Сначала замените экипированный предмет.");
+  }
+  let next = spawnGroundLoot(
+    state,
+    state.zone,
+    state.hero.positions[state.zone],
+    entry.itemId,
+    entry.quantity,
+    entry.condition,
+  );
+  next = {
+    ...next,
+    hero: {
+      ...next.hero,
+      inventory: next.hero.inventory.filter((item) => item.instanceId !== instanceId),
+    },
+  };
+  return appendLog(next, `Выложено: ${ITEMS[entry.itemId].name}.`);
+}
+
+export function equipItem(state: GameState, instanceId: string): GameState {
+  const entry = inventoryEntryById(state, instanceId);
+  if (!entry || entry.condition <= 0) return state;
+  const definition = ITEMS[entry.itemId];
+  if (!definition.slot) return state;
+  if (state.hero.equipment[definition.slot] === instanceId) return state;
+  let next: GameState = {
+    ...state,
+    hero: {
+      ...state.hero,
+      equipment: { ...state.hero.equipment, [definition.slot]: instanceId },
+      attackTargetId: null,
+      path: [],
+      destination: null,
+    },
+  };
+  next = { ...next, hero: { ...next.hero, hp: Math.min(next.hero.hp, maxHeroHp(next)) } };
+  return appendLog(next, `Экипировано: ${definition.name}.`);
+}
+
+export function equipWeapon(state: GameState, weapon: WeaponId): GameState {
+  const entry = state.hero.inventory.find((item) => item.itemId === weapon);
+  return entry ? equipItem(state, entry.instanceId) : state;
+}
+
+export function consumeInventoryItem(state: GameState, instanceId: string): GameState {
+  const entry = inventoryEntryById(state, instanceId);
+  if (!entry || ITEMS[entry.itemId].kind !== "consumable") return state;
+
+  if (entry.itemId === "bandage") {
+    const injuries = (Object.keys(state.injuries) as (keyof Injuries)[])
+      .filter((injury) => state.injuries[injury] > 0)
+      .sort((a, b) => state.injuries[b] - state.injuries[a]);
+    if (!injuries.length && state.hero.hp >= maxHeroHp(state)) {
+      return appendLog(state, "Перевязка сейчас не требуется.");
+    }
+    const relievedInjury = injuries[0] ?? state.hero.relievedInjury;
+    let next: GameState = {
+      ...state,
+      hero: {
+        ...state.hero,
+        relievedInjury,
+        injuryReliefUntilMs: relievedInjury ? state.worldTimeMs + 30000 : state.hero.injuryReliefUntilMs,
+      },
+    };
+    next = {
+      ...next,
+      hero: { ...next.hero, hp: Math.min(maxHeroHp(next), next.hero.hp + 2) },
+    };
+    next = consumeEntry(next, instanceId);
+    return appendLog(
+      next,
+      relievedInjury
+        ? `Перевязка выполнена. ${injuryLabel(relievedInjury)} ослаблена на 30 секунд.`
+        : "Перевязка восстановила 2 ОЗ.",
+    );
+  }
+
+  if (entry.itemId === "traumaInjector") {
+    if (state.hero.hp >= maxHeroHp(state)) return appendLog(state, "Инъектор не требуется.");
+    let next: GameState = {
+      ...state,
+      hero: {
+        ...state.hero,
+        hp: Math.min(maxHeroHp(state), state.hero.hp + 4),
+        stress: Math.min(100, state.hero.stress + 14),
+      },
+    };
+    next = consumeEntry(next, instanceId);
+    return appendLog(next, "Травмоинъектор восстановил 4 ОЗ. Стресс повышен.");
+  }
+
+  if (entry.itemId === "filterCartridge") {
+    if (state.hero.contamination <= 0) return appendLog(state, "Фильтр ещё не загрязнён.");
+    let next: GameState = {
+      ...state,
+      hero: { ...state.hero, contamination: Math.max(0, state.hero.contamination - 15) },
+    };
+    next = consumeEntry(next, instanceId);
+    return appendLog(next, "Фильтр заменён. Заражение снижено на 15.");
+  }
+
+  if (entry.itemId === "batteryPack") {
+    if (branchTalentPoints(state, "engineer") < 1) {
+      return appendLog(state, "Некуда подключить аккумулятор: рембот не допущен к смене.");
+    }
+    let next: GameState = {
+      ...state,
+      hero: { ...state.hero, droneCooldownMs: 0 },
+    };
+    next = consumeEntry(next, instanceId);
+    return appendLog(next, "Атакующий контур рембота перезапущен.");
+  }
+
+  if (entry.itemId === "repairKit") {
+    const equippedIds = new Set(Object.values(state.hero.equipment).filter(Boolean));
+    const damaged = state.hero.inventory
+      .filter((item) => equippedIds.has(item.instanceId) && item.condition < 100)
+      .sort((a, b) => a.condition - b.condition)[0];
+    if (!damaged) return appendLog(state, "Экипировка не требует ремонта.");
+    let next: GameState = {
+      ...state,
+      hero: {
+        ...state.hero,
+        inventory: state.hero.inventory.map((item) =>
+          item.instanceId === damaged.instanceId
+            ? { ...item, condition: Math.min(100, item.condition + 25) }
+            : item,
+        ),
+      },
+    };
+    next = consumeEntry(next, instanceId);
+    return appendLog(next, `${ITEMS[damaged.itemId].name}: состояние восстановлено на 25%.`);
+  }
+
+  return state;
+}
+
+export function applyFirstAid(state: GameState): GameState {
+  const bandage = state.hero.inventory.find((entry) => entry.itemId === "bandage");
+  return bandage
+    ? consumeInventoryItem(state, bandage.instanceId)
+    : appendLog(state, "Перевязочный пакет отсутствует.");
+}
+
+export function activateEquippedArtifact(state: GameState): GameState {
+  const artifact = equippedArtifact(state);
+  if (!artifact) return appendLog(state, "Артефакт не экипирован.");
+  if (state.hero.artifactCooldownMs > 0) {
+    return appendLog(state, "Артефакт ещё не восстановил устойчивую форму.");
+  }
+
+  if (artifact.itemId === "reverseCoil") {
+    const destination = state.zone === "floor556" ? FLOOR_START : VOID_START;
+    let next: GameState = {
+      ...state,
+      voidStabilityMs:
+        state.zone === "voidLab" ? Math.max(1000, state.voidStabilityMs - 6000) : state.voidStabilityMs,
+      hero: {
+        ...state.hero,
+        positions: { ...state.hero.positions, [state.zone]: copyPoint(destination) },
+        path: [],
+        destination: null,
+        attackTargetId: null,
+        contamination: Math.min(100, state.hero.contamination + 12),
+        stress: Math.min(100, state.hero.stress + 6),
+        artifactCooldownMs: 30000,
+      },
+    };
+    next = emitNoise(next, destination, 8, "свёрнутый путь");
+    return reveal(appendLog(next, "Катушка свернула пройденный путь. Цена: +12 заражения."));
+  }
+
+  if (artifact.itemId === "keyWithoutDoor") {
+    if (state.zone !== "floor556") {
+      return appendLog(state, "Ключ не находит подходящей дверной ошибки в этой области.");
+    }
+    if (state.mutated) return appendLog(state, "Топология уже удерживает чужой проход.");
+    let next: GameState = {
+      ...state,
+      mutated: true,
+      hero: {
+        ...state.hero,
+        contamination: Math.min(100, state.hero.contamination + 8),
+        stress: Math.min(100, state.hero.stress + 8),
+        artifactCooldownMs: 25000,
+      },
+    };
+    next = emitNoise(next, state.hero.positions[state.zone], 9, "перестройка");
+    return reveal(
+      appendLog(next, "Ключ открыл межэтажный проход и запечатал соседний коридор. Цена: +8 заражения."),
+    );
+  }
+
+  if (artifact.itemId === "elevatorHeartbeat") {
+    const heroPosition = state.hero.positions[state.zone];
+    let next: GameState = {
+      ...state,
+      hero: {
+        ...state.hero,
+        hp: Math.min(maxHeroHp(state), state.hero.hp + 3),
+        stress: Math.max(0, state.hero.stress - 18),
+        artifactCooldownMs: 28000,
+      },
+      enemies: state.enemies.map((enemy) =>
+        enemy.zone === state.zone && enemy.hp > 0 && distance(enemy.position, heroPosition) <= 2.6
+          ? { ...enemy, stunnedUntilMs: state.worldTimeMs + 650, castUntilMs: 0, attackCooldownMs: Math.max(enemy.attackCooldownMs, 700) }
+          : enemy,
+      ),
+    };
+    next = addEffect(next, heroPosition, heroPosition, "control", 0);
+    next = emitNoise(next, heroPosition, 8, "второй удар лифта");
+    return appendLog(next, "Сердцебиение лифта стабилизировало героя и сорвало атаки вокруг.");
+  }
+
+  return state;
+}
+
+function skillTarget(state: GameState): Enemy | null {
+  const selected = enemyById(state, state.hero.attackTargetId);
+  if (selected && enemyVisibleToHero(state, selected)) return selected;
+  const hero = state.hero.positions[state.zone];
+  return state.enemies
+    .filter((enemy) => enemyVisibleToHero(state, enemy))
+    .sort((a, b) => distance(hero, a.position) - distance(hero, b.position))[0] ?? null;
+}
+
+function skillDamage(
+  state: GameState,
+  enemyId: string,
+  damage: number,
+  kind: CombatEffect["kind"] = "skill",
+): GameState {
+  const enemy = enemyById(state, enemyId);
+  if (!enemy) return state;
+  const hp = Math.max(0, enemy.hp - Math.max(1, Math.round(damage)));
+  let next = updateEnemy(state, enemyId, (current) => ({
+    ...current,
+    hp,
+    mode: hp <= 0 ? "disabled" : "combat",
+    lastKnownHero: copyPoint(state.hero.positions[state.zone]),
+    memoryMs: 5200,
+  }));
+  next = addEffect(next, state.hero.positions[state.zone], enemy.position, kind, damage);
+  if (hp <= 0) {
+    next = dropEnemyLoot(next, enemy);
+    next = awardXp(next, enemy.xpValue);
+  }
+  return next;
+}
+
+function setSkillCooldown(state: GameState, skillId: ActiveSkillId): GameState {
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      activeSkillCooldowns: {
+        ...state.hero.activeSkillCooldowns,
+        [skillId]: ACTIVE_SKILLS[skillId].cooldownMs,
+      },
+    },
+  };
+}
+
+export function activateSkillSlot(state: GameState, slot: number): GameState {
+  const skillId = state.hero.activeSkillSlots[slot];
+  if (!skillId) return appendLog(state, `Ячейка ${slot + 1} не назначена.`);
+  const skill = ACTIVE_SKILLS[skillId];
+  if (!unlockedActiveSkills(state).includes(skillId)) {
+    return appendLog(state, `${skill.name}: недостаточный допуск ветви.`);
+  }
+  if ((state.hero.activeSkillCooldowns[skillId] ?? 0) > 0) {
+    return appendLog(state, `${skill.shortName}: контур ещё восстанавливается.`);
+  }
+  const hero = state.hero.positions[state.zone];
+  const target = skillTarget(state);
+  let next = setSkillCooldown(state, skillId);
+
+  if (skillId === "force-charge") {
+    if (!target) return appendLog(state, "Для силового захода нет видимой цели.");
+    const route = approachPath(next, target, 1.35);
+    const landing = route?.at(-1);
+    if (landing) {
+      next = {
+        ...next,
+        hero: {
+          ...next.hero,
+          positions: { ...next.hero.positions, [next.zone]: copyPoint(landing) },
+          path: [],
+          destination: null,
+          attackTargetId: target.id,
+        },
+      };
+    }
+    next = skillDamage(next, target.id, 3 + talentBonus(next, "meleeDamage"));
+    next = updateEnemy(next, target.id, (enemy) => ({ ...enemy, stunnedUntilMs: next.worldTimeMs + 300, castUntilMs: 0 }));
+  } else if (skillId === "force-arc") {
+    const victims = next.enemies.filter(
+      (enemy) => enemy.zone === next.zone && enemy.hp > 0 && distance(enemy.position, hero) <= 1.9,
+    );
+    if (!victims.length) return appendLog(state, "Размашистый удар не нашёл целей.");
+    for (const victim of victims) next = skillDamage(next, victim.id, 3 + talentBonus(next, "meleeDamage"), "splash");
+  } else if (skillId === "force-execute") {
+    if (!target || distance(hero, target.position) > 1.6) return appendLog(state, "Цель добивания вне ближней дистанции.");
+    const multiplier = target.hp <= target.maxHp * 0.35 ? 2 : 1;
+    next = skillDamage(next, target.id, (5 + talentBonus(next, "meleeDamage")) * multiplier);
+  } else if (skillId === "fire-mark" || skillId === "engineer-designate") {
+    if (!target) return appendLog(state, "Нет видимой цели для назначения.");
+    next = updateEnemy(next, target.id, (enemy) => ({ ...enemy, markedUntilMs: next.worldTimeMs + 8000 }));
+    next = { ...next, hero: { ...next.hero, attackTargetId: target.id } };
+  } else if (skillId === "fire-burst") {
+    if (!target || distance(hero, target.position) > heroAttackRange(next)) return appendLog(state, "Цель точной серии вне дальности.");
+    const marked = target.markedUntilMs > next.worldTimeMs;
+    next = skillDamage(next, target.id, (marked ? 8 : 5) + talentBonus(next, "rangedDamage"));
+    next = emitNoise(next, hero, weaponFor(next).noiseRadius + 1, "точная серия");
+  } else if (skillId === "fire-relocate") {
+    if (!target) return appendLog(state, "Для смены позиции нет боевой цели.");
+    const dx = Math.sign(hero.x - target.position.x);
+    const dy = Math.sign(hero.y - target.position.y);
+    const destination = gridPoint({ x: hero.x + (dx || 1) * 2, y: hero.y + dy * 2 });
+    next = commandMove(next, isWalkable(next, destination) ? destination : gridPoint({ x: hero.x + (dx || 1), y: hero.y + dy }));
+    next = { ...next, hero: { ...next.hero, attackTargetId: target.id } };
+  } else if (skillId === "stealth-muffle") {
+    next = { ...next, hero: { ...next.hero, silentUntilMs: next.worldTimeMs + 6500, attackTargetId: null } };
+  } else if (skillId === "stealth-decoy") {
+    const point = gridPoint({ x: hero.x + 3, y: hero.y - 2 });
+    next = emitNoise(next, isWalkable(next, point) ? point : hero, 9, "ложный источник");
+  } else if (skillId === "stealth-isolate") {
+    if (!target) return appendLog(state, "Нет цели для изоляции.");
+    next = updateEnemy(next, target.id, (enemy) => ({ ...enemy, memoryMs: 1200 }));
+    next = { ...next, hero: { ...next.hero, isolatedTargetId: target.id, isolatedUntilMs: next.worldTimeMs + 7000 } };
+  } else if (skillId === "bulwark-brace") {
+    next = { ...next, hero: { ...next.hero, braceUntilMs: next.worldTimeMs + 6500, path: [], destination: null } };
+  } else if (skillId === "bulwark-challenge") {
+    next = {
+      ...next,
+      enemies: next.enemies.map((enemy) =>
+        enemy.zone === next.zone && enemy.hp > 0 && distance(enemy.position, hero) <= 5
+          ? { ...enemy, mode: "hunting", lastKnownHero: copyPoint(hero), memoryMs: 7000, thinkCooldownMs: 0 }
+          : enemy,
+      ),
+    };
+    next = emitNoise(next, hero, 8, "вызов гермозащиты");
+  } else if (skillId === "bulwark-counter") {
+    const victims = next.enemies.filter(
+      (enemy) => enemy.zone === next.zone && enemy.hp > 0 && distance(enemy.position, hero) <= 2.2,
+    );
+    if (!victims.length) return appendLog(state, "Для ответного импульса нет целей.");
+    for (const victim of victims) next = skillDamage(next, victim.id, 3 + talentBonus(next, "armor"), "splash");
+  } else if (skillId === "engineer-deploy") {
+    next = { ...next, hero: { ...next.hero, droneCooldownMs: 0 } };
+  } else if (skillId === "engineer-overclock") {
+    next = {
+      ...next,
+      hero: {
+        ...next.hero,
+        overclockUntilMs: next.worldTimeMs + 7000,
+        droneCooldownMs: 0,
+        stress: Math.min(100, next.hero.stress + 10),
+      },
+    };
+  } else if (skillId === "resonance-distort") {
+    if (!target) return appendLog(state, "Нет цели для искажения.");
+    next = updateEnemy(next, target.id, (enemy) => ({ ...enemy, resonanceStacks: Math.min(3, enemy.resonanceStacks + 1), markedUntilMs: next.worldTimeMs + 7000 }));
+    next = { ...next, hero: { ...next.hero, contamination: Math.min(100, next.hero.contamination + 4) } };
+  } else if (skillId === "resonance-collapse") {
+    if (!target || target.resonanceStacks <= 0) return appendLog(state, "На цели нет резонанса для схлопывания.");
+    const victims = next.enemies.filter(
+      (enemy) => enemy.zone === next.zone && enemy.hp > 0 && distance(enemy.position, target.position) <= 2.4,
+    );
+    for (const victim of victims) next = skillDamage(next, victim.id, 2 + target.resonanceStacks * 2, "splash");
+    next = updateEnemy(next, target.id, (enemy) => ({ ...enemy, resonanceStacks: 0 }));
+    next = { ...next, hero: { ...next.hero, contamination: Math.min(100, next.hero.contamination + 6) } };
+  } else if (skillId === "resonance-stabilize") {
+    next = {
+      ...next,
+      voidStabilityMs: Math.min(VOID_STABILITY_MS, next.voidStabilityMs + 9000),
+      hero: {
+        ...next.hero,
+        contamination: Math.max(0, next.hero.contamination - 10),
+        stress: Math.max(0, next.hero.stress - 8),
+      },
+    };
+  }
+
+  return appendLog(next, `Применено: ${skill.name}.`);
+}
+
+function skillsFromTalents(talents: string[]): Skills {
+  const skills: Skills = { force: 0, fire: 0, stealth: 0, bulwark: 0, engineer: 0, resonance: 0 };
+  for (const talentId of talents) {
+    const branch = TALENT_BY_ID[talentId] ? branchForTalent(TALENT_BY_ID[talentId]) : null;
+    if (branch) skills[branch] += TALENT_BY_ID[talentId].cost;
+  }
+  return skills;
+}
+
+export function applyTrainingBuild(state: GameState, build: TrainingBuild): GameState {
+  const branchIds = build === "mobileFire"
+    ? ["core:01", "core:02", "core:04", ...Array.from({ length: 9 }, (_, index) => `fire:${String(index + 1).padStart(2, "0")}`), "legendary:kinetic-gyro"]
+    : ["core:01", "core:02", "core:08", ...Array.from({ length: 9 }, (_, index) => `force:${String(index + 1).padStart(2, "0")}`), ...Array.from({ length: 4 }, (_, index) => `bulwark:${String(index + 1).padStart(2, "0")}`), "legendary:section-collapse"];
+  const legendaryTalent = build === "mobileFire" ? "legendary:kinetic-gyro" : "legendary:section-collapse";
+  const weaponId: WeaponId = build === "mobileFire" ? "horizonCarbine" : "sectorMaul";
+  let next: GameState = {
+    ...state,
+    hero: {
+      ...state.hero,
+      talents: branchIds,
+      discoveredTalents: [...new Set([...state.hero.discoveredTalents, legendaryTalent])],
+      skills: skillsFromTalents(branchIds),
+      skillPoints: 4,
+      combatDirective: build,
+      activeSkillSlots: build === "mobileFire"
+        ? ["fire-mark", "fire-burst", "fire-relocate", null]
+        : ["force-charge", "force-arc", "force-execute", "bulwark-challenge"],
+    },
+  };
+  if (!next.hero.inventory.some((entry) => entry.itemId === weaponId)) {
+    next = addInventoryItem(next, weaponId, 1, 100).state;
+  }
+  const weapon = next.hero.inventory.find((entry) => entry.itemId === weaponId);
+  if (weapon) next = equipItem(next, weapon.instanceId);
+  return appendLog(
+    next,
+    build === "mobileFire"
+      ? "Испытательный билд загружен: мобильный стрелок, головокружение и срыв подготовленных атак."
+      : "Испытательный билд загружен: силовой сплэшер, провокация и поражение пачки.",
+  );
+}
+
+export function allocateSkill(state: GameState, branch: SkillBranch): GameState {
+  const nextNode = TALENT_NODES.find(
+    (node) => node.scope === branch && !state.hero.talents.includes(node.id) && canAllocateTalent(state, node.id),
+  );
+  return nextNode ? allocateTalent(state, nextNode.id) : state;
+}
+
+function injuryLabel(key: keyof Injuries): string {
+  return {
+    leg: "травма ноги",
+    arm: "травма руки",
+    head: "травма головы",
+    torso: "травма корпуса",
+    eye: "травма глаза",
+  }[key];
+}
+
+function applyRescue(
+  state: GameState,
+  reason: string,
+  forcedInjury?: keyof Injuries,
+): GameState {
+  const cycle: (keyof Injuries)[] = ["leg", "arm", "torso", "head", "eye"];
+  const injury = forcedInjury ?? cycle[state.rescueCount % cycle.length];
+  const injuries = {
+    ...state.injuries,
+    [injury]: Math.min(2, state.injuries[injury] + 1),
+  };
+  const equippedIds = new Set(Object.values(state.hero.equipment).filter(Boolean));
+  let rescued: GameState = {
+    ...state,
+    zone: "floor556",
+    injuries,
+    rescueCount: state.rescueCount + 1,
+    artifactRecovered: state.artifactRecovered,
+    voidStabilityMs: VOID_STABILITY_MS,
+    noise: null,
+    effects: [],
+    hero: {
+      ...state.hero,
+      positions: {
+        floor556: { ...FLOOR_START },
+        voidLab: { ...VOID_START },
+      },
+      path: [],
+      destination: null,
+      attackTargetId: null,
+      attackCooldownMs: 600,
+      hp: 1,
+      stress: Math.min(100, state.hero.stress + 18),
+      braceUntilMs: 0,
+      silentUntilMs: 0,
+      overclockUntilMs: 0,
+      secondBeatReady: true,
+      inventory: state.hero.inventory.map((entry) =>
+        equippedIds.has(entry.instanceId)
+          ? { ...entry, condition: Math.max(0, entry.condition - 12) }
+          : entry,
+      ),
+    },
+    enemies: state.enemies.map((enemy) => ({
+      ...enemy,
+      mode: enemy.hp > 0 ? "patrol" : "disabled",
+      path: [],
+      lastKnownHero: null,
+      memoryMs: 0,
+      castUntilMs: 0,
+      stunnedUntilMs: 0,
+    })),
+  };
+  rescued = { ...rescued, hero: { ...rescued.hero, hp: maxHeroHp(rescued) } };
+  return reveal(
+    appendLog(
+      rescued,
+      `${reason} Аварийная группа провела эвакуацию. Последствие: ${injuryLabel(injury)}; экипировка повреждена.`,
+    ),
+  );
+}
+
+function awardXp(state: GameState, amount: number): GameState {
+  let xp = state.hero.xp + amount;
+  let level = state.hero.level;
+  let skillPoints = state.hero.skillPoints;
+  let leveled = false;
+  while (xp >= level * 25) {
+    xp -= level * 25;
+    level += 1;
+    skillPoints += 1;
+    leveled = true;
+  }
+  let next: GameState = {
+    ...state,
+    hero: { ...state.hero, xp, level, skillPoints },
+  };
+  if (leveled) next = appendLog(next, `Квалификация повышена до уровня ${level}. Получено очко ветви.`);
+  return next;
+}
+
+function updateEnemy(
+  state: GameState,
+  enemyId: string,
+  update: (enemy: Enemy) => Enemy,
+): GameState {
+  return {
+    ...state,
+    enemies: state.enemies.map((enemy) => (enemy.id === enemyId ? update(enemy) : enemy)),
+  };
+}
+
+function spawnGroundLoot(
+  state: GameState,
+  zone: ZoneId,
+  position: Point,
+  itemId: ItemId,
+  quantity = 1,
+  condition = 100,
+): GameState {
+  const lootCounter = state.lootCounter + 1;
+  return {
+    ...state,
+    lootCounter,
+    groundLoot: [
+      ...state.groundLoot,
+      {
+        id: `loot-${lootCounter}`,
+        zone,
+        position: copyPoint(position),
+        itemId,
+        quantity,
+        condition,
+      },
+    ],
+  };
+}
+
+function dropEnemyLoot(state: GameState, enemy: Enemy): GameState {
+  if (enemy.kind === "sentry") {
+    return spawnGroundLoot(state, enemy.zone, enemy.position, "coilPart");
+  }
+  if (enemy.kind === "stalker") {
+    return spawnGroundLoot(state, enemy.zone, enemy.position, "filterCartridge");
+  }
+  let next = spawnGroundLoot(state, enemy.zone, enemy.position, "quietHoodTo2", 1, 68);
+  next = spawnGroundLoot(next, enemy.zone, enemy.position, "batteryPack");
+  next = spawnGroundLoot(next, enemy.zone, enemy.position, "sectorMaul", 1, 100);
+  next = spawnGroundLoot(next, enemy.zone, enemy.position, "seventhToleranceHarness", 1, 92);
+  return next;
+}
+
+function heroAttackTick(state: GameState): GameState {
+  if (!state.hero.attackTargetId) return state;
+  const target = enemyById(state, state.hero.attackTargetId);
+  if (!target || target.zone !== state.zone) {
+    return {
+      ...state,
+      hero: { ...state.hero, attackTargetId: null, path: [], destination: null },
+    };
+  }
+  const heroPosition = state.hero.positions[state.zone];
+  const inRange =
+    distance(heroPosition, target.position) <= heroAttackRange(state) &&
+    hasLineOfSight(state, heroPosition, target.position);
+  if (!inRange || state.hero.attackCooldownMs > 0) return state;
+
+  const weapon = weaponFor(state);
+  const rolled = rollD20(state);
+  const branchAccuracy = talentBonus(rolled.state, "accuracy");
+  const marked = target.markedUntilMs > rolled.state.worldTimeMs;
+  const modifier = Math.max(
+    0,
+    weapon.accuracy +
+      branchAccuracy +
+      (marked ? 1 + talentBonus(rolled.state, "markPower") : 0) +
+      Math.floor(effectiveAttribute(rolled.state, "reaction") / 2) -
+      effectiveInjury(rolled.state, "arm") -
+      (weapon.category === "ranged" ? effectiveInjury(rolled.state, "eye") : 0) -
+      (rolled.state.hero.stress >= 60 ? 1 : 0) -
+      ((weaponEntry(rolled.state)?.condition ?? 100) < 35 ? 1 : 0),
+  );
+  const defense = 10 + target.armor + (tileAt(rolled.state, target.position) === "c" ? 2 : 0);
+  const total = rolled.roll + modifier;
+  const hit = rolled.roll === 20 || (rolled.roll !== 1 && total >= defense);
+  const movingFire = weapon.category === "ranged" && talentBonus(rolled.state, "movingFire") >= 1;
+  let next: GameState = {
+    ...rolled.state,
+    hero: {
+      ...rolled.state.hero,
+      attackCooldownMs: heroAttackCooldown(rolled.state),
+      path: movingFire ? rolled.state.hero.path : [],
+      destination: movingFire ? rolled.state.hero.destination : null,
+    },
+  };
+  next = emitNoise(
+    next,
+    heroPosition,
+    Math.max(
+      0.5,
+      weapon.noiseRadius -
+        talentBonus(next, "noiseReduction") -
+        equipmentScalar(next, "stealth") * 0.4 -
+        (next.hero.silentUntilMs > next.worldTimeMs ? 3 : 0),
+    ),
+    weapon.category === "melee" ? "удар" : "выстрел",
+  );
+
+  if (!hit) {
+    next = addEffect(next, heroPosition, target.position, "miss", 0);
+    return appendLog(next, `${weapon.shortName}: d20 ${rolled.roll} + ${modifier} = ${total}; промах.`);
+  }
+
+  const criticalThreshold = 20 - Math.floor(talentBonus(next, "critical") * 20);
+  const critical = rolled.roll === 20 || (rolled.roll >= criticalThreshold && rolled.roll !== 1);
+  const isolated = next.hero.isolatedTargetId === target.id && next.hero.isolatedUntilMs > next.worldTimeMs;
+  const baseDamage = heroAttackDamage(next) + (marked ? Math.ceil(talentBonus(next, "markPower") / 2) : 0) + (isolated ? 2 : 0);
+  const damage = critical ? baseDamage * 2 : baseDamage;
+  const hp = Math.max(0, target.hp - damage);
+  next = updateEnemy(next, target.id, (enemy) => ({
+    ...enemy,
+    hp,
+    mode:
+      hp <= 0
+        ? "disabled"
+        : hp <= Math.ceil(enemy.maxHp * 0.3)
+          ? "retreat"
+          : "combat",
+    lastKnownHero: copyPoint(heroPosition),
+    memoryMs: 5000,
+  }));
+  next = addEffect(next, heroPosition, target.position, "hero-hit", damage);
+
+  if (weapon.category === "ranged" && talentBonus(next, "dizzy") > 0 && hp > 0) {
+    const current = enemyById(next, target.id);
+    if (current) {
+      const stacks = current.dizzyUntilMs > next.worldTimeMs ? current.dizzyStacks + 1 : 1;
+      const interrupt = stacks >= 3 && talentBonus(next, "microStun") > 0;
+      next = updateEnemy(next, target.id, (enemy) => ({
+        ...enemy,
+        dizzyStacks: interrupt ? 0 : stacks,
+        dizzyUntilMs: next.worldTimeMs + 4500,
+        stunnedUntilMs: interrupt ? next.worldTimeMs + 420 : enemy.stunnedUntilMs,
+        castUntilMs: interrupt ? 0 : enemy.castUntilMs,
+        attackCooldownMs: interrupt ? Math.max(enemy.attackCooldownMs, 650) : enemy.attackCooldownMs,
+      }));
+      if (interrupt) {
+        next = addEffect(next, target.position, target.position, "control", 0);
+        next = appendLog(next, `${target.name}: головокружение перешло в микрооглушение, подготовка атаки сорвана.`);
+      }
+    }
+  }
+
+  const splashRatio = weapon.category === "melee" ? talentBonus(next, "splash") : 0;
+  if (splashRatio > 0) {
+    const secondary = next.enemies.filter(
+      (enemy) =>
+        enemy.id !== target.id &&
+        enemy.zone === next.zone &&
+        enemy.hp > 0 &&
+        distance(enemy.position, target.position) <= 1.9,
+    );
+    for (const enemy of secondary) {
+      next = skillDamage(next, enemy.id, Math.max(1, Math.round(damage * Math.min(0.75, splashRatio))), "splash");
+    }
+  }
+
+  const tauntRadius = talentBonus(next, "tauntRadius");
+  if (weapon.category === "melee" && tauntRadius > 0) {
+    next = {
+      ...next,
+      enemies: next.enemies.map((enemy) =>
+        enemy.zone === next.zone && enemy.hp > 0 && distance(enemy.position, target.position) <= tauntRadius
+          ? { ...enemy, mode: "hunting", lastKnownHero: copyPoint(heroPosition), memoryMs: 6500, thinkCooldownMs: 0 }
+          : enemy,
+      ),
+    };
+  }
+  if (hp <= 0) {
+    next = {
+      ...next,
+      hero: { ...next.hero, attackTargetId: null, path: [], destination: null },
+    };
+    next = dropEnemyLoot(next, target);
+    next = awardXp(next, target.xpValue);
+    return appendLog(next, `${target.name} выведен из строя. Получено ${target.xpValue} опыта.`);
+  }
+  return appendLog(
+    next,
+    `${weapon.shortName}: d20 ${rolled.roll} + ${modifier} = ${total}; ${damage} урона${critical ? " (крит.)" : ""}.`,
+  );
+}
+
+function canEnemySeeHero(state: GameState, enemy: Enemy): boolean {
+  if (enemy.zone !== state.zone || enemy.hp <= 0) return false;
+  const hero = state.hero.positions[state.zone];
+  const stealthPenalty =
+    talentBonus(state, "stealth") +
+    equipmentScalar(state, "stealth") +
+    (state.hero.silentUntilMs > state.worldTimeMs ? 2.4 : 0);
+  return (
+    distance(enemy.position, hero) <= Math.max(1.5, enemy.visionRadius - stealthPenalty) &&
+    hasLineOfSight(state, enemy.position, hero)
+  );
+}
+
+function enemyRetreatPath(state: GameState, enemy: Enemy): Point[] {
+  const hero = state.hero.positions[state.zone];
+  const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
+  const map = mapForZone(enemy.zone);
+  const candidates: { path: Point[]; score: number }[] = [];
+  for (let y = 0; y < map.rows.length; y += 1) {
+    for (let x = 0; x < map.rows[0].length; x += 1) {
+      const point = { x, y };
+      if (!isWalkableIn(state, enemy.zone, point)) continue;
+      const path = findPath(state, enemy.zone, enemy.position, point, blocked);
+      if (!path) continue;
+      const cover = tileAtZone(state, enemy.zone, point) === "c" ? 3 : 0;
+      candidates.push({ path, score: distance(point, hero) + cover - path.length * 0.05 });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.path.slice(1) ?? [];
+}
+
+function thinkForEnemy(state: GameState, enemy: Enemy): Enemy {
+  if (enemy.hp <= 0) return { ...enemy, mode: "disabled", path: [] };
+  if (enemy.zone !== state.zone) return enemy;
+  if (enemy.stunnedUntilMs > state.worldTimeMs) {
+    return { ...enemy, path: [], thinkCooldownMs: 120 };
+  }
+  const hero = state.hero.positions[state.zone];
+  const heroDistance = distance(enemy.position, hero);
+  const sees = canEnemySeeHero(state, enemy);
+  const critical = enemy.hp <= Math.ceil(enemy.maxHp * 0.3);
+
+  if (critical) {
+    return {
+      ...enemy,
+      mode: "retreat",
+      path: enemy.path.length ? enemy.path : enemyRetreatPath(state, enemy),
+      thinkCooldownMs: 350,
+    };
+  }
+
+  if (sees && (heroDistance <= enemy.aggroRadius || ["hunting", "combat"].includes(enemy.mode))) {
+    if (heroDistance <= enemy.attackRange) {
+      return {
+        ...enemy,
+        mode: "combat",
+        path: [],
+        lastKnownHero: copyPoint(hero),
+        memoryMs: 5200,
+        thinkCooldownMs: 180,
+      };
+    }
+    const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
+    const path = findPath(state, enemy.zone, enemy.position, gridPoint(hero), blocked);
+    return {
+      ...enemy,
+      mode: "hunting",
+      path: path?.slice(1) ?? enemy.path,
+      lastKnownHero: copyPoint(hero),
+      memoryMs: 5200,
+      thinkCooldownMs: 240,
+    };
+  }
+
+  if (sees) {
+    return {
+      ...enemy,
+      mode: "suspicious",
+      lastKnownHero: copyPoint(hero),
+      memoryMs: 2800,
+      thinkCooldownMs: 300,
+    };
+  }
+
+  const hearsNoise =
+    state.noise?.zone === enemy.zone &&
+    state.noise.ttlMs > 0 &&
+    distance(enemy.position, state.noise.position) <=
+      Math.min(enemy.hearingRadius, state.noise.radius);
+  if (hearsNoise && state.noise) {
+    const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
+    const path = findPath(state, enemy.zone, enemy.position, gridPoint(state.noise.position), blocked);
+    return {
+      ...enemy,
+      mode: "suspicious",
+      path: path?.slice(1) ?? [],
+      lastKnownHero: copyPoint(state.noise.position),
+      memoryMs: 3200,
+      thinkCooldownMs: 260,
+    };
+  }
+
+  if (["hunting", "combat", "suspicious"].includes(enemy.mode) && enemy.memoryMs > 0 && enemy.lastKnownHero) {
+    const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
+    const path = findPath(state, enemy.zone, enemy.position, gridPoint(enemy.lastKnownHero), blocked);
+    return {
+      ...enemy,
+      mode: enemy.mode === "suspicious" ? "suspicious" : "hunting",
+      path: path?.slice(1) ?? enemy.path,
+      thinkCooldownMs: 300,
+    };
+  }
+
+  const patrolTarget = enemy.patrol[enemy.patrolIndex];
+  const reached = distance(enemy.position, patrolTarget) < 0.18;
+  const patrolIndex = reached ? (enemy.patrolIndex + 1) % enemy.patrol.length : enemy.patrolIndex;
+  const nextTarget = enemy.patrol[patrolIndex];
+  const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
+  const path = findPath(state, enemy.zone, enemy.position, nextTarget, blocked);
+  return {
+    ...enemy,
+    mode: "patrol",
+    patrolIndex,
+    path: path?.slice(1) ?? enemy.path,
+    lastKnownHero: null,
+    memoryMs: 0,
+    thinkCooldownMs: 420,
+  };
+}
+
+function alertGroup(state: GameState): GameState {
+  const spotters = state.enemies.filter(
+    (enemy) =>
+      enemy.zone === state.zone &&
+      enemy.hp > 0 &&
+      ["combat", "hunting"].includes(enemy.mode),
+  );
+  if (!spotters.length) return state;
+  const hero = state.hero.positions[state.zone];
+  return {
+    ...state,
+    enemies: state.enemies.map((enemy) => {
+      if (
+        enemy.zone !== state.zone ||
+        enemy.hp <= 0 ||
+        ["combat", "hunting", "retreat"].includes(enemy.mode)
+      ) {
+        return enemy;
+      }
+      const alerted = spotters.some(
+        (spotter) => distance(spotter.position, enemy.position) <= GROUP_ALERT_RADIUS,
+      );
+      return alerted
+        ? {
+            ...enemy,
+            mode: "hunting" as const,
+            lastKnownHero: copyPoint(hero),
+            memoryMs: 4800,
+            thinkCooldownMs: 0,
+          }
+        : enemy;
+    }),
+  };
+}
+
+function enemyAttackTick(state: GameState, enemyId: string): GameState {
+  const enemy = enemyById(state, enemyId);
+  if (!enemy || enemy.zone !== state.zone || enemy.mode !== "combat" || enemy.attackCooldownMs > 0) {
+    return state;
+  }
+  const heroPosition = state.hero.positions[state.zone];
+  if (
+    distance(enemy.position, heroPosition) > enemy.attackRange ||
+    !hasLineOfSight(state, enemy.position, heroPosition)
+  ) {
+    return state;
+  }
+  if (enemy.stunnedUntilMs > state.worldTimeMs) return state;
+  if (enemy.castUntilMs <= 0) {
+    return updateEnemy(state, enemy.id, (current) => ({
+      ...current,
+      castUntilMs: state.worldTimeMs + (current.kind === "collector" ? 700 : 420),
+    }));
+  }
+  if (enemy.castUntilMs > state.worldTimeMs) return state;
+  const rolled = rollD20(state);
+  const defense = heroDefense(rolled.state);
+  const total = rolled.roll + enemy.accuracy;
+  const hit = rolled.roll === 20 || (rolled.roll !== 1 && total >= defense);
+  let next = updateEnemy(rolled.state, enemy.id, (current) => ({
+    ...current,
+    attackCooldownMs: current.attackCooldownBaseMs,
+    castUntilMs: 0,
+  }));
+  if (!hit) {
+    next = addEffect(next, enemy.position, heroPosition, "miss", 0);
+    return appendLog(next, `${enemy.name}: d20 ${rolled.roll} + ${enemy.accuracy} = ${total}; промах.`);
+  }
+  const rawDamage = rolled.roll === 20 ? enemy.damage * 2 : enemy.damage;
+  const blockChance = Math.min(0.45, talentBonus(next, "block") + (next.hero.braceUntilMs > next.worldTimeMs ? 0.18 : 0));
+  const blockRoll = ((next.rngSeed >>> 8) % 100) / 100;
+  const blocked = blockRoll < blockChance;
+  const damage = blocked ? Math.max(0, rawDamage - 2) : rawDamage;
+  next = {
+    ...next,
+    hero: {
+      ...next.hero,
+      hp: Math.max(0, next.hero.hp - damage),
+      stress: Math.min(100, next.hero.stress + 5 + damage),
+    },
+  };
+  next = addEffect(next, enemy.position, heroPosition, "enemy-hit", damage);
+  next = appendLog(
+    next,
+    `${enemy.name}: d20 ${rolled.roll} + ${enemy.accuracy} = ${total}; ${damage} урона${blocked ? " после блока" : ""}.`,
+  );
+  if (next.hero.hp <= Math.max(1, Math.floor(maxHeroHp(next) * 0.25)) && hasTalent(next, "legendary:second-beat") && next.hero.secondBeatReady) {
+    next = {
+      ...next,
+      hero: {
+        ...next.hero,
+        hp: Math.max(3, next.hero.hp),
+        secondBeatReady: false,
+        stress: Math.max(0, next.hero.stress - 20),
+      },
+    };
+    next = appendLog(next, "Второй удар лифта удержал героя на границе эвакуации.");
+  }
+  return next.hero.hp <= 0 ? applyRescue(next, "Герой потерял боеспособность.") : next;
+}
+
+function tickDrone(state: GameState): GameState {
+  if (branchTalentPoints(state, "engineer") < 1 || state.hero.droneCooldownMs > 0) return state;
+  const hero = state.hero.positions[state.zone];
+  const target = state.enemies
+    .filter(
+      (enemy) =>
+        enemyVisibleToHero(state, enemy) &&
+        distance(hero, enemy.position) <= 3.8,
+    )
+    .sort((a, b) => distance(hero, a.position) - distance(hero, b.position))[0];
+  if (!target) return state;
+  const droneDamage = Math.max(1, 1 + Math.round(talentBonus(state, "droneDamage")));
+  const hp = Math.max(0, target.hp - droneDamage);
+  let next = updateEnemy(state, target.id, (enemy) => ({
+    ...enemy,
+    hp,
+    mode: hp <= 0 ? "disabled" : "combat",
+    lastKnownHero: copyPoint(hero),
+    memoryMs: 4200,
+  }));
+  next = {
+    ...next,
+    hero: {
+      ...next.hero,
+      droneCooldownMs: Math.max(
+        620,
+        1600 * (1 - talentBonus(next, "droneSpeed") - (next.hero.overclockUntilMs > next.worldTimeMs ? 0.25 : 0)),
+      ),
+    },
+  };
+  next = addEffect(next, { x: hero.x + 0.2, y: hero.y - 0.25 }, target.position, "drone", droneDamage);
+  if (hp <= 0) {
+    next = dropEnemyLoot(next, target);
+    next = awardXp(next, target.xpValue);
+    return appendLog(next, `Рембот Р-3 отключил цель «${target.name}».`);
+  }
+  return next;
+}
+
+function nearestGroundLoot(state: GameState): GroundLoot | null {
+  const hero = state.hero.positions[state.zone];
+  return (
+    state.groundLoot
+      .filter((loot) => loot.zone === state.zone && distance(hero, loot.position) <= 1.2)
+      .sort((a, b) => distance(hero, a.position) - distance(hero, b.position))[0] ?? null
+  );
+}
+
+function collectGroundLoot(state: GameState, loot: GroundLoot): GameState {
+  const result = addInventoryItem(state, loot.itemId, loot.quantity, loot.condition);
+  if (!result.added) {
+    return appendLog(state, `${ITEMS[loot.itemId].name}: не хватает грузоподъёмности.`);
+  }
+  return appendLog(
+    {
+      ...result.state,
+      groundLoot: result.state.groundLoot.filter((item) => item.id !== loot.id),
+    },
+    `Подобрано: ${ITEMS[loot.itemId].name}${loot.quantity > 1 ? ` ×${loot.quantity}` : ""}.`,
+  );
+}
+
+function containerKey(state: GameState, point: Point): string {
+  const grid = gridPoint(point);
+  return `${state.zone}:${grid.x}:${grid.y}`;
+}
+
+function containerContents(key: string): { itemId: ItemId; quantity?: number; condition?: number }[] {
+  if (key === "floor556:2:3") {
+    return [
+      { itemId: "bandage" },
+      { itemId: "repairKit" },
+      { itemId: "keyWithoutDoor" },
+    ];
+  }
+  if (key === "voidLab:2:3") {
+    return [
+      { itemId: "traumaInjector" },
+      { itemId: "filterCartridge", quantity: 2 },
+      { itemId: "coilRifle", condition: 64 },
+      { itemId: "platedVestBn3", condition: 72 },
+      { itemId: "horizonCarbine", condition: 100 },
+    ];
+  }
+  return [];
+}
+
+function openContainer(state: GameState, point: Point): GameState {
+  const key = containerKey(state, point);
+  if (state.openedContainers.includes(key)) return appendLog(state, "Шкаф уже пуст.");
+  let next: GameState = {
+    ...state,
+    openedContainers: [...state.openedContainers, key],
+  };
+  const collected: string[] = [];
+  const spilled: string[] = [];
+  for (const content of containerContents(key)) {
+    const quantity = content.quantity ?? 1;
+    const result = addInventoryItem(next, content.itemId, quantity, content.condition ?? 100);
+    if (result.added) {
+      next = result.state;
+      collected.push(`${ITEMS[content.itemId].shortName}${quantity > 1 ? ` ×${quantity}` : ""}`);
+    } else {
+      next = spawnGroundLoot(
+        next,
+        state.zone,
+        point,
+        content.itemId,
+        quantity,
+        content.condition ?? 100,
+      );
+      spilled.push(ITEMS[content.itemId].shortName);
+    }
+  }
+  const message = collected.length
+    ? `Шкаф открыт. Получено: ${collected.join(", ")}.${spilled.length ? ` На полу осталось: ${spilled.join(", ")}.` : ""}`
+    : "Шкаф открыт, но весь груз остался на полу: рюкзак перегружен.";
+  return appendLog(next, message);
+}
+
+function nearestInteractive(state: GameState): { point: Point; tile: string } | null {
+  const map = mapForZone(state.zone);
+  const hero = state.hero.positions[state.zone];
+  let nearest: { point: Point; tile: string; distance: number } | null = null;
+  for (let y = 0; y < map.rows.length; y += 1) {
+    for (let x = 0; x < map.rows[0].length; x += 1) {
+      const point = { x, y };
+      const tile = tileAt(state, point);
+      if (!["S", "H", "T", "A", "P", "L", "c", "B"].includes(tile)) continue;
+      const currentDistance = distance(hero, point);
+      if (currentDistance <= 1.2 && (!nearest || currentDistance < nearest.distance)) {
+        nearest = { point, tile, distance: currentDistance };
+      }
+    }
+  }
+  return nearest ? { point: nearest.point, tile: nearest.tile } : null;
+}
+
+export function interactionHint(state: GameState): string {
+  const loot = nearestGroundLoot(state);
+  if (loot) return `Подобрать: ${ITEMS[loot.itemId].shortName}`;
+  const target = nearestInteractive(state);
+  if (!target) return "Подойдите к объекту";
+  return {
+    S: "Восстановить датчик СБ-04",
+    H: "Войти в гермосектор",
+    T: "Прочитать терминал",
+    A: "Извлечь артефакт",
+    P: state.zone === "voidLab" ? "Вернуться на этаж 556" : "Войти в войд-зону",
+    L: "Проверить лифт",
+    c: "Осмотреть укрытие",
+    B: state.openedContainers.includes(containerKey(state, target.point))
+      ? "Проверить пустой шкаф"
+      : "Открыть аварийный шкаф",
+  }[target.tile] ?? "Использовать";
+}
+
+export function interact(state: GameState): GameState {
+  if (state.missionComplete) return state;
+  const loot = nearestGroundLoot(state);
+  if (loot) return collectGroundLoot(state, loot);
+  const target = nearestInteractive(state);
+  if (!target) return appendLog(state, "Рядом нет доступного объекта.");
+  let next = state;
+  if (state.zone === "floor556" && target.tile === "S") {
+    next = state.sensorFixed
+      ? appendLog(state, "Датчик СБ-04 работает в допустимом диапазоне.")
+      : appendLog(
+          { ...state, sensorFixed: true },
+          "Датчик СБ-04 восстановлен. Диспетчерская требует пройти в гермосектор.",
+        );
+  } else if (state.zone === "floor556" && target.tile === "H") {
+    next = state.sensorFixed
+      ? appendLog({ ...state, missionComplete: true }, "Смена завершена. Герметичный сектор закрыт.")
+      : appendLog(state, "Гермодверь исправна, но директива ещё не выполнена.");
+  } else if (state.zone === "floor556" && target.tile === "T") {
+    next = appendLog(state, "Терминал: старая линия ВЖ-7 активна. В лаборатории числится производство катушек.");
+  } else if (state.zone === "voidLab" && target.tile === "A") {
+    if (state.artifactRecovered) {
+      next = appendLog(state, "Артефактное гнездо пусто.");
+    } else {
+      const recovered: GameState = {
+        ...state,
+        artifactRecovered: true,
+        voidStabilityMs: Math.max(5000, state.voidStabilityMs - 9000),
+      };
+      const result = addInventoryItem(recovered, "reverseCoil");
+      if (result.added) {
+        const heartbeat = addInventoryItem(result.state, "elevatorHeartbeat");
+        next = heartbeat.added
+          ? appendLog(
+              heartbeat.state,
+              "Получены Катушка обратного шага и легендарное «Сердцебиение лифта». Стабильность войд-зоны резко снизилась.",
+            )
+          : appendLog(
+              spawnGroundLoot(result.state, state.zone, target.point, "elevatorHeartbeat"),
+              "Катушка получена; легендарный артефакт остался на полу из-за перегруза.",
+            );
+      } else {
+        next = spawnGroundLoot(recovered, state.zone, target.point, "reverseCoil");
+        next = spawnGroundLoot(next, state.zone, target.point, "elevatorHeartbeat");
+        next = appendLog(next, "Оба артефакта остались на полу: рюкзак перегружен.");
+      }
+    }
+  } else if (state.zone === "voidLab" && target.tile === "P") {
+    next = appendLog(
+      {
+        ...state,
+        zone: "floor556",
+        hero: {
+          ...state.hero,
+          path: [],
+          destination: null,
+          attackTargetId: null,
+          positions: { ...state.hero.positions, floor556: { x: 6, y: 3 } },
+        },
+      },
+      "Герой вернулся на этаж 556.",
+    );
+  } else if (state.zone === "floor556" && target.tile === "L") {
+    next = appendLog(state, "Лифт закреплён за городом П-46. Внешние маршруты закрыты.");
+  } else if (target.tile === "c") {
+    next = appendLog(state, "Низкое укрытие даёт +2 к защите от дистанционных атак.");
+  } else if (target.tile === "B") {
+    next = openContainer(state, target.point);
+  }
+  return emitNoise(next, next.hero.positions[next.zone], 3.5, "взаимодействие");
+}
+
+function handlePortalEntry(state: GameState): GameState {
+  if (state.zone !== "floor556" || tileAt(state, state.hero.positions.floor556) !== "P") return state;
+  return appendLog(
+    {
+      ...state,
+      zone: "voidLab",
+      voidStabilityMs: VOID_STABILITY_MS,
+      hero: {
+        ...state.hero,
+        path: [],
+        destination: null,
+        attackTargetId: null,
+        positions: { ...state.hero.positions, voidLab: { ...VOID_START } },
+      },
+    },
+    "Переход выполнен: войд-зона ВЖ-7, лабораторный слой 3 из 7.",
+  );
+}
+
+export function createInitialState(): GameState {
+  const state: GameState = {
+    zone: "floor556",
+    hero: {
+      positions: {
+        floor556: { ...FLOOR_START },
+        voidLab: { ...VOID_START },
+      },
+      path: [],
+      destination: null,
+      attackTargetId: null,
+      attackCooldownMs: 0,
+      repathCooldownMs: 0,
+      stepNoiseCooldownMs: 0,
+      droneCooldownMs: 0,
+      hp: 8,
+      level: 1,
+      xp: 0,
+      skillPoints: 18,
+      attributes: {
+        body: 2,
+        reaction: 3,
+        attention: 2,
+        technique: 3,
+        will: 2,
+      },
+      skills: {
+        force: 0,
+        fire: 0,
+        stealth: 0,
+        bulwark: 0,
+        engineer: 0,
+        resonance: 0,
+      },
+      talents: [],
+      discoveredTalents: [],
+      activeSkillSlots: [null, null, null, null],
+      activeSkillCooldowns: {},
+      combatDirective: "manual",
+      braceUntilMs: 0,
+      silentUntilMs: 0,
+      overclockUntilMs: 0,
+      isolatedTargetId: null,
+      isolatedUntilMs: 0,
+      secondBeatReady: true,
+      inventory: [
+        { instanceId: "itm-1", itemId: "respiratorIp7", quantity: 1, condition: 88 },
+        { instanceId: "itm-2", itemId: "repairCoatRs12", quantity: 1, condition: 80 },
+        { instanceId: "itm-3", itemId: "installerGloves", quantity: 1, condition: 92 },
+        { instanceId: "itm-4", itemId: "dielectricBoots", quantity: 1, condition: 86 },
+        { instanceId: "itm-5", itemId: "backpackRd54", quantity: 1, condition: 90 },
+        { instanceId: "itm-6", itemId: "servicePistol", quantity: 1, condition: 78 },
+        { instanceId: "itm-7", itemId: "shockBaton", quantity: 1, condition: 70 },
+        { instanceId: "itm-8", itemId: "bandage", quantity: 2, condition: 100 },
+        { instanceId: "itm-9", itemId: "filterCartridge", quantity: 1, condition: 100 },
+      ],
+      equipment: {
+        head: "itm-1",
+        body: "itm-2",
+        hands: "itm-3",
+        feet: "itm-4",
+        back: "itm-5",
+        weapon: "itm-6",
+        artifact: null,
+      },
+      itemCounter: 9,
+      contamination: 0,
+      stress: 0,
+      artifactCooldownMs: 0,
+      relievedInjury: null,
+      injuryReliefUntilMs: 0,
+    },
+    worldTimeMs: 0,
+    mutated: false,
+    sensorFixed: false,
+    artifactRecovered: false,
+    missionComplete: false,
+    voidStabilityMs: VOID_STABILITY_MS,
+    injuries: { ...EMPTY_INJURIES },
+    rescueCount: 0,
+    enemies: createEnemies(),
+    noise: null,
+    effects: [],
+    effectCounter: 0,
+    rngSeed: 5560401,
+    visited: { floor556: [], voidLab: [] },
+    openedContainers: [],
+    groundLoot: [],
+    lootCounter: 0,
+    log: [
+      "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
+      "Учебный резерв этапа 3C: 18 очков для проверки чистых и гибридных сборок.",
+      "Директива: проверить датчик СБ-04 и укрыться в герметичном секторе.",
+      "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
+    ],
+  };
+  return reveal(state);
+}
+
+export function tickGame(state: GameState, rawDeltaMs: number): GameState {
+  if (state.missionComplete) return state;
+  const deltaMs = Math.min(100, Math.max(0, rawDeltaMs));
+  let next: GameState = {
+    ...state,
+    worldTimeMs: state.worldTimeMs + deltaMs,
+    noise: state.noise
+      ? { ...state.noise, ttlMs: Math.max(0, state.noise.ttlMs - deltaMs) }
+      : null,
+    effects: state.effects
+      .map((effect) => ({ ...effect, ttlMs: effect.ttlMs - deltaMs }))
+      .filter((effect) => effect.ttlMs > 0),
+    hero: {
+      ...state.hero,
+      attackCooldownMs: Math.max(0, state.hero.attackCooldownMs - deltaMs),
+      repathCooldownMs: Math.max(0, state.hero.repathCooldownMs - deltaMs),
+      stepNoiseCooldownMs: Math.max(0, state.hero.stepNoiseCooldownMs - deltaMs),
+      droneCooldownMs: Math.max(0, state.hero.droneCooldownMs - deltaMs),
+      artifactCooldownMs: Math.max(0, state.hero.artifactCooldownMs - deltaMs),
+      activeSkillCooldowns: Object.fromEntries(
+        Object.entries(state.hero.activeSkillCooldowns).map(([skillId, cooldown]) => [
+          skillId,
+          Math.max(0, (cooldown ?? 0) - deltaMs),
+        ]),
+      ) as Partial<Record<ActiveSkillId, number>>,
+      stress: Math.max(0, state.hero.stress - deltaMs * 0.004),
+    },
+    enemies: state.enemies.map((enemy) => ({
+      ...enemy,
+      attackCooldownMs: Math.max(0, enemy.attackCooldownMs - deltaMs),
+      thinkCooldownMs: Math.max(0, enemy.thinkCooldownMs - deltaMs),
+      memoryMs: Math.max(0, enemy.memoryMs - deltaMs),
+    })),
+  };
+
+  if (!next.mutated && next.worldTimeMs >= MUTATION_AT_MS) {
+    next = appendLog(
+      { ...next, mutated: true },
+      "Топология этажа изменилась. Открыт проход в межэтажное пространство.",
+    );
+  }
+
+  const heroPosition = next.hero.positions[next.zone];
+  if (
+    next.hero.attackTargetId &&
+    next.hero.repathCooldownMs <= 0 &&
+    next.hero.combatDirective !== "mobileFire"
+  ) {
+    const target = enemyById(next, next.hero.attackTargetId);
+    if (target && target.zone === next.zone) {
+      const inRange =
+        distance(heroPosition, target.position) <= heroAttackRange(next) &&
+        hasLineOfSight(next, heroPosition, target.position);
+      if (!inRange) {
+        const route = approachPath(next, target, heroAttackRange(next));
+        next = {
+          ...next,
+          hero: {
+            ...next.hero,
+            path: route?.slice(1) ?? next.hero.path,
+            destination: route?.at(-1) ?? next.hero.destination,
+            repathCooldownMs: 360,
+          },
+        };
+      }
+    }
+  }
+
+  if (next.hero.path.length > 0) {
+    const motion = advanceAlongPath(
+      next.hero.positions[next.zone],
+      next.hero.path,
+      heroMoveSpeed(next) * (deltaMs / 1000),
+    );
+    next = {
+      ...next,
+      hero: {
+        ...next.hero,
+        positions: { ...next.hero.positions, [next.zone]: motion.position },
+        path: motion.path,
+        destination: motion.path.length ? next.hero.destination : null,
+      },
+    };
+    if (next.hero.stepNoiseCooldownMs <= 0) {
+      next = emitNoise(
+        next,
+        motion.position,
+        Math.max(
+          0.6,
+          2.4 -
+            talentBonus(next, "noiseReduction") -
+            equipmentScalar(next, "stealth") -
+            (next.hero.silentUntilMs > next.worldTimeMs ? 2 : 0),
+        ),
+        "шаги",
+      );
+      next = { ...next, hero: { ...next.hero, stepNoiseCooldownMs: 520 } };
+    }
+  }
+
+  next = handlePortalEntry(next);
+  next = reveal(next);
+
+  if (!next.hero.attackTargetId && next.hero.combatDirective !== "manual") {
+    const heroNow = next.hero.positions[next.zone];
+    const nearest = next.enemies
+      .filter((enemy) => enemyVisibleToHero(next, enemy))
+      .sort((a, b) => distance(heroNow, a.position) - distance(heroNow, b.position))[0];
+    if (nearest) {
+      if (next.hero.combatDirective === "mobileFire") {
+        if (
+          weaponFor(next).category === "ranged" &&
+          distance(heroNow, nearest.position) <= heroAttackRange(next) &&
+          hasLineOfSight(next, heroNow, nearest.position)
+        ) {
+          next = { ...next, hero: { ...next.hero, attackTargetId: nearest.id } };
+        }
+      } else {
+        next = commandAttack(next, nearest.id);
+      }
+    }
+  }
+
+  next = {
+    ...next,
+    enemies: next.enemies.map((enemy) =>
+      enemy.zone === next.zone && enemy.hp > 0 && enemy.thinkCooldownMs <= 0
+        ? thinkForEnemy(next, enemy)
+        : enemy,
+    ),
+  };
+  next = alertGroup(next);
+
+  next = {
+    ...next,
+    enemies: next.enemies.map((enemy) => {
+      if (
+        enemy.zone !== next.zone ||
+        enemy.hp <= 0 ||
+        enemy.path.length === 0 ||
+        enemy.stunnedUntilMs > next.worldTimeMs
+      ) return enemy;
+      const heroNow = next.hero.positions[next.zone];
+      if (["hunting", "combat"].includes(enemy.mode) && distance(enemy.position, heroNow) <= enemy.attackRange) {
+        return { ...enemy, path: [] };
+      }
+      const motion = advanceAlongPath(enemy.position, enemy.path, enemy.speed * (deltaMs / 1000));
+      return { ...enemy, position: motion.position, path: motion.path };
+    }),
+  };
+
+  for (const enemy of next.enemies) {
+    if (next.hero.hp <= 0) break;
+    next = enemyAttackTick(next, enemy.id);
+  }
+
+  next = heroAttackTick(next);
+  next = tickDrone(next);
+
+  if (next.zone === "voidLab") {
+    const resonanceFactor = Math.max(0.45, 1 - talentBonus(next, "voidStability"));
+    const contaminationFactor = Math.max(0.3, 1 - talentBonus(next, "contaminationResist"));
+    next = {
+      ...next,
+      voidStabilityMs: next.voidStabilityMs - deltaMs * resonanceFactor,
+      hero: {
+        ...next.hero,
+        contamination: Math.min(100, next.hero.contamination + deltaMs * 0.0008 * contaminationFactor),
+      },
+    };
+    if (next.voidStabilityMs <= 0) {
+      next = applyRescue(next, "Войд-зона потеряла стабильность.", "leg");
+    }
+  }
+
+  return next;
+}
+
+export function objectiveFor(state: GameState): string {
+  if (state.missionComplete) return "Смена завершена";
+  if (state.zone === "voidLab") {
+    return state.artifactRecovered
+      ? "Вернуться к межэтажному переходу"
+      : "Исследовать лабораторию или отступить";
+  }
+  return state.sensorFixed ? "Укрыться за гермодверью" : "Восстановить датчик СБ-04";
+}
+
+export function formattedWorldTime(state: GameState): string {
+  const totalSeconds = Math.floor(state.worldTimeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
