@@ -18,11 +18,6 @@ import {
   type TalentBonusKey,
 } from "./game-skills.ts";
 import {
-  FLOOR_545_MAP,
-  FLOOR_546_MAP,
-  FLOOR_547_MAP,
-  FLOOR_548_MAP,
-  FLOOR_549_MAP,
   REGION_CONTAINER_CONTENTS,
   REGION_ENEMIES,
   REGION_MAPS,
