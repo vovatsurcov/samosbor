@@ -9,6 +9,9 @@ on:
       - tests/region-549-545.test.mjs
       - scripts/apply-region-549-545.py
       - .github/workflows/architect-region-549-545.yml
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -20,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: architect/region-549-545
+          ref: ${{ github.head_ref || 'architect/region-549-545' }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
