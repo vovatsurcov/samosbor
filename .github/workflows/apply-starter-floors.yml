@@ -1,6 +1,7 @@
 name: Apply starter floor expansion
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -32,5 +33,3 @@ jobs:
           git add app/game-engine.ts app/game-prototype.tsx app/globals.css tests/game-engine.test.mjs
           git commit -m "Expand starter floors and require explicit transitions"
           git push origin main
-
-# retrigger after workflow registration
