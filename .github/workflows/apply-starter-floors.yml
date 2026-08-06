@@ -1,0 +1,34 @@
+name: Apply starter floor expansion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.automation/starter-floors/**'
+      - '.github/workflows/apply-starter-floors.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Assemble and verify patch
+        run: |
+          cat .automation/starter-floors/part-*.patch > /tmp/starter-floors.patch
+          git apply --check /tmp/starter-floors.patch
+          git apply /tmp/starter-floors.patch
+          node --experimental-strip-types --test tests/game-engine.test.mjs
+      - name: Commit verified changes
+        run: |
+          git config user.name "OpenAI Codex"
+          git config user.email "noreply@openai.com"
+          git rm -r .automation/starter-floors
+          git rm .github/workflows/apply-starter-floors.yml
+          git add app/game-engine.ts app/game-prototype.tsx app/globals.css tests/game-engine.test.mjs
+          git commit -m "Expand starter floors and require explicit transitions"
+          git push origin main
