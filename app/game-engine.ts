@@ -90,7 +90,7 @@ export type Attributes = {
 };
 
 export type Skills = Record<SkillBranch, number>;
-export type CombatDirective = "manual" | "mobileFire" | "splashGuard";
+export type CombatDirective = "adaptive" | "mobileFire" | "splashGuard";
 export type TrainingBuild = "mobileFire" | "splashGuard";
 
 export type InventoryEntry = {
@@ -121,13 +121,17 @@ export type Hero = {
   hp: number;
   level: number;
   xp: number;
+  totalXp: number;
   skillPoints: number;
+  generalPoints: number;
+  attributePoints: number;
   attributes: Attributes;
   skills: Skills;
   talents: string[];
   discoveredTalents: string[];
   activeSkillSlots: (ActiveSkillId | null)[];
   activeSkillCooldowns: Partial<Record<ActiveSkillId, number>>;
+  autocastDecisionCooldownMs: number;
   combatDirective: CombatDirective;
   braceUntilMs: number;
   silentUntilMs: number;
@@ -948,7 +952,9 @@ export function talentBonus(state: GameState, key: TalentBonusKey): number {
 
 export function canAllocateTalent(state: GameState, talentId: string): boolean {
   const node = TALENT_BY_ID[talentId];
-  if (!node || state.hero.skillPoints < node.cost || hasTalent(state, talentId)) return false;
+  if (!node || hasTalent(state, talentId)) return false;
+  const availablePoints = node.scope === "core" ? state.hero.generalPoints : state.hero.skillPoints;
+  if (availablePoints < node.cost) return false;
   if (node.scope === "legendary") {
     return state.hero.discoveredTalents.includes(talentId);
   }
@@ -975,7 +981,8 @@ export function allocateTalent(state: GameState, talentId: string): GameState {
       ...state.hero,
       talents,
       skills,
-      skillPoints: state.hero.skillPoints - node.cost,
+      skillPoints: node.scope === "core" ? state.hero.skillPoints : state.hero.skillPoints - node.cost,
+      generalPoints: node.scope === "core" ? state.hero.generalPoints - node.cost : state.hero.generalPoints,
     },
   };
   next = { ...next, hero: { ...next.hero, hp: Math.min(maxHeroHp(next), next.hero.hp) } };
@@ -1008,17 +1015,28 @@ export function assignActiveSkill(
   };
 }
 
+export function combatDirectiveFor(state: GameState): CombatDirective {
+  if (talentBonus(state, "movingFire") >= 1 && talentBonus(state, "autoTarget") >= 1) {
+    return "mobileFire";
+  }
+  if (talentBonus(state, "splash") >= 0.2 || talentBonus(state, "tauntRadius") >= 3) {
+    return "splashGuard";
+  }
+  return "adaptive";
+}
+
 export function setCombatDirective(
   state: GameState,
-  combatDirective: CombatDirective,
+  _combatDirective: CombatDirective,
 ): GameState {
+  const combatDirective = combatDirectiveFor(state);
   return appendLog(
     { ...state, hero: { ...state.hero, combatDirective } },
     combatDirective === "mobileFire"
-      ? "Директива: мобильный огонь. Герой сам поддерживает цель, игрок управляет позицией."
+      ? "Архетип определён талантами: мобильный огонь."
       : combatDirective === "splashGuard"
-        ? "Директива: сбор пачки. Герой удерживает ближайшие цели площадными ударами."
-        : "Директива: ручное назначение целей.",
+        ? "Архетип определён талантами: силовой сбор пачки."
+        : "Архетип определён талантами: адаптивный автоконтур.",
   );
 }
 
@@ -1064,6 +1082,29 @@ export function effectiveAttribute(state: GameState, attribute: AttributeId): nu
     return total + value * conditionEffectiveness(entry);
   }, 0);
   return state.hero.attributes[attribute] + gearBonus;
+}
+
+export function allocateAttribute(state: GameState, attribute: AttributeId): GameState {
+  if (state.hero.attributePoints <= 0) return state;
+  const next = {
+    ...state,
+    hero: {
+      ...state.hero,
+      attributePoints: state.hero.attributePoints - 1,
+      attributes: {
+        ...state.hero.attributes,
+        [attribute]: state.hero.attributes[attribute] + 1,
+      },
+    },
+  };
+  const labels: Record<AttributeId, string> = {
+    body: "Тело",
+    reaction: "Реакция",
+    attention: "Внимание",
+    technique: "Техника",
+    will: "Воля",
+  };
+  return appendLog(next, `Базовый атрибут «${labels[attribute]}» повышен до ${next.hero.attributes[attribute]}.`);
 }
 
 export function effectiveInjury(state: GameState, injury: keyof Injuries): number {
@@ -1169,8 +1210,41 @@ export function heroAttackDamage(state: GameState): number {
   return Math.max(1, weapon.damage + branchBonus - effectiveInjury(state, "arm") - conditionPenalty);
 }
 
+export const MAX_HERO_LEVEL = 50;
+
+export function xpRequiredForLevel(level: number): number {
+  if (level >= MAX_HERO_LEVEL) return 0;
+  return Math.round(120 * level ** 1.42 + 80 * level);
+}
+
 export function xpToNextLevel(state: GameState): number {
-  return state.hero.level * 25;
+  return xpRequiredForLevel(state.hero.level);
+}
+
+function levelRewardType(level: number): "general" | "professional" {
+  return level <= 40 && level % 2 === 0 ? "general" : "professional";
+}
+
+function enemyRankForXp(enemy: Enemy): EnemyRank {
+  if (enemy.rank) return enemy.rank;
+  if (enemy.xpValue >= 24) return "elite";
+  if (enemy.xpValue >= 12) return "enhanced";
+  return "common";
+}
+
+export function enemyXpReward(state: GameState, enemy: Enemy): number {
+  const ratios: Record<EnemyRank, number> = {
+    common: 0.008,
+    enhanced: 0.018,
+    veteran: 0.03,
+    elite: 0.055,
+    boss: 0.18,
+  };
+  return Math.max(1, Math.round(xpRequiredForLevel(state.hero.level) * ratios[enemyRankForXp(enemy)]));
+}
+
+function questXpReward(state: GameState, share: number): number {
+  return Math.max(1, Math.round(xpRequiredForLevel(state.hero.level) * share));
 }
 
 function visibleRadius(state: GameState): number {
@@ -1753,7 +1827,7 @@ function skillDamage(
   if (hp <= 0) {
     next = dropEnemyLoot(next, enemy);
     next = registerPopulationCasualty(next, enemy);
-    next = awardXp(next, enemy.xpValue);
+    next = awardXp(next, enemyXpReward(next, enemy));
   }
   return next;
 }
@@ -1767,6 +1841,105 @@ function setSkillCooldown(state: GameState, skillId: ActiveSkillId): GameState {
         ...state.hero.activeSkillCooldowns,
         [skillId]: ACTIVE_SKILLS[skillId].cooldownMs,
       },
+    },
+  };
+}
+
+const AUTOCAST_PRIORITY: ActiveSkillId[] = [
+  "resonance-stabilize",
+  "bulwark-brace",
+  "stealth-muffle",
+  "force-execute",
+  "resonance-collapse",
+  "fire-burst",
+  "bulwark-counter",
+  "force-arc",
+  "fire-mark",
+  "engineer-designate",
+  "resonance-distort",
+  "force-charge",
+  "engineer-overclock",
+  "stealth-isolate",
+  "fire-relocate",
+  "bulwark-challenge",
+  "stealth-decoy",
+  "engineer-deploy",
+];
+
+export function autocastConditionLabel(skillId: ActiveSkillId): string {
+  return {
+    "force-charge": "видимая цель вне ближней дистанции",
+    "force-arc": "рядом не меньше двух противников",
+    "force-execute": "цель ниже 35% здоровья",
+    "fire-mark": "видимая цель ещё не отмечена",
+    "fire-burst": "отмеченная цель в дальности оружия",
+    "fire-relocate": "дальнобойному герою угрожают вблизи",
+    "stealth-muffle": "противники начали преследование",
+    "stealth-decoy": "героя ищут несколько противников",
+    "stealth-isolate": "есть активная приоритетная цель",
+    "bulwark-brace": "противник вошёл в ближний сектор",
+    "bulwark-challenge": "видны несколько угроз",
+    "bulwark-counter": "герой удерживает упор рядом с целью",
+    "engineer-deploy": "есть доступная цель для рембота",
+    "engineer-designate": "цель не имеет общей метки",
+    "engineer-overclock": "идёт бой, форсаж не активен",
+    "resonance-distort": "цель может принять резонанс",
+    "resonance-collapse": "на цели накоплено два резонанса",
+    "resonance-stabilize": "растёт заражение или рушится войд-зона",
+  }[skillId];
+}
+
+function canAutocastSkill(state: GameState, skillId: ActiveSkillId): boolean {
+  if ((state.hero.activeSkillCooldowns[skillId] ?? 0) > 0) return false;
+  const target = skillTarget(state);
+  const hero = state.hero.positions[state.zone];
+  const visible = state.enemies.filter((enemy) => enemyVisibleToHero(state, enemy));
+  const nearby = visible.filter((enemy) => distance(hero, enemy.position) <= 2.2);
+  const hunters = visible.filter((enemy) => ["hunting", "combat"].includes(enemy.mode));
+
+  if (skillId === "force-charge") return Boolean(target && weaponFor(state).category === "melee" && distance(hero, target.position) > 1.7 && distance(hero, target.position) <= 5.5);
+  if (skillId === "force-arc") return nearby.length >= 2;
+  if (skillId === "force-execute") return Boolean(target && distance(hero, target.position) <= 1.6 && target.hp <= target.maxHp * 0.35);
+  if (skillId === "fire-mark" || skillId === "engineer-designate") return Boolean(target && target.markedUntilMs <= state.worldTimeMs);
+  if (skillId === "fire-burst") return Boolean(target && target.markedUntilMs > state.worldTimeMs && distance(hero, target.position) <= heroAttackRange(state));
+  if (skillId === "fire-relocate") return Boolean(target && weaponFor(state).category === "ranged" && distance(hero, target.position) < 2.2);
+  if (skillId === "stealth-muffle") return hunters.length > 0 && state.hero.silentUntilMs <= state.worldTimeMs;
+  if (skillId === "stealth-decoy") return hunters.length >= 2;
+  if (skillId === "stealth-isolate") return Boolean(target && state.hero.isolatedUntilMs <= state.worldTimeMs);
+  if (skillId === "bulwark-brace") return nearby.length > 0 && state.hero.braceUntilMs <= state.worldTimeMs;
+  if (skillId === "bulwark-challenge") return visible.length >= 2 && hunters.length < visible.length;
+  if (skillId === "bulwark-counter") return nearby.length > 0 && state.hero.braceUntilMs > state.worldTimeMs;
+  if (skillId === "engineer-deploy") return Boolean(target && state.hero.droneCooldownMs > 350);
+  if (skillId === "engineer-overclock") return Boolean(target && state.hero.overclockUntilMs <= state.worldTimeMs);
+  if (skillId === "resonance-distort") return Boolean(target && target.resonanceStacks < 2 && state.hero.contamination < 80);
+  if (skillId === "resonance-collapse") return Boolean(target && target.resonanceStacks >= 2);
+  if (skillId === "resonance-stabilize") return state.hero.contamination >= 20 || (state.zone === "voidLab" && state.voidStabilityMs < VOID_STABILITY_MS * 0.6);
+  return false;
+}
+
+function tickAutocast(state: GameState): GameState {
+  if (state.hero.autocastDecisionCooldownMs > 0) return state;
+  const unlocked = new Set(unlockedActiveSkills(state));
+  const skillId = AUTOCAST_PRIORITY.find((candidate) => unlocked.has(candidate) && canAutocastSkill(state, candidate));
+  if (!skillId) {
+    return { ...state, hero: { ...state.hero, autocastDecisionCooldownMs: 180 } };
+  }
+  const originalSlots = state.hero.activeSkillSlots;
+  const staged: GameState = {
+    ...state,
+    hero: {
+      ...state.hero,
+      activeSkillSlots: [skillId, originalSlots[1] ?? null, originalSlots[2] ?? null, originalSlots[3] ?? null],
+    },
+  };
+  const activated = activateSkillSlot(staged, 0);
+  return {
+    ...activated,
+    hero: {
+      ...activated.hero,
+      activeSkillSlots: originalSlots,
+      autocastDecisionCooldownMs: 260,
+      combatDirective: combatDirectiveFor(activated),
     },
   };
 }
@@ -1918,6 +2091,7 @@ export function applyTrainingBuild(state: GameState, build: TrainingBuild): Game
       discoveredTalents: [...new Set([...state.hero.discoveredTalents, legendaryTalent])],
       skills: skillsFromTalents(branchIds),
       skillPoints: 4,
+      generalPoints: 2,
       combatDirective: build,
       activeSkillSlots: build === "mobileFire"
         ? ["fire-mark", "fire-burst", "fire-relocate", null]
@@ -2018,22 +2192,51 @@ function applyRescue(
   );
 }
 
-function awardXp(state: GameState, amount: number): GameState {
-  let xp = state.hero.xp + amount;
+export function awardXp(state: GameState, amount: number): GameState {
+  if (amount <= 0) return state;
+  let xp = state.hero.xp;
   let level = state.hero.level;
   let skillPoints = state.hero.skillPoints;
-  let leveled = false;
-  while (xp >= level * 25) {
-    xp -= level * 25;
+  let generalPoints = state.hero.generalPoints;
+  let attributePoints = state.hero.attributePoints;
+  const totalXp = state.hero.totalXp + amount;
+  let remaining = amount;
+  const rewards: string[] = [];
+
+  while (remaining > 0 && level < MAX_HERO_LEVEL) {
+    const required = xpRequiredForLevel(level);
+    const accepted = Math.min(remaining, required - xp);
+    xp += accepted;
+    remaining -= accepted;
+    if (xp < required) break;
+    xp = 0;
     level += 1;
-    skillPoints += 1;
-    leveled = true;
+    const rewardType = levelRewardType(level);
+    if (rewardType === "general") generalPoints += 1;
+    else skillPoints += 1;
+    rewards.push(rewardType === "general" ? "очко общего контура" : "очко профессионального контура");
+    if (level % 5 === 0) {
+      attributePoints += 1;
+      rewards.push("очко базового атрибута");
+    }
   }
+
+  if (level >= MAX_HERO_LEVEL) xp = 0;
   let next: GameState = {
     ...state,
-    hero: { ...state.hero, xp, level, skillPoints },
+    hero: {
+      ...state.hero,
+      xp,
+      totalXp,
+      level,
+      skillPoints,
+      generalPoints,
+      attributePoints,
+    },
   };
-  if (leveled) next = appendLog(next, `Квалификация повышена до уровня ${level}. Получено очко ветви.`);
+  if (rewards.length) {
+    next = appendLog(next, `Квалификация повышена до уровня ${level}: ${rewards.join(", ")}.`);
+  }
   return next;
 }
 
@@ -2221,8 +2424,9 @@ function heroAttackTick(state: GameState): GameState {
     };
     next = dropEnemyLoot(next, target);
     next = registerPopulationCasualty(next, target);
-    next = awardXp(next, target.xpValue);
-    return appendLog(next, `${target.name} выведен из строя. Получено ${target.xpValue} опыта.`);
+    next = awardXp(next, enemyXpReward(next, target));
+    const reward = enemyXpReward(state, target);
+    return appendLog(next, `${target.name} выведен из строя. Получено ${reward} опыта.`);
   }
   return appendLog(
     next,
@@ -2496,7 +2700,7 @@ function tickDrone(state: GameState): GameState {
   if (hp <= 0) {
     next = dropEnemyLoot(next, target);
     next = registerPopulationCasualty(next, target);
-    next = awardXp(next, target.xpValue);
+    next = awardXp(next, enemyXpReward(next, target));
     return appendLog(next, `Рембот Р-3 отключил цель «${target.name}».`);
   }
   return next;
@@ -2663,43 +2867,49 @@ export function interact(state: GameState): GameState {
   if (!target) return appendLog(state, "Рядом нет доступного объекта.");
   let next = state;
   if (state.zone === "floor556" && target.tile === "S") {
-    next = state.sensorFixed
-      ? appendLog(state, "Датчик СБ-04 работает в допустимом диапазоне.")
-      : appendLog(
-          { ...state, sensorFixed: true },
-          "Датчик СБ-04 восстановлен. Диспетчерская требует пройти в гермосектор.",
-        );
+    if (state.sensorFixed) {
+      next = appendLog(state, "Датчик СБ-04 работает в допустимом диапазоне.");
+    } else {
+      const reward = questXpReward(state, 0.08);
+      next = awardXp({ ...state, sensorFixed: true }, reward);
+      next = appendLog(next, `Датчик СБ-04 восстановлен. Полевая задача: +${reward} опыта. Диспетчерская требует пройти в гермосектор.`);
+    }
   } else if (state.zone === "floor556" && target.tile === "H") {
-    next = state.sensorFixed
-      ? appendLog({ ...state, missionComplete: true }, "Смена завершена. Герметичный сектор закрыт.")
-      : appendLog(state, "Гермодверь исправна, но директива ещё не выполнена.");
+    if (state.sensorFixed) {
+      const reward = questXpReward(state, 0.4);
+      next = awardXp(state, reward);
+      next = appendLog({ ...next, missionComplete: true }, `Смена завершена. Герметичный сектор закрыт. Операция: +${reward} опыта.`);
+    } else {
+      next = appendLog(state, "Гермодверь исправна, но директива ещё не выполнена.");
+    }
   } else if (state.zone === "floor556" && target.tile === "T") {
     next = appendLog(state, "Терминал: старая линия ВЖ-7 активна. В лаборатории числится производство катушек.");
   } else if (state.zone === "voidLab" && target.tile === "A") {
     if (state.artifactRecovered) {
       next = appendLog(state, "Артефактное гнездо пусто.");
     } else {
-      const recovered: GameState = {
+      const explorationReward = questXpReward(state, 0.12);
+      const recovered = awardXp({
         ...state,
         artifactRecovered: true,
         voidStabilityMs: Math.max(5000, state.voidStabilityMs - 9000),
-      };
+      }, explorationReward);
       const result = addInventoryItem(recovered, "reverseCoil");
       if (result.added) {
         const heartbeat = addInventoryItem(result.state, "elevatorHeartbeat");
         next = heartbeat.added
           ? appendLog(
               heartbeat.state,
-              "Получены Катушка обратного шага и легендарное «Сердцебиение лифта». Стабильность войд-зоны резко снизилась.",
+              `Получены Катушка обратного шага и легендарное «Сердцебиение лифта». Исследование: +${explorationReward} опыта. Стабильность войд-зоны резко снизилась.`,
             )
           : appendLog(
               spawnGroundLoot(result.state, state.zone, target.point, "elevatorHeartbeat"),
-              "Катушка получена; легендарный артефакт остался на полу из-за перегруза.",
+              `Катушка получена; легендарный артефакт остался на полу из-за перегруза. Исследование: +${explorationReward} опыта.`,
             );
       } else {
         next = spawnGroundLoot(recovered, state.zone, target.point, "reverseCoil");
         next = spawnGroundLoot(next, state.zone, target.point, "elevatorHeartbeat");
-        next = appendLog(next, "Оба артефакта остались на полу: рюкзак перегружен.");
+        next = appendLog(next, `Оба артефакта остались на полу: рюкзак перегружен. Исследование: +${explorationReward} опыта.`);
       }
     }
   } else if (state.zone === "voidLab" && target.tile === "P") {
@@ -2768,7 +2978,10 @@ export function createInitialState(): GameState {
       hp: 8,
       level: 1,
       xp: 0,
-      skillPoints: 18,
+      totalXp: 0,
+      skillPoints: 1,
+      generalPoints: 1,
+      attributePoints: 0,
       attributes: {
         body: 2,
         reaction: 3,
@@ -2788,7 +3001,8 @@ export function createInitialState(): GameState {
       discoveredTalents: [],
       activeSkillSlots: [null, null, null, null],
       activeSkillCooldowns: {},
-      combatDirective: "manual",
+      autocastDecisionCooldownMs: 0,
+      combatDirective: "adaptive",
       braceUntilMs: 0,
       silentUntilMs: 0,
       overclockUntilMs: 0,
@@ -2843,7 +3057,7 @@ export function createInitialState(): GameState {
     populationCycle: 0,
     log: [
       "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
-      "Учебный резерв этапа 4B: 18 очков для проверки чистых и гибридных сборок.",
+      "Квалификация: уровень 1. Доступно по одному очку общего и профессионального контуров.",
       "Директива: проверить датчик СБ-04 и укрыться в герметичном секторе.",
       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
     ],
@@ -2870,6 +3084,7 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
       stepNoiseCooldownMs: Math.max(0, state.hero.stepNoiseCooldownMs - deltaMs),
       droneCooldownMs: Math.max(0, state.hero.droneCooldownMs - deltaMs),
       artifactCooldownMs: Math.max(0, state.hero.artifactCooldownMs - deltaMs),
+      autocastDecisionCooldownMs: Math.max(0, state.hero.autocastDecisionCooldownMs - deltaMs),
       activeSkillCooldowns: Object.fromEntries(
         Object.entries(state.hero.activeSkillCooldowns).map(([skillId, cooldown]) => [
           skillId,
@@ -2899,10 +3114,11 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
   }
 
   const heroPosition = next.hero.positions[next.zone];
+  const combatDirective = combatDirectiveFor(next);
   if (
     next.hero.attackTargetId &&
     next.hero.repathCooldownMs <= 0 &&
-    next.hero.combatDirective !== "mobileFire"
+    combatDirective !== "mobileFire"
   ) {
     const target = enemyById(next, next.hero.attackTargetId);
     if (target && target.zone === next.zone) {
@@ -2959,13 +3175,17 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
   next = handlePortalEntry(next);
   next = reveal(next);
 
-  if (!next.hero.attackTargetId && next.hero.combatDirective !== "manual") {
+  if (!next.hero.attackTargetId) {
     const heroNow = next.hero.positions[next.zone];
     const nearest = next.enemies
-      .filter((enemy) => enemyVisibleToHero(next, enemy))
+      .filter(
+        (enemy) =>
+          enemyVisibleToHero(next, enemy) &&
+          ["hunting", "combat"].includes(enemy.mode),
+      )
       .sort((a, b) => distance(heroNow, a.position) - distance(heroNow, b.position))[0];
     if (nearest) {
-      if (next.hero.combatDirective === "mobileFire") {
+      if (combatDirective === "mobileFire") {
         if (
           weaponFor(next).category === "ranged" &&
           distance(heroNow, nearest.position) <= heroAttackRange(next) &&
@@ -2978,6 +3198,8 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
       }
     }
   }
+
+  next = tickAutocast(next);
 
   next = {
     ...next,

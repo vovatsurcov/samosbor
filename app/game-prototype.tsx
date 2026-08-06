@@ -11,12 +11,12 @@ import {
 import {
   ACTIVE_SKILLS,
   type ActiveSkillId,
-  activateSkillSlot,
+  type AttributeId,
+  autocastConditionLabel,
   activateEquippedArtifact,
+  allocateAttribute,
   allocateTalent,
-  applyTrainingBuild,
   applyFirstAid,
-  assignActiveSkill,
   BASE_TALENT_COUNT,
   branchTalentPoints,
   canAllocateTalent,
@@ -25,6 +25,7 @@ import {
   commandAttack,
   commandAttackNearest,
   commandMove,
+  combatDirectiveFor,
   consumeInventoryItem,
   createInitialState,
   distance,
@@ -65,7 +66,6 @@ import {
   SKILL_NAMES,
   SkillBranch,
   SLOT_NAMES,
-  setCombatDirective,
   TALENT_NODES,
   tickGame,
   tileAt,
@@ -75,11 +75,19 @@ import {
   xpToNextLevel,
 } from "./game-engine";
 
-const SAVE_KEY = "samosbor-shift-556-stage-4b";
+const SAVE_KEY = "samosbor-shift-556-stage-5-progression";
 const TILE_WIDTH = 82;
 const TILE_HEIGHT = 41;
 const DESKTOP_FRAME_INTERVAL = 16;
 const TV_FRAME_INTERVAL = 33;
+
+const ATTRIBUTE_OPTIONS: { id: AttributeId; label: string }[] = [
+  { id: "body", label: "Тело" },
+  { id: "reaction", label: "Реакция" },
+  { id: "attention", label: "Внимание" },
+  { id: "technique", label: "Техника" },
+  { id: "will", label: "Воля" },
+];
 
 const TILE_LABELS: Record<string, string> = {
   ".": "Проход",
@@ -239,7 +247,6 @@ export default function GamePrototype() {
   const [saveLoaded, setSaveLoaded] = useState(false);
   const [characterOpen, setCharacterOpen] = useState(false);
   const [talentView, setTalentView] = useState<TalentView>("fire");
-  const [selectedSkillSlot, setSelectedSkillSlot] = useState(0);
   const [tvMode, setTvMode] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [lastInput, setLastInput] = useState("—");
@@ -273,6 +280,9 @@ export default function GamePrototype() {
       ITEMS[a.itemId].name.localeCompare(ITEMS[b.itemId].name, "ru");
   });
   const unlockedSkills = unlockedActiveSkills(state);
+  const combatDirective = combatDirectiveFor(state);
+  const experienceRequired = xpToNextLevel(state);
+  const experienceProgress = experienceRequired > 0 ? (state.hero.xp / experienceRequired) * 100 : 100;
   const selectedTalents = TALENT_NODES.filter((node) => node.scope === talentView);
   const branchPoints = Object.fromEntries(
     SKILL_BRANCHES.map((branch) => [branch, branchTalentPoints(state, branch)]),
@@ -393,15 +403,6 @@ export default function GamePrototype() {
     setState((current) => activateEquippedArtifact(current));
   }, []);
 
-  const activeSkillNow = useCallback((slot: number) => {
-    setState((current) => activateSkillSlot(current, slot));
-  }, []);
-
-  const loadTrainingBuild = useCallback((build: "mobileFire" | "splashGuard") => {
-    setState((current) => applyTrainingBuild(current, build));
-    setTalentView(build === "mobileFire" ? "fire" : "force");
-  }, []);
-
   const cancelAction = useCallback(() => {
     setState((current) => cancelHeroAction(current));
   }, []);
@@ -474,9 +475,6 @@ export default function GamePrototype() {
       if (key === "1" || key === "f") {
         event.preventDefault();
         attackNearest();
-      } else if (["2", "3", "4", "5"].includes(key)) {
-        event.preventDefault();
-        activeSkillNow(Number(key) - 2);
       } else if (key === "e") {
         event.preventDefault();
         interactNow();
@@ -500,13 +498,8 @@ export default function GamePrototype() {
                   : null;
         if (direction) {
           event.preventDefault();
-          if (okHeldRef.current && key.startsWith("arrow")) {
-            okChordRef.current = true;
-            const slot = key === "arrowup" ? 0 : key === "arrowright" ? 1 : key === "arrowdown" ? 2 : 3;
-            activeSkillNow(slot);
-          } else {
-            moveTo({ x: current.x + direction.x, y: current.y + direction.y });
-          }
+          if (okHeldRef.current && key.startsWith("arrow")) okChordRef.current = true;
+          moveTo({ x: current.x + direction.x, y: current.y + direction.y });
         }
       }
     };
@@ -528,7 +521,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [activeSkillNow, artifactNow, attackNearest, cancelAction, characterOpen, diagnosticsOpen, firstAidNow, interactNow, moveTo]);
+  }, [artifactNow, attackNearest, cancelAction, characterOpen, diagnosticsOpen, firstAidNow, interactNow, moveTo]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -547,8 +540,7 @@ export default function GamePrototype() {
       gamepadLockRef.current = performance.now() + 130;
       const index = fresh[0];
       setLastInput(`Gamepad · кнопка ${index}`);
-      if (index >= 4 && index <= 7) activeSkillNow(index - 4);
-      else if (index === 0) attackNearest();
+      if (index === 0) attackNearest();
       else if (index === 1) cancelAction();
       else if (index === 2) interactNow();
       else if (index === 3) setCharacterOpen((open) => !open);
@@ -559,7 +551,7 @@ export default function GamePrototype() {
       }
     }, 80);
     return () => window.clearInterval(timer);
-  }, [activeSkillNow, attackNearest, cancelAction, characterOpen, diagnosticsOpen, interactNow, moveTo]);
+  }, [attackNearest, cancelAction, characterOpen, diagnosticsOpen, interactNow, moveTo]);
 
   const tiles = useMemo(() => {
     const result: Point[] = [];
@@ -848,7 +840,7 @@ export default function GamePrototype() {
           <section className="panel-card objective-card">
             <p className="panel-label">ТЕКУЩАЯ ДИРЕКТИВА</p>
             <h2>{objectiveFor(state)}</h2>
-            <p>Перемещайтесь кликом, касанием, D-pad или стиком. Боевая директива: <strong>{state.hero.combatDirective === "mobileFire" ? "мобильный огонь" : state.hero.combatDirective === "splashGuard" ? "сбор пачки" : "ручная цель"}</strong>.</p>
+            <p>Перемещайтесь кликом, касанием, D-pad или стиком. Текущий автоконтур: <strong>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "силовой периметр" : "адаптивная ротация"}</strong>.</p>
           </section>
 
           <section className="panel-card population-card">
@@ -875,8 +867,9 @@ export default function GamePrototype() {
             </div>
             <div className="stat-row"><span>Здоровье</span><strong>{state.hero.hp} / {heroMaxHp}</strong></div>
             <div className="meter health-meter"><i style={{ width: `${(state.hero.hp / heroMaxHp) * 100}%` }} /></div>
-            <div className="stat-row compact"><span>Уровень</span><strong>{state.hero.level}</strong></div>
-            <div className="meter xp-meter"><i style={{ width: `${(state.hero.xp / xpToNextLevel(state)) * 100}%` }} /></div>
+            <div className="stat-row compact"><span>Квалификация</span><strong>{state.hero.level} / 50</strong></div>
+            <div className="meter xp-meter"><i style={{ width: `${experienceProgress}%` }} /></div>
+            <div className="xp-caption"><span>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} опыта` : "Основной предел достигнут"}</span><strong>{state.hero.generalPoints} общ. · {state.hero.skillPoints} проф.</strong></div>
             <div className="stat-row compact"><span>Оружие</span><strong>{weapon.shortName} · {weapon.range.toFixed(1)} кл.</strong></div>
             <div className="stat-row compact"><span>Защита</span><strong>{heroDefense(state)}</strong></div>
             <div className="survival-stats">
@@ -939,25 +932,11 @@ export default function GamePrototype() {
             <span className="ability-key">1</span><strong>{weapon.shortName}</strong><small>{heroAttackDamage(state)} урона · {weapon.range.toFixed(1)} кл.</small>
             <i className="cooldown-mask" style={{ height: `${cooldownPercent}%` }} />
           </button>
-          {state.hero.activeSkillSlots.map((skillId, slot) => {
-            const skill = skillId ? ACTIVE_SKILLS[skillId] : null;
-            const cooldown = skillId ? state.hero.activeSkillCooldowns[skillId] ?? 0 : 0;
-            const cooldownHeight = skill ? Math.min(100, (cooldown / skill.cooldownMs) * 100) : 0;
-            return (
-              <button
-                key={`active-${slot}`}
-                type="button"
-                className={`ability active-skill branch-${skill?.branch ?? "empty"}`}
-                onClick={() => activeSkillNow(slot)}
-                disabled={!skill}
-              >
-                <span className="ability-key">{slot + 2}</span>
-                <strong>{skill?.shortName ?? `Ячейка ${slot + 1}`}</strong>
-                <small>{skill?.role ?? "Назначьте навык"}</small>
-                <i className="cooldown-mask" style={{ height: `${cooldownHeight}%` }} />
-              </button>
-            );
-          })}
+          <button type="button" className="ability autocast-ability" onClick={() => setCharacterOpen(true)}>
+            <span className="ability-key">AUTO</span>
+            <strong>{unlockedSkills.length} протоколов</strong>
+            <small>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "сбор пачки" : "адаптивная ротация"}</small>
+          </button>
           <button type="button" className="ability" onClick={interactNow}><span className="ability-key">E</span><strong>Использовать</strong><small>{interactionHint(state)}</small></button>
           <button type="button" className="ability aid-ability" onClick={firstAidNow} disabled={!bandageCount}><span className="ability-key">Q</span><strong>Перевязка ×{bandageCount}</strong><small>2 ОЗ · стабилизация травмы</small></button>
           <button type="button" className="ability artifact-ability" onClick={artifactNow} disabled={!artifact}><span className="ability-key">R</span><strong>{artifact ? ITEMS[artifact.itemId].shortName : "Артефакт"}</strong><small>{artifact ? ITEMS[artifact.itemId].useLabel : "Не экипирован"}</small><i className="cooldown-mask artifact-cooldown" style={{ height: `${Math.min(100, (state.hero.artifactCooldownMs / 30000) * 100)}%` }} /></button>
@@ -1044,45 +1023,50 @@ export default function GamePrototype() {
 
                 <p className="panel-label attributes-label">ХАРАКТЕРИСТИКИ</p>
                 <div className="attribute-row">
-                  <span><small>Тело</small><strong>{effectiveAttribute(state, "body")}</strong><em>база {state.hero.attributes.body}</em></span>
-                  <span><small>Реакция</small><strong>{effectiveAttribute(state, "reaction")}</strong><em>база {state.hero.attributes.reaction}</em></span>
-                  <span><small>Внимание</small><strong>{effectiveAttribute(state, "attention")}</strong><em>база {state.hero.attributes.attention}</em></span>
-                  <span><small>Техника</small><strong>{effectiveAttribute(state, "technique")}</strong><em>база {state.hero.attributes.technique}</em></span>
-                  <span><small>Воля</small><strong>{effectiveAttribute(state, "will")}</strong><em>база {state.hero.attributes.will}</em></span>
+                  {ATTRIBUTE_OPTIONS.map(({ id, label }) => (
+                    <span key={id}>
+                      <small>{label}</small>
+                      <strong>{effectiveAttribute(state, id)}</strong>
+                      <em>база {state.hero.attributes[id]}</em>
+                      <button
+                        type="button"
+                        disabled={state.hero.attributePoints <= 0}
+                        onClick={() => setState((current) => allocateAttribute(current, id))}
+                        aria-label={`Повысить атрибут ${label}`}
+                      >
+                        +
+                      </button>
+                    </span>
+                  ))}
                 </div>
               </section>
 
               <section className="skills-section">
-                <div className="skills-heading">
+                <div className="skills-heading progression-heading">
                   <div>
-                    <p className="panel-label">ДЕРЕВО ДОПУСКОВ · 121 БАЗОВЫЙ + 4 ВНЕШНИХ</p>
+                    <p className="panel-label">КОНСТРУКТОР АРХЕТИПА · 121 БАЗОВЫЙ + 4 ВНЕШНИХ</p>
                     <h3>{classTitle}</h3>
-                    <p>Основные очки уходят в пассивы. Активные навыки открываются на 1/4/8 очках ветви; гибридный допуск требует 8+8.</p>
+                    <p>Классов нет. Таланты определяют оружие, дистанцию, защиту, устройства и автоматическую боевую ротацию.</p>
                   </div>
-                  <strong>{state.hero.skillPoints} очк.</strong>
+                  <div className="point-wallets">
+                    <span><small>Общий контур</small><strong>{state.hero.generalPoints}</strong></span>
+                    <span><small>Профессиональный</small><strong>{state.hero.skillPoints}</strong></span>
+                    <span><small>Атрибуты</small><strong>{state.hero.attributePoints}</strong></span>
+                  </div>
                 </div>
 
-                <div className="training-builds">
-                  <div><p className="panel-label">ИСПЫТАТЕЛЬНЫЕ СБОРКИ ДЛЯ ПУЛЬТА</p><span>Загружают готовый боевой стенд и легендарный внешний узел.</span></div>
-                  <button type="button" onClick={() => loadTrainingBuild("mobileFire")}>Стрелок на муве<small>кайт · головокружение · срыв кастов</small></button>
-                  <button type="button" onClick={() => loadTrainingBuild("splashGuard")}>Воин-сплэшер<small>сбор пачки · провокация · урон по площади</small></button>
-                </div>
-
-                <div className="directive-selector" aria-label="Боевая директива">
-                  {([
-                    ["manual", "Ручная цель", "Все решения игрока"],
-                    ["mobileFire", "Мобильный огонь", "Автоцель, игрок кайтит"],
-                    ["splashGuard", "Сбор пачки", "Автоцель ближнего боя"],
-                  ] as const).map(([directive, label, note]) => (
-                    <button
-                      key={directive}
-                      type="button"
-                      className={state.hero.combatDirective === directive ? "active" : ""}
-                      onClick={() => setState((current) => setCombatDirective(current, directive))}
-                    >
-                      <strong>{label}</strong><small>{note}</small>
-                    </button>
-                  ))}
+                <div className="progression-overview">
+                  <div className="qualification-ring"><strong>{state.hero.level}</strong><span>уровень</span></div>
+                  <div className="qualification-track">
+                    <div><span>Стажёр</span><span>Специалист</span><span>Доктрина</span><span>Главный</span><span>50</span></div>
+                    <i><b style={{ width: `${Math.min(100, (state.hero.level / 50) * 100)}%` }} /></i>
+                    <small>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} до следующей квалификации` : "Основная квалификация завершена"}</small>
+                  </div>
+                  <div className="archetype-readout">
+                    <small>Автоконтур</small>
+                    <strong>{combatDirective === "mobileFire" ? "Мобильный огонь" : combatDirective === "splashGuard" ? "Силовой периметр" : "Адаптивный"}</strong>
+                    <span>{unlockedSkills.length} автоматических протоколов</span>
+                  </div>
                 </div>
 
                 <nav className="talent-tabs" aria-label="Разделы дерева">
@@ -1098,9 +1082,11 @@ export default function GamePrototype() {
 
                 {SKILL_BRANCHES.includes(talentView as SkillBranch) ? (
                   <div className="branch-summary">
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 4 ? "reached" : ""}`}>I · 4</span>
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 8 ? "reached" : ""}`}>II · 8</span>
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 14 ? "reached" : ""}`}>III · 14</span>
+                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 1 ? "reached" : ""}`}>Навык · 1</span>
+                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 4 ? "reached" : ""}`}>Связка · 4</span>
+                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 8 ? "reached" : ""}`}>Гибрид · 8</span>
+                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 12 ? "reached" : ""}`}>Доктрина · 12</span>
+                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 16 ? "reached" : ""}`}>Ключ · 16</span>
                     <p>{SKILL_DESCRIPTIONS[talentView as SkillBranch]}</p>
                   </div>
                 ) : null}
@@ -1135,35 +1121,22 @@ export default function GamePrototype() {
                   })}
                 </div>
 
-                <div className="active-loadout-editor">
-                  <div className="active-loadout-heading">
-                    <div><p className="panel-label">АКТИВНАЯ РОТАЦИЯ</p><h3>Четыре ячейки</h3><p>Любой навык работает отдельно и имеет межветочные теги. Выберите ячейку, затем назначьте открытый навык.</p></div>
+                <div className="autocast-protocols">
+                  <div className="autocast-heading">
+                    <div><p className="panel-label">АВТОМАТИЧЕСКАЯ РОТАЦИЯ</p><h3>Все открытые навыки работают сами</h3><p>Игрок управляет позицией, целью и риском. Приоритеты и условия применения рождаются из вложенных талантов, без отдельного выбора «ручной» или «автоматической» сборки.</p></div>
+                    <strong>{unlockedSkills.length} / {Object.keys(ACTIVE_SKILLS).length}</strong>
                   </div>
-                  <div className="active-slot-selector">
-                    {state.hero.activeSkillSlots.map((skillId, slot) => (
-                      <button key={slot} type="button" className={selectedSkillSlot === slot ? "active" : ""} onClick={() => setSelectedSkillSlot(slot)}>
-                        <span>{slot + 2}</span><strong>{skillId ? ACTIVE_SKILLS[skillId].shortName : "Пусто"}</strong><small>ячейка {slot + 1}</small>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="active-skill-catalog">
+                  <div className="autocast-catalog">
                     {(Object.keys(ACTIVE_SKILLS) as ActiveSkillId[]).map((skillId) => {
                       const skill = ACTIVE_SKILLS[skillId];
                       const unlocked = unlockedSkills.includes(skillId);
-                      const assigned = state.hero.activeSkillSlots.includes(skillId);
+                      const cooldown = state.hero.activeSkillCooldowns[skillId] ?? 0;
                       return (
-                        <button
-                          key={skillId}
-                          type="button"
-                          className={`skill-choice branch-${skill.branch} ${assigned ? "assigned" : ""}`}
-                          disabled={!unlocked}
-                          onClick={() => setState((current) => assignActiveSkill(current, selectedSkillSlot, skillId))}
-                        >
-                          <span>{branchGlyph(skill.branch)}</span>
-                          <strong>{skill.name}</strong>
-                          <small>{unlocked ? `${skill.role} · ${(skill.cooldownMs / 1000).toFixed(1)} с` : `нужно ${skill.unlockAt} очк. ${SKILL_NAMES[skill.branch]}`}</small>
-                          <em>{skill.description}</em>
-                        </button>
+                        <article key={skillId} className={`autocast-card branch-${skill.branch} ${unlocked ? "unlocked" : "locked"}`}>
+                          <span className="autocast-glyph">{branchGlyph(skill.branch)}</span>
+                          <div><small>{SKILL_NAMES[skill.branch]} · {skill.role}</small><h4>{skill.name}</h4><p>{autocastConditionLabel(skillId)}</p></div>
+                          <em>{unlocked ? (cooldown > 0 ? `${(cooldown / 1000).toFixed(1)} с` : "ГОТОВ") : `${skill.unlockAt} очк.`}</em>
+                        </article>
                       );
                     })}
                   </div>
@@ -1202,13 +1175,13 @@ export default function GamePrototype() {
               <section>
                 <p className="panel-label">ГЕЙМПАД</p>
                 <strong>{typeof navigator !== "undefined" && navigator.getGamepads?.().some((pad) => pad?.connected) ? "Подключён" : "Не обнаружен"}</strong>
-                <span>A — атака, X — действие, плечи — четыре навыка.</span>
+                <span>A — выбрать ближайшую угрозу, X — действие. Навыки применяются автоконтуром.</span>
               </section>
             </div>
             <div className="remote-map">
               <div><kbd>↑ ↓ ← →</kbd><span>Движение героя; в меню — пространственный фокус</span></div>
               <div><kbd>OK</kbd><span>Контекстное действие или атака ближайшей цели</span></div>
-              <div><kbd>OK + направление</kbd><span>Четыре активных навыка</span></div>
+              <div><kbd>OK + направление</kbd><span>Движение с удержанием выбранной цели; автокаст продолжает ротацию</span></div>
               <div><kbd>Назад</kbd><span>Закрыть окно или снять цель</span></div>
             </div>
             <footer><button type="button" onClick={() => { setDiagnosticsOpen(false); setCharacterOpen(true); }}>Проверить фокус в дереве</button><button type="button" className="close-main" onClick={() => setDiagnosticsOpen(false)}>Вернуться в игру</button></footer>

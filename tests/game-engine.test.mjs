@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   ACTIVE_SKILLS,
   activateSkillSlot,
+  allocateAttribute,
+  awardXp,
   activateEquippedArtifact,
   allocateTalent,
   allocateSkill,
@@ -28,12 +30,14 @@ import {
   heroMoveSpeed,
   interact,
   inventoryWeight,
+  MAX_HERO_LEVEL,
   populationPressureForZone,
   populationsForZone,
   tickGame,
   TALENT_NODES,
   VOID_MAP,
   WEAPONS,
+  xpRequiredForLevel,
 } from "../app/game-engine.ts";
 
 function heroAt(state, point) {
@@ -167,7 +171,8 @@ test("смена экипировки немедленно меняет рабо
 });
 
 test("инженерная ветвь открывает рембота и активные протоколы по порогам", () => {
-  const state = createInitialState();
+  const initial = createInitialState();
+  const state = { ...initial, hero: { ...initial.hero, skillPoints: 18 } };
   const firstRank = allocateSkill(state, "engineer");
   const secondRank = allocateSkill(firstRank, "engineer");
 
@@ -326,6 +331,54 @@ test("побеждённый противник оставляет физиче�
   assert.ok(defeated.groundLoot.some((loot) => loot.itemId === "coilPart"));
 });
 
+test("уровни 1-50 используют новую кривую опыта и раздельные очки развития", () => {
+  let state = createInitialState();
+  assert.equal(xpRequiredForLevel(1), 200);
+  assert.ok(xpRequiredForLevel(20) > xpRequiredForLevel(10));
+
+  state = awardXp(state, xpRequiredForLevel(1));
+  assert.equal(state.hero.level, 2);
+  assert.equal(state.hero.generalPoints, 2);
+  assert.equal(state.hero.skillPoints, 1);
+
+  state = awardXp(state, xpRequiredForLevel(2));
+  assert.equal(state.hero.level, 3);
+  assert.equal(state.hero.skillPoints, 2);
+
+  let capped = createInitialState();
+  for (let level = 1; level < MAX_HERO_LEVEL; level += 1) {
+    capped = awardXp(capped, xpRequiredForLevel(capped.hero.level));
+  }
+  assert.equal(capped.hero.level, MAX_HERO_LEVEL);
+  assert.equal(capped.hero.xp, 0);
+});
+
+test("очко базового атрибута распределяется из интерфейсного бюджета", () => {
+  const initial = createInitialState();
+  const state = { ...initial, hero: { ...initial.hero, attributePoints: 1 } };
+  const upgraded = allocateAttribute(state, "technique");
+
+  assert.equal(upgraded.hero.attributes.technique, state.hero.attributes.technique + 1);
+  assert.equal(upgraded.hero.attributePoints, 0);
+  assert.match(upgraded.log[0], /Техника/);
+});
+
+test("полевая задача и завершение операции выдают опыт только один раз", () => {
+  let state = heroAt(createInitialState(), { x: 10, y: 3 });
+  const before = state.hero.totalXp;
+  state = interact(state);
+  assert.equal(state.sensorFixed, true);
+  assert.ok(state.hero.totalXp > before);
+  const afterSensor = state.hero.totalXp;
+  state = interact(state);
+  assert.equal(state.hero.totalXp, afterSensor);
+
+  state = heroAt(state, { x: 10, y: 6 });
+  state = interact(state);
+  assert.equal(state.missionComplete, true);
+  assert.ok(state.hero.totalXp > afterSensor);
+});
+
 test("дерево содержит 121 базовый узел и четыре внешних легендарных", () => {
   assert.equal(BASE_TALENT_COUNT, 121);
   assert.equal(TALENT_NODES.length, 125);
@@ -337,7 +390,8 @@ test("дерево содержит 121 базовый узел и четыре 
 });
 
 test("совмещённый допуск требует 8+8, но не привязывается к конкретным навыкам", () => {
-  let state = createInitialState();
+  const initial = createInitialState();
+  let state = { ...initial, hero: { ...initial.hero, skillPoints: 20 } };
   for (let index = 0; index < 8; index += 1) state = allocateSkill(state, "fire");
   for (let index = 0; index < 8; index += 1) state = allocateSkill(state, "engineer");
   assert.equal(branchTalentPoints(state, "fire"), 8);
@@ -391,6 +445,40 @@ test("силовой сплэшер поражает соседнюю цель �
   const secondary = state.enemies.find((enemy) => enemy.id === "stalker-17");
   assert.ok(secondary.hp < 100);
   assert.ok(["hunting", "combat"].includes(secondary.mode));
+});
+
+test("все открытые навыки участвуют в автокасте без назначения на панель", () => {
+  let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 5, y: 7 });
+  state = {
+    ...state,
+    hero: {
+      ...state.hero,
+      activeSkillSlots: [null, null, null, null],
+      attackTargetId: "guard-kl4",
+      attackCooldownMs: 99999,
+      autocastDecisionCooldownMs: 0,
+    },
+    enemies: state.enemies.map((enemy) =>
+      enemy.id === "guard-kl4"
+        ? {
+            ...enemy,
+            position: { x: 6, y: 7 },
+            hp: 40,
+            maxHp: 40,
+            armor: -10,
+            mode: "combat",
+            markedUntilMs: 0,
+            attackCooldownMs: 99999,
+          }
+        : enemy,
+    ),
+  };
+
+  state = tickGame(state, 100);
+
+  assert.ok(state.enemies.find((enemy) => enemy.id === "guard-kl4").markedUntilMs > 0);
+  assert.deepEqual(state.hero.activeSkillSlots, [null, null, null, null]);
+  assert.match(state.log.join("\n"), /Применено: Огневая метка/);
 });
 
 test("огневая ротация связывает метку и точную серию через общие состояния", () => {
