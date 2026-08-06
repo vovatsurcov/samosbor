@@ -15,13 +15,18 @@ import {
   branchTalentPoints,
   canAllocateTalent,
   carryCapacity,
+  cityPopulationCounts,
   commandAttack,
+  commandCollectLoot,
+  commandInteractAt,
   commandMove,
+  commandTalkToNpc,
   createInitialState,
   dropEnemyLoot,
   effectiveInjury,
   equipItem,
   equipWeapon,
+  FLOOR_550_MAP,
   FLOOR_554_MAP,
   FLOOR_555_MAP,
   FLOOR_MAP,
@@ -33,10 +38,12 @@ import {
   interact,
   ITEMS,
   inventoryWeight,
+  isSamosborProtectedAt,
   MAX_HERO_LEVEL,
   populationPressureForZone,
   populationsForZone,
   tickGame,
+  tileAt,
   TALENT_NODES,
   VOID_MAP,
   WEAPONS,
@@ -59,6 +66,9 @@ function heroAt(state, point) {
 }
 
 test("карты прямоугольные, а базовое и легендарное оружие задают разные дистанции боя", () => {
+  assert.equal(new Set(FLOOR_550_MAP.rows.map((row) => row.length)).size, 1);
+  assert.equal(FLOOR_550_MAP.rows.length, 36);
+  assert.equal(FLOOR_550_MAP.rows[0].length, 56);
   assert.equal(new Set(FLOOR_554_MAP.rows.map((row) => row.length)).size, 1);
   assert.equal(FLOOR_554_MAP.rows.length, 36);
   assert.equal(FLOOR_554_MAP.rows[0].length, 56);
@@ -73,6 +83,59 @@ test("карты прямоугольные, а базовое и легенда
   assert.ok(WEAPONS.servicePistol.range < WEAPONS.coilRifle.range);
 });
 
+
+
+
+test("каждый текущий этаж содержит настоящую гермокомнату за гермодверью", () => {
+  for (const map of [FLOOR_550_MAP, FLOOR_554_MAP, FLOOR_555_MAP, FLOOR_MAP, FLOOR_557_MAP]) {
+    const joined = map.rows.join("");
+    assert.equal([...joined].filter((tile) => tile === "H").length, 1, map.name);
+    assert.ok([...joined].filter((tile) => tile === "g").length >= 16, map.name);
+  }
+  assert.equal(VOID_MAP.rows.join("").includes("g"), false);
+});
+
+test("гермокомната блокирует существ, линию огня и восстанавливает героя", () => {
+  let state = createInitialState();
+  state = {
+    ...heroAt(state, { x: 30, y: 15 }),
+    worldTimeMs: 4900,
+    hero: {
+      ...heroAt(state, { x: 30, y: 15 }).hero,
+      hp: 3,
+      stress: 50,
+    },
+    enemies: state.enemies.map((enemy) =>
+      enemy.id === "556-d1"
+        ? {
+            ...enemy,
+            position: { x: 30, y: 17 },
+            home: { x: 30, y: 17 },
+            path: [{ x: 30, y: 16 }, { x: 30, y: 15 }],
+            mode: "combat",
+            attackRange: 3,
+            accuracy: 100,
+            damage: 20,
+            attackCooldownMs: 0,
+            thinkCooldownMs: 99999,
+          }
+        : enemy,
+    ),
+  };
+
+  assert.equal(tileAt(state, { x: 30, y: 15 }), "g");
+  assert.equal(isSamosborProtectedAt(state, "floor556", { x: 30, y: 15 }), true);
+  assert.equal(isSamosborProtectedAt(state, "floor556", { x: 20, y: 17 }), false);
+  assert.equal(isSamosborProtectedAt(state, "floor554", { x: 20, y: 20 }), true);
+  assert.equal(hasLineOfSight(state, { x: 30, y: 17 }, { x: 30, y: 15 }), false);
+
+  const recovered = tickGame(state, 100);
+  const blockedEnemy = recovered.enemies.find((enemy) => enemy.id === "556-d1");
+  assert.equal(recovered.hero.hp, 4);
+  assert.ok(recovered.hero.stress < 50);
+  assert.deepEqual(blockedEnemy.position, { x: 30, y: 17 });
+  assert.equal(blockedEnemy.path.length, 0);
+});
 
 test("переходы вверх и вниз связывают этажи и сохраняют позиции", () => {
   let state = heroAt(createInitialState(), { x: 32, y: 2 });
@@ -92,6 +155,15 @@ test("переходы вверх и вниз связывают этажи и �
   state = interact(state);
   assert.equal(state.zone, "floor555");
   assert.deepEqual(state.hero.positions.floor555, { x: 33, y: 20 });
+
+  state = { ...state, zone: "floor554" };
+  state = heroAt(state, { x: 47, y: 33 });
+  state = interact(state);
+  assert.equal(state.zone, "floor550");
+  assert.deepEqual(state.hero.positions.floor550, { x: 2, y: 33 });
+  state = interact(state);
+  assert.equal(state.zone, "floor554");
+  assert.deepEqual(state.hero.positions.floor554, { x: 47, y: 33 });
 
   state = { ...state, zone: "floor556" };
   state = heroAt(state, { x: 2, y: 2 });
@@ -288,7 +360,7 @@ test("перестройка этажа происходит по таймеру
   const mutated = tickGame(state, 100);
 
   assert.equal(mutated.mutated, true);
-  assert.match(mutated.log[0], /Топология этажа изменилась/);
+  assert.match(mutated.log.join("\n"), /Топология этажа изменилась/);
 });
 
 test("экипировка, вес и состояние предметов участвуют в характеристиках", () => {
@@ -493,7 +565,7 @@ test("полевая задача и завершение операции вы�
   state = interact(state);
   assert.equal(state.hero.totalXp, afterSensor);
 
-  state = heroAt(state, { x: 31, y: 18 });
+  state = heroAt(state, { x: 30, y: 17 });
   state = interact(state);
   assert.equal(state.missionComplete, true);
   assert.ok(state.hero.totalXp > afterSensor);
@@ -599,6 +671,74 @@ test("все открытые навыки участвуют в автокас�
   assert.ok(state.enemies.find((enemy) => enemy.id === "guard-kl4").markedUntilMs > 0);
   assert.deepEqual(state.hero.activeSkillSlots, [null, null, null, null]);
   assert.match(state.log.join("\n"), /Применено: Огневая метка/);
+});
+
+test("Город 550 содержит 25 жителей и три полных отряда ликвидаторов", () => {
+  let state = { ...createInitialState(), zone: "floor554" };
+  const counts = cityPopulationCounts(state);
+  assert.deepEqual(counts, { residents: 25, liquidators: 9 });
+  assert.equal(state.enemies.filter((enemy) => enemy.zone === "floor554" && enemy.hp > 0).length, 0);
+
+  const before = new Map(state.npcs.map((npc) => [npc.id, { ...npc.position }]));
+  for (let frame = 0; frame < 100; frame += 1) state = tickGame(state, 100);
+  assert.ok(state.npcs.some((npc) => {
+    const start = before.get(npc.id);
+    return start && (Math.abs(start.x - npc.position.x) > 0.2 || Math.abs(start.y - npc.position.y) > 0.2);
+  }));
+  assert.match(state.log.join("\n"), /: «/);
+});
+
+test("клик по добыче строит маршрут и автоматически подбирает предмет", () => {
+  let state = createInitialState();
+  state = {
+    ...state,
+    groundLoot: [{ id: "cursor-loot", zone: "floor556", position: { x: 9, y: 18 }, itemId: "fieldRation", quantity: 1, condition: 100 }],
+    lootCounter: 1,
+  };
+  state = commandCollectLoot(state, "cursor-loot");
+  assert.equal(state.hero.pendingInteraction?.kind, "loot");
+  for (let frame = 0; frame < 40 && state.groundLoot.length; frame += 1) state = tickGame(state, 100);
+  assert.equal(state.groundLoot.length, 0);
+  assert.ok(state.hero.inventory.some((entry) => entry.itemId === "fieldRation"));
+});
+
+test("клик по объекту и NPC завершает взаимодействие после подхода", () => {
+  let state = heroAt(createInitialState(), { x: 28, y: 2 });
+  state = commandInteractAt(state, { x: 32, y: 2 });
+  for (let frame = 0; frame < 30 && state.zone === "floor556"; frame += 1) state = tickGame(state, 100);
+  assert.equal(state.zone, "floor555");
+
+  state = { ...state, zone: "floor554" };
+  const registrar = state.npcs.find((npc) => npc.id === "city-registrar");
+  state = heroAt(state, { x: registrar.position.x - 2, y: registrar.position.y });
+  state = {
+    ...state,
+    npcs: state.npcs.map((npc) => npc.id === registrar.id ? { ...npc, speed: 0, route: [{ ...npc.position }], routeIndex: 0 } : npc),
+  };
+  state = commandTalkToNpc(state, registrar.id);
+  for (let frame = 0; frame < 30 && state.hero.pendingInteraction; frame += 1) state = tickGame(state, 100);
+  assert.match(state.log.join("\n"), /Алла Климова/);
+});
+
+test("движение во время боя включает отступление и запрещает автоматическую атаку", () => {
+  let state = heroAt(createInitialState(), { x: 9, y: 4 });
+  state = {
+    ...state,
+    enemies: state.enemies.map((enemy) =>
+      enemy.id === "guard-kl4"
+        ? { ...enemy, position: { x: 11, y: 4 }, hp: 100, maxHp: 100, armor: -10, mode: "combat", attackCooldownMs: 99999, damage: 0 }
+        : enemy,
+    ),
+  };
+  state = commandAttack(state, "guard-kl4");
+  state = commandMove(state, { x: 4, y: 10 });
+  assert.equal(state.hero.evadeMode, true);
+  assert.equal(state.hero.attackTargetId, null);
+  const beforeHp = state.enemies.find((enemy) => enemy.id === "guard-kl4").hp;
+  for (let frame = 0; frame < 20; frame += 1) state = tickGame(state, 100);
+  assert.equal(state.enemies.find((enemy) => enemy.id === "guard-kl4").hp, beforeHp);
+  state = commandAttack(state, "guard-kl4");
+  assert.equal(state.hero.evadeMode, false);
 });
 
 test("огневая ротация связывает метку и точную серию через общие состояния", () => {

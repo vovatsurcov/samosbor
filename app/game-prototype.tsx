@@ -22,9 +22,13 @@ import {
   canAllocateTalent,
   cancelHeroAction,
   carryCapacity,
+  cityPopulationCounts,
   commandAttack,
   commandAttackNearest,
+  commandCollectLoot,
+  commandInteractAt,
   commandMove,
+  commandTalkToNpc,
   combatDirectiveFor,
   consumeInventoryItem,
   createInitialState,
@@ -54,10 +58,14 @@ import {
   inventoryWeight,
   InventoryEntry,
   isKnown,
+  isSamosborProtectedAt,
   isVisible,
   ITEMS,
   mapForZone,
   maxHeroHp,
+  migrateGameState,
+  Npc,
+  npcRoleLabel,
   objectiveFor,
   populationPressureForZone,
   populationsForZone,
@@ -97,6 +105,7 @@ const TILE_LABELS: Record<string, string> = {
   T: "Служебный терминал",
   S: "Датчик СБ-04",
   H: "Гермодверь",
+  g: "Гермокомната",
   P: "Межэтажный переход",
   U: "Переход вверх",
   D: "Переход вниз",
@@ -143,6 +152,18 @@ const ENEMY_SIGNS: Record<Enemy["kind"], string> = {
   collector: "С",
 };
 
+const NPC_COLORS: Record<Npc["kind"], string> = {
+  resident: "#8eb5a8",
+  merchant: "#d6bd69",
+  liquidator: "#c87962",
+};
+
+const NPC_SIGNS: Record<Npc["kind"], string> = {
+  resident: "Ж",
+  merchant: "Т",
+  liquidator: "Л",
+};
+
 const GENOME_LABELS = {
   maintenance: "ремонтный",
   bureaucratic: "ведомственный",
@@ -178,7 +199,8 @@ function tileColor(tile: string, zoneIsVoid: boolean, visible: boolean): string 
   if (tile === "P") return "#5f2b76";
   if (tile === "U" || tile === "D") return "#526f6a";
   if (tile === "A") return "#806b45";
-  if (tile === "H") return "#586c60";
+  if (tile === "H") return "#759584";
+  if (tile === "g") return "#3f7565";
   if (tile === "S") return "#665e43";
   if (tile === "L") return "#48515a";
   if (tile === "T") return "#52605b";
@@ -211,13 +233,20 @@ function enemyDescription(enemy: Enemy): string {
   return "Бронированная лабораторная машина, охраняющая старое производство.";
 }
 
+function npcDescription(npc: Npc): string {
+  if (npc.kind === "liquidator") return "Участник городского отряда ликвидации последствий Самосбора. Патрулирует кварталы и готовится к выходу за ворота.";
+  if (npc.kind === "merchant") return `Городской специалист: ${npcRoleLabel(npc.role)}. Запасы меняются вместе с поставками и состоянием внешних этажей.`;
+  return `Житель Города 550: ${npcRoleLabel(npc.role)}. Следует собственному маршруту между кварталами.`;
+}
+
 type HoverInfo = { title: string; description: string; meta?: string };
 
 function tileDescription(tile: string, zoneIsVoid: boolean): string {
   const descriptions: Record<string, string> = {
     N: "Дежурный диспетчер стартового сектора. Выдаёт первое поручение и объясняет текущие угрозы.",
     S: "Повреждённый датчик СБ-04. Его восстановление является первой полевой задачей.",
-    H: "Гермопомещение, способное пережить активную фазу Самосбора при исправной двери и питании.",
+    H: "Гермодверь отделяет автономную комнату от этажа. Существа, слизь и последствия Самосбора через неё не проходят.",
+    g: "Пол автономной гермокомнаты. Здесь можно безопасно восстановить здоровье, снизить стресс и переждать угрозу.",
     U: "Межэтажный переход. Срабатывает только после взаимодействия рядом с узлом.",
     D: "Спуск на следующий этаж. Переход выполняется только явной командой взаимодействия.",
     P: zoneIsVoid ? "Нестабильный выход. Он выбросит героя на случайный этаж и исчезнет." : "Редкая войд-аномалия. После входа обратного пути не будет.",
@@ -291,6 +320,7 @@ export default function GamePrototype() {
   const carriedWeight = inventoryWeight(state);
   const weightLimit = carryCapacity(state);
   const artifact = equippedArtifact(state);
+  const hermeticSafe = isSamosborProtectedAt(state, state.zone, hero);
   const localPopulations = populationsForZone(state);
   const localPopulationPressure = populationPressureForZone(state);
   const bandageCount = state.hero.inventory.find((entry) => entry.itemId === "bandage")?.quantity ?? 0;
@@ -360,7 +390,7 @@ export default function GamePrototype() {
             typeof parsed.populationCycle === "number" &&
             typeof parsed.worldTimeMs === "number"
           ) {
-            setState(parsed);
+            setState(migrateGameState(parsed));
           }
         }
       } catch {
@@ -404,6 +434,18 @@ export default function GamePrototype() {
 
   const moveTo = useCallback((point: Point) => {
     setState((current) => commandMove(current, point));
+  }, []);
+
+  const interactAtPoint = useCallback((point: Point) => {
+    setState((current) => commandInteractAt(current, point));
+  }, []);
+
+  const collectLoot = useCallback((lootId: string) => {
+    setState((current) => commandCollectLoot(current, lootId));
+  }, []);
+
+  const talkToNpc = useCallback((npcId: string) => {
+    setState((current) => commandTalkToNpc(current, npcId));
   }, []);
 
   const attackEnemy = useCallback((enemyId: string) => {
@@ -498,6 +540,9 @@ export default function GamePrototype() {
       if (key === "1" || key === "f") {
         event.preventDefault();
         attackNearest();
+      } else if (key === "x") {
+        event.preventDefault();
+        cancelAction();
       } else if (key === "e") {
         event.preventDefault();
         interactNow();
@@ -584,6 +629,10 @@ export default function GamePrototype() {
     return result.sort((a, b) => a.x + a.y - (b.x + b.y) || a.y - b.y);
   }, [map]);
 
+  const visibleNpcs = state.npcs.filter(
+    (npc) => npc.zone === state.zone && isKnown(state, npc.position),
+  );
+  const cityCounts = cityPopulationCounts(state);
   const visibleEnemies = state.enemies.filter((enemy) => enemyVisibleToHero(state, enemy));
   const activeThreats = state.enemies.filter(
     (enemy) =>
@@ -613,7 +662,7 @@ export default function GamePrototype() {
   };
 
   return (
-    <main className={`game-shell realtime-shell ${tvMode ? "tv-mode" : ""}`}>
+    <main className={`game-shell realtime-shell ${tvMode ? "tv-mode" : ""} ${state.hero.evadeMode ? "evade-mode" : ""}`}>
       <header className="game-header compact-header">
         <div>
           <p className="eyebrow">ПРОТОКОЛ СМЕНЫ · СБ/556-04</p>
@@ -631,19 +680,21 @@ export default function GamePrototype() {
           </button>
           <div className={`header-status ${activeThreats.length ? "alert" : ""}`}>
             <span className="status-dot" />
-            <span>{activeThreats.length ? `Тревога · ${activeThreats.length}` : "Связь нестабильна"}</span>
+            <span>{state.hero.evadeMode ? "Отступление · автоатака отключена" : activeThreats.length ? `Тревога · ${activeThreats.length}` : "Связь нестабильна"}</span>
           </div>
         </div>
       </header>
 
       <section className="world-strip compact-strip" aria-label="Положение в мире">
-        <div><span className="strip-label">Город</span><strong>П-46</strong><small>единый кластер</small></div>
-        <span className="strip-connector">→</span>
-        <div className={state.zone === "floor555" ? "strip-current" : ""}><span className="strip-label">Ниже</span><strong>Этаж 555</strong><small>ремонтный пояс</small></div>
+        <div className={state.zone === "floor557" ? "strip-current" : ""}><span className="strip-label">Выше</span><strong>Этаж 557</strong><small>жилой контур</small></div>
         <span className="strip-connector">⇅</span>
         <div className={state.zone === "floor556" ? "strip-current" : ""}><span className="strip-label">Опорный</span><strong>Этаж 556</strong><small>технический пояс</small></div>
         <span className="strip-connector">⇅</span>
-        <div className={state.zone === "floor557" ? "strip-current" : ""}><span className="strip-label">Выше</span><strong>Этаж 557</strong><small>жилой контур</small></div>
+        <div className={state.zone === "floor555" ? "strip-current" : ""}><span className="strip-label">Подступы</span><strong>Этаж 555</strong><small>ремонтный пояс</small></div>
+        <span className="strip-connector">⇅</span>
+        <div className={state.zone === "floor554" ? "strip-current" : ""}><span className="strip-label">Защищённый хаб</span><strong>Город 550</strong><small>единая карта кварталов 554–551</small></div>
+        <span className="strip-connector">⇅</span>
+        <div className={state.zone === "floor550" ? "strip-current" : ""}><span className="strip-label">Ниже города</span><strong>Этаж 550</strong><small>нижний выход</small></div>
         <span className="strip-connector">⇄</span>
         <div className={state.zone === "voidLab" ? "strip-current void" : ""}><span className="strip-label">Межэтажье</span><strong>ВЖ-7</strong><small>лабораторный слой</small></div>
       </section>
@@ -660,6 +711,9 @@ export default function GamePrototype() {
               <span>Время смены</span>
               <strong>{formattedWorldTime(state)}</strong>
               <small>Скорость {heroMoveSpeed(state).toFixed(1)} кл/с</small>
+              <small className={`safe-room-state ${hermeticSafe ? "active" : ""}`}>
+                {hermeticSafe ? "ГЕРМОКОНТУР · БЕЗОПАСНО" : "ГЕРМОКОНТУР · СНАРУЖИ"}
+              </small>
             </div>
           </div>
 
@@ -721,7 +775,7 @@ export default function GamePrototype() {
                   <g
                     key={`${point.x}-${point.y}`}
                     className={`iso-tile ${known ? "known" : "unknown"}`}
-                    onPointerDown={() => known && !isWall && moveTo(point)}
+                    onPointerDown={() => known && !isWall && interactAtPoint(point)}
                     onPointerEnter={() => known && !isWall && setHoverInfo({ title: TILE_LABELS[tile] ?? "Объект", description: tileDescription(tile, state.zone === "voidLab"), meta: `Координаты ${point.x}:${point.y}` })}
                     onPointerLeave={() => setHoverInfo(null)}
                     role={known && !isWall ? "button" : undefined}
@@ -798,13 +852,51 @@ export default function GamePrototype() {
                     aria-label={`Добыча: ${item.name}`}
                     onPointerDown={(event) => {
                       event.stopPropagation();
-                      moveTo(loot.position);
+                      collectLoot(loot.id);
                     }}
                     onPointerEnter={() => setHoverInfo({ title: item.name, description: item.description, meta: `Количество: ${loot.quantity} · состояние ${Math.round(loot.condition)}%` })}
                     onPointerLeave={() => setHoverInfo(null)}
                   >
                     <path d="M -9 3 L -6 -7 L 7 -7 L 10 3 L 0 9 Z" fill="#39372a" stroke="#e1c86d" strokeWidth="2" />
                     <text x="0" y="2" textAnchor="middle" fill="#f2dfa0">{item.kind === "artifact" ? "◈" : "•"}</text>
+                  </g>
+                );
+              })}
+
+              {visibleNpcs.map((npc) => {
+                const iso = toIso(npc.position, originX, originY);
+                const color = NPC_COLORS[npc.kind];
+                const visible = isVisible(state, npc.position);
+                const formationOffset = npc.role === "liquidator-leader" ? -13 : npc.role === "liquidator-rifleman" ? 13 : 0;
+                return (
+                  <g
+                    key={npc.id}
+                    className={`npc-marker npc-${npc.kind}`}
+                    transform={`translate(${formationOffset} ${npc.kind === "liquidator" ? Math.abs(formationOffset) * 0.18 : 0})`}
+                    opacity={visible ? 1 : 0.55}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      talkToNpc(npc.id);
+                    }}
+                    onPointerEnter={() => setHoverInfo({
+                      title: npc.name,
+                      description: npcDescription(npc),
+                      meta: `${npcRoleLabel(npc.role)} · ${npc.kind === "liquidator" ? "отряд ликвидации" : npc.kind === "merchant" ? "торговая точка" : "городской маршрут"}`,
+                    })}
+                    onPointerLeave={() => setHoverInfo(null)}
+                    role="button"
+                    aria-label={`${npc.name}, ${npcRoleLabel(npc.role)}`}
+                    filter="url(#actor-shadow)"
+                  >
+                    <ellipse cx={iso.x} cy={iso.y + 8} rx="16" ry="7" fill="#11130f" opacity="0.55" />
+                    <circle cx={iso.x} cy={iso.y - 8} r="12" fill="#29332f" stroke={color} strokeWidth="3" />
+                    <text x={iso.x} y={iso.y - 4} textAnchor="middle" className="npc-symbol" fill={color}>{NPC_SIGNS[npc.kind]}</text>
+                    {npc.speech && npc.speechUntilMs > state.worldTimeMs ? (
+                      <g className="npc-speech" transform={`translate(${iso.x - 74} ${iso.y - 62})`}>
+                        <rect width="148" height="30" rx="6" fill="#171a16" stroke={color} strokeWidth="1.5" />
+                        <text x="74" y="19" textAnchor="middle" fill="#e7eadf">{npc.speech.length > 42 ? `${npc.speech.slice(0, 42)}…` : npc.speech}</text>
+                      </g>
+                    ) : null}
                   </g>
                 );
               })}
@@ -859,7 +951,7 @@ export default function GamePrototype() {
               </div>
             ) : null}
 
-            <div className="map-instruction"><strong>КЛИК · КАСАНИЕ · D-PAD</strong><span>позиционирование героя</span><i />Мир движется непрерывно</div>
+            <div className="map-instruction"><strong>КЛИК · КАСАНИЕ · D-PAD</strong><span>клик по предмету или NPC: подойти и взаимодействовать</span><i />Движение в бою включает отступление</div>
 
             {state.missionComplete ? (
               <div className="mission-complete" role="status">
@@ -886,10 +978,15 @@ export default function GamePrototype() {
 
           <section className="panel-card population-card">
             <div className="population-heading">
-              <div><p className="panel-label">ЖИВОЙ ЭТАЖ</p><h3>Давление популяций: {localPopulationPressure}</h3></div>
-              <span className={`population-pressure ${localPopulationPressure >= 25 ? "high" : ""}`}>{localPopulations.length}</span>
+              <div>
+                <p className="panel-label">{state.zone === "floor554" ? "ЖИВОЙ ГОРОД" : "ЖИВОЙ ЭТАЖ"}</p>
+                <h3>{state.zone === "floor554" ? `${cityCounts.residents} жителей · ${cityCounts.liquidators} ликвидаторов` : `Давление популяций: ${localPopulationPressure}`}</h3>
+              </div>
+              <span className={`population-pressure ${localPopulationPressure >= 25 ? "high" : ""}`}>{state.zone === "floor554" ? cityCounts.residents + cityCounts.liquidators : localPopulations.length}</span>
             </div>
-            {localPopulations.length ? (
+            {state.zone === "floor554" ? (
+              <p>Жители ходят между кварталами, торговыми точками и службами. Три отряда ликвидаторов несут дежурство и готовятся к выходам после Самосбора.</p>
+            ) : localPopulations.length ? (
               <ul className="population-list">
                 {localPopulations.map((population) => (
                   <li key={population.id}>
@@ -935,10 +1032,13 @@ export default function GamePrototype() {
                   <span><small>Ваш радиус</small><strong>{heroAttackRange(state).toFixed(1)}</strong></span>
                   <span><small>Агро</small><strong>{target.aggroRadius.toFixed(1)}</strong></span>
                 </div>
-                <button type="button" className="cancel-target" onClick={cancelAction}>Снять цель <kbd>Esc</kbd></button>
+                <button type="button" className={`cancel-target ${state.hero.evadeMode ? "active" : ""}`} onClick={cancelAction}>Отступить и разорвать бой <kbd>Esc</kbd></button>
               </>
             ) : (
-              <p>Кликните по противнику. Герой сам подойдёт на дистанцию экипированного оружия и начнёт атаковать.</p>
+              <>
+                <p>{state.hero.evadeMode ? "Режим отступления активен. Герой не будет автоматически атаковать, пока вы сами не выберете цель." : "Кликните по противнику. Герой сам подойдёт на дистанцию экипированного оружия и начнёт атаковать."}</p>
+                {state.hero.evadeMode ? <button type="button" className="cancel-target active" onClick={attackNearest}>Вернуться в бой <kbd>1</kbd></button> : null}
+              </>
             )}
           </section>
 
@@ -972,6 +1072,9 @@ export default function GamePrototype() {
           <button type="button" className="ability attack-ability" onClick={attackNearest}>
             <span className="ability-key">1</span><strong>{weapon.shortName}</strong><small>{heroAttackDamage(state)} урона · {weapon.range.toFixed(1)} кл.</small>
             <i className="cooldown-mask" style={{ height: `${cooldownPercent}%` }} />
+          </button>
+          <button type="button" className={`ability retreat-ability ${state.hero.evadeMode ? "active" : ""}`} onClick={cancelAction}>
+            <span className="ability-key">X</span><strong>{state.hero.evadeMode ? "Отступление" : "Убежать"}</strong><small>{state.hero.evadeMode ? "автоатака отключена" : "разорвать бой и двигаться"}</small>
           </button>
           <button type="button" className="ability autocast-ability" onClick={() => setCharacterOpen(true)}>
             <span className="ability-key">AUTO</span>

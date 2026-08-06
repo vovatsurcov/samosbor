@@ -38,7 +38,7 @@ export type {
 } from "./game-items.ts";
 export type { ActiveSkillId, SkillBranch, TalentNode } from "./game-skills.ts";
 
-export type ZoneId = "floor554" | "floor555" | "floor556" | "floor557" | "voidLab";
+export type ZoneId = "floor550" | "floor554" | "floor555" | "floor556" | "floor557" | "voidLab";
 
 export type Point = {
   x: number;
@@ -109,11 +109,58 @@ export type GroundLoot = {
   condition: number;
 };
 
+export type NpcKind = "resident" | "merchant" | "liquidator";
+export type NpcRole =
+  | "registrar"
+  | "grocer"
+  | "medic"
+  | "weaponsmith"
+  | "armorer"
+  | "technician"
+  | "courier"
+  | "porter"
+  | "cook"
+  | "archivist"
+  | "electrician"
+  | "watermaster"
+  | "tailor"
+  | "teacher"
+  | "watchman"
+  | "resident"
+  | "liquidator-leader"
+  | "liquidator-chemist"
+  | "liquidator-rifleman";
+
+export type Npc = {
+  id: string;
+  name: string;
+  kind: NpcKind;
+  role: NpcRole;
+  zone: ZoneId;
+  position: Point;
+  home: Point;
+  route: Point[];
+  routeIndex: number;
+  path: Point[];
+  speed: number;
+  thinkCooldownMs: number;
+  speech: string | null;
+  speechUntilMs: number;
+  vendorStock?: ItemId[];
+};
+
+export type PendingInteraction =
+  | { kind: "loot"; id: string }
+  | { kind: "tile"; zone: ZoneId; point: Point }
+  | { kind: "npc"; id: string };
+
 export type Hero = {
   positions: Record<ZoneId, Point>;
   path: Point[];
   destination: Point | null;
   attackTargetId: string | null;
+  pendingInteraction: PendingInteraction | null;
+  evadeMode: boolean;
   attackCooldownMs: number;
   repathCooldownMs: number;
   stepNoiseCooldownMs: number;
@@ -215,6 +262,8 @@ export type GameState = {
   injuries: Injuries;
   rescueCount: number;
   enemies: Enemy[];
+  npcs: Npc[];
+  npcConversationCooldownMs: number;
   noise: NoiseEvent | null;
   effects: CombatEffect[];
   effectCounter: number;
@@ -236,22 +285,66 @@ export type MapDefinition = {
   rows: string[];
 };
 
+export const FLOOR_550_MAP: MapDefinition = {
+  id: "floor550",
+  name: "Этаж 550 · нижний выход Города 550",
+  subtitle: "Внешний контур за городскими воротами · первая опасная зона дальней цепочки",
+  rows: [
+    "########################################################",
+    "#......................................................#",
+    "#.........................................##########T..#",
+    "#.........................................#gggggggg#...#",
+    "#.....................##########..........#gggggggg#...#",
+    "#.....###########.....##########....#######gggggggg#...#",
+    "#.....###########.....##########....#######gggggggg#...#",
+    "#.....###########.....##########....#######gggggggg#...#",
+    "#.....###########.....##########....#######gggggggg#...#",
+    "#.....###########.....##########....###########H####...#",
+    "#.....###########.....#####.####....#############......#",
+    "#.....###########...................#############......#",
+    "#.....#####.#####...................#############......#",
+    "#...................................######.######......#",
+    "#..........................c...........................#",
+    "#..................................c...................#",
+    "#......................................................#",
+    "#........................####.#####....................#",
+    "#.......######.#####.....##########....................#",
+    "#.......############.....##########.....#####.######...#",
+    "#.......############.....##########.....############...#",
+    "#.......############.....##########.....############...#",
+    "#.......############.....##########.....############...#",
+    "#.......###########......#########......############...#",
+    "#.......############.....##########.....############...#",
+    "#.......############.....##########.....############...#",
+    "#.......############.....##########.....############...#",
+    "#.......############.....##########.....############...#",
+    "#........................##########.....############...#",
+    "#.......................................############...#",
+    "#......................................................#",
+    "#...B...............c................B...........c.....#",
+    "#......................................................#",
+    "#.U....................................................#",
+    "#......................................................#",
+    "########################################################",
+  ],
+};
+
 export const FLOOR_554_MAP: MapDefinition = {
   id: "floor554",
-  name: "Этаж 554 · верхние ворота Города 550",
-  subtitle: "Безопасный пограничный район в старом разломе · советский ампир и метрополитен",
+  name: "Город 550 · Большой разлом",
+  subtitle: "Единый защищённый хаб, объединяющий городские уровни 554–551",
   rows: [
     "########################################################",
     "#......................................................#",
     "#......................................................#",
     "#......................####..####......................#",
     "#....############......####..####......############....#",
-    "#....############......####..####......############....#",
-    "#....############......####..####......############....#",
-    "#....############......####..####......############....#",
-    "#....############......####..####......############....#",
-    "#....############......................############....#",
-    "#....#####.######........c....c........######.#####....#",
+    "#....#gggggggggg#......####..####......############....#",
+    "#....#gggggggggg#......####..####......############....#",
+    "#....#gggggggggg#......####..####......############....#",
+    "#....#gggggggggg#......####..####......############....#",
+    "#....#gggggggggg#......................############....#",
+    "#....#####H######........c....c........######.#####....#",
     "#......................................................#",
     "#.................c..................c.................#",
     "#...................#..#..#..#..#..#...................#",
@@ -274,7 +367,7 @@ export const FLOOR_554_MAP: MapDefinition = {
     "#......#############................#############......#",
     "#......#############................#############......#",
     "#..U...................................................#",
-    "#........N.....T......B........................L....B..#",
+    "#..............T......B........................D....B..#",
     "#......................................................#",
     "########################################################",
   ],
@@ -288,14 +381,14 @@ export const FLOOR_555_MAP: MapDefinition = {
     "####################################",
     "#..................................#",
     "#...####.....B......####........U..#",
-    "#...####............####....#####..#",
-    "#...####....####....####....#####..#",
-    "#...##.#....####....#.##....#####..#",
-    "#...####....####....####....##.##..#",
-    "#...####....#.##....####....#####..#",
-    "#...........####..c.........#####..#",
+    "#...####............####....########",
+    "#...####....####....####....#ggggg##",
+    "#...##.#....####....#.##....#ggggg##",
+    "#...####....####....####....#ggggg##",
+    "#...####....#.##....####....#ggggg##",
+    "#...........####..c.........###H####",
     "#........c..####..........c........#",
-    "#...........####...............H...#",
+    "#...........####...................#",
     "#.......................####.......#",
     "#.....#####.............####.......#",
     "#.....#####.....####....#.##..####.#",
@@ -326,14 +419,14 @@ export const FLOOR_MAP: MapDefinition = {
     "#................B....###..........#",
     "#...........####......###..........#",
     "#...........####.........c......c..#",
-    "#....####...#.##...........####....#",
-    "#....####...####...####....####....#",
-    "#....#.##...####...####....#.##....#",
-    "#....####...####...####....####....#",
-    "#....####.c........#.##....####....#",
-    "#....####..........####....####....#",
+    "#....####...#.##...........#########",
+    "#....####...####...####....#gggggg##",
+    "#....#.##...####...####....#gggggg##",
+    "#....####...####...####....#gggggg##",
+    "#....####.c........#.##....#gggggg##",
+    "#....####..........####....###H#####",
     "#..................####............#",
-    "#.L.N.....##.##.c..####..B.....H...#",
+    "#.L.N.....##.##.c..####..B.........#",
     "#.........#####....................#",
     "#..................................#",
     "####################################",
@@ -358,13 +451,13 @@ export const FLOOR_557_MAP: MapDefinition = {
     "#.....................####.........#",
     "#..........................c.......#",
     "#.............#####................#",
-    "#...#####.....#####................#",
-    "#...#####.....##.##.....####.......#",
-    "#...##.##.....#####.....####.......#",
-    "#...#####.....#####.....#.##.......#",
-    "#...#####.c...#####.....####.......#",
-    "#...#####...........B...####..T....#",
-    "#.L..H..................####.......#",
+    "#...######....#####................#",
+    "#...#gggg#....##.##.....####.......#",
+    "#...#gggg#....#####.....####.......#",
+    "#...#gggg#....#####.....#.##.......#",
+    "#...#gggg#c...#####.....####.......#",
+    "#...##H###..........B...####..T....#",
+    "#.L.....................####.......#",
     "#..................................#",
     "####################################",
   ],
@@ -389,6 +482,7 @@ export const VOID_MAP: MapDefinition = {
   ],
 };
 
+export const FLOOR_550_START: Point = { x: 3, y: 33 };
 export const FLOOR_554_START: Point = { x: 3, y: 32 };
 export const FLOOR_555_START: Point = { x: 2, y: 19 };
 export const FLOOR_START: Point = { x: 3, y: 18 };
@@ -396,6 +490,7 @@ export const FLOOR_557_START: Point = { x: 2, y: 19 };
 export const VOID_START: Point = { x: 1, y: 1 };
 
 const ZONE_STARTS: Record<ZoneId, Point> = {
+  floor550: FLOOR_550_START,
   floor554: FLOOR_554_START,
   floor555: FLOOR_555_START,
   floor556: FLOOR_START,
@@ -403,6 +498,8 @@ const ZONE_STARTS: Record<ZoneId, Point> = {
   voidLab: VOID_START,
 };
 
+const FLOOR_550_UP: Point = { x: 2, y: 33 };
+const FLOOR_554_DOWN: Point = { x: 47, y: 33 };
 const FLOOR_554_UP: Point = { x: 3, y: 32 };
 const FLOOR_555_DOWN: Point = { x: 33, y: 20 };
 const FLOOR_555_UP: Point = { x: 32, y: 2 };
@@ -456,6 +553,15 @@ export function gridPoint(point: Point): Point {
 
 function createPopulations(): WorldPopulation[] {
   return [
+    {
+      id: "lower-gate-scavengers",
+      name: "Сборщики нижнего выхода",
+      genome: "feral",
+      zone: "floor550",
+      count: 11,
+      agitation: 48,
+      goal: "перехватывать грузы у нижних ворот",
+    },
     {
       id: "repair-collective",
       name: "Ремонтный коллектив 55-Б",
@@ -587,6 +693,7 @@ function populationSpawnCandidates(state: GameState, zone: ZoneId): Point[] {
     for (let x = 1; x < map.rows[0].length - 1; x += 1) {
       const point = { x, y };
       const tile = tileAtZone(state, zone, point);
+      if (isSamosborProtectedAt(state, zone, point)) continue;
       if (![".", "c"].includes(tile)) continue;
       if (reserved.has(pointKey(point))) continue;
       if (distance(point, hero) < 3.2) continue;
@@ -738,13 +845,19 @@ function createStaticEnemy(
 
 function createEnemies(): Enemy[] {
   return [
+    // Этаж 550: нижний выход из города, первые группы дальней цепочки.
+    createStaticEnemy("550-a1", "Сборщик нижних ворот 550-А", "stalker", "floor550", { x: 12, y: 14 }, [{ x: 12, y: 14 }, { x: 18, y: 16 }]),
+    createStaticEnemy("550-a2", "Постовой автомат НВ-2", "sentry", "floor550", { x: 18, y: 16 }, [{ x: 18, y: 16 }, { x: 24, y: 14 }]),
+    createStaticEnemy("550-b1", "Одичавший грузчик 550-Б", "stalker", "floor550", { x: 31, y: 14 }, [{ x: 31, y: 14 }, { x: 38, y: 16 }]),
+    createStaticEnemy("550-b2", "Контролёр нижней линии", "sentry", "floor550", { x: 38, y: 16 }, [{ x: 38, y: 16 }, { x: 45, y: 14 }]),
+    createStaticEnemy("550-c1", "Тяжёлый сборщик шлюза", "collector", "floor550", { x: 30, y: 31 }, [{ x: 30, y: 31 }, { x: 42, y: 31 }], "enhanced"),
     // Этаж 556: четыре учебные группы по два противника.
     createStaticEnemy("guard-kl4", "Постовой автомат КЛ-4/1", "sentry", "floor556", { x: 10, y: 4 }, [{ x: 10, y: 4 }, { x: 12, y: 4 }, { x: 12, y: 7 }]),
     createStaticEnemy("stalker-17", "Заблудший обходчик 556-А", "stalker", "floor556", { x: 12, y: 6 }, [{ x: 12, y: 6 }, { x: 10, y: 8 }]),
     createStaticEnemy("556-b1", "Постовой автомат КЛ-4/2", "sentry", "floor556", { x: 19, y: 4 }, [{ x: 19, y: 4 }, { x: 20, y: 8 }]),
     createStaticEnemy("556-b2", "Заблудший обходчик 556-Б", "stalker", "floor556", { x: 20, y: 8 }, [{ x: 20, y: 8 }, { x: 18, y: 10 }]),
     createStaticEnemy("556-c1", "Служебный автомат СА-6", "sentry", "floor556", { x: 31, y: 9 }, [{ x: 31, y: 9 }, { x: 33, y: 11 }]),
-    createStaticEnemy("556-c2", "Одичавший жилец 556-31", "stalker", "floor556", { x: 33, y: 12 }, [{ x: 33, y: 12 }, { x: 31, y: 14 }]),
+    createStaticEnemy("556-c2", "Одичавший жилец 556-31", "stalker", "floor556", { x: 33, y: 10 }, [{ x: 33, y: 10 }, { x: 27, y: 10 }]),
     createStaticEnemy("556-d1", "Ремонтный автомат РМ-6", "sentry", "floor556", { x: 16, y: 17 }, [{ x: 16, y: 17 }, { x: 18, y: 19 }]),
     createStaticEnemy("556-d2", "Заблудший обходчик 556-Г", "stalker", "floor556", { x: 23, y: 19 }, [{ x: 23, y: 19 }, { x: 26, y: 19 }]),
     // Этаж 555: три более плотные группы.
@@ -764,7 +877,132 @@ function createEnemies(): Enemy[] {
   ];
 }
 
+
+const CITY_ROUTE_NETWORK: Point[][] = [
+  [{ x: 4, y: 33 }, { x: 18, y: 33 }, { x: 28, y: 24 }, { x: 44, y: 24 }, { x: 51, y: 33 }],
+  [{ x: 8, y: 11 }, { x: 18, y: 12 }, { x: 28, y: 11 }, { x: 45, y: 11 }, { x: 50, y: 24 }, { x: 28, y: 24 }],
+  [{ x: 3, y: 23 }, { x: 16, y: 23 }, { x: 28, y: 24 }, { x: 39, y: 24 }, { x: 52, y: 23 }],
+  [{ x: 8, y: 33 }, { x: 8, y: 24 }, { x: 18, y: 12 }, { x: 30, y: 11 }, { x: 45, y: 12 }, { x: 48, y: 24 }, { x: 47, y: 33 }],
+];
+
+function createNpc(
+  id: string,
+  name: string,
+  kind: NpcKind,
+  role: NpcRole,
+  routeIndex: number,
+  routeOffset = 0,
+  vendorStock?: ItemId[],
+): Npc {
+  const route = CITY_ROUTE_NETWORK[routeIndex % CITY_ROUTE_NETWORK.length].map(copyPoint);
+  const index = routeOffset % route.length;
+  const position = copyPoint(route[index]);
+  return {
+    id,
+    name,
+    kind,
+    role,
+    zone: "floor554",
+    position,
+    home: copyPoint(position),
+    route,
+    routeIndex: (index + 1) % route.length,
+    path: [],
+    speed: kind === "liquidator" ? 1.35 : kind === "merchant" ? 0.85 : 1.05,
+    thinkCooldownMs: 180 + routeOffset * 75,
+    speech: null,
+    speechUntilMs: 0,
+    vendorStock,
+  };
+}
+
+function createCityNpcs(): Npc[] {
+  const residents: Npc[] = [
+    createNpc("city-registrar", "Алла Климова", "resident", "registrar", 0, 0),
+    createNpc("city-grocer", "Яков Бородин", "merchant", "grocer", 0, 1, ["fieldRation", "bandage", "painkillers"]),
+    createNpc("city-medic", "Роза Миронова", "merchant", "medic", 0, 2, ["bandage", "traumaInjector", "painkillers"]),
+    createNpc("city-weapons", "Тимур Панкратов", "merchant", "weaponsmith", 1, 0, ["shockBaton", "servicePistol", "breachAxe"]),
+    createNpc("city-armorer", "Нина Корнеева", "merchant", "armorer", 1, 1, ["hermeticJacketGk3", "platedVestBn3", "respiratorIp7"]),
+    createNpc("city-technician", "Аркадий Власов", "merchant", "technician", 1, 2, ["repairKit", "batteryPack", "filterCartridge"]),
+    createNpc("city-courier-1", "Лев Гущин", "resident", "courier", 2, 0),
+    createNpc("city-courier-2", "Майя Черкасова", "resident", "courier", 2, 1),
+    createNpc("city-porter-1", "Григорий Савельев", "resident", "porter", 2, 2),
+    createNpc("city-porter-2", "Вера Лукина", "resident", "porter", 2, 3),
+    createNpc("city-cook", "Марина Шестакова", "resident", "cook", 3, 0),
+    createNpc("city-archivist", "Павел Ершов", "resident", "archivist", 3, 1),
+    createNpc("city-electrician", "Олег Крюков", "resident", "electrician", 3, 2),
+    createNpc("city-watermaster", "Софья Ракитина", "resident", "watermaster", 3, 3),
+    createNpc("city-tailor", "Ирина Малова", "resident", "tailor", 0, 3),
+    createNpc("city-teacher", "Вадим Снегирёв", "resident", "teacher", 1, 3),
+    createNpc("city-watchman", "Степан Горин", "resident", "watchman", 2, 4),
+    createNpc("city-resident-1", "Алексей Рощин", "resident", "resident", 0, 4),
+    createNpc("city-resident-2", "Лидия Фомина", "resident", "resident", 1, 4),
+    createNpc("city-resident-3", "Михаил Зотов", "resident", "resident", 2, 0),
+    createNpc("city-resident-4", "Елена Брагина", "resident", "resident", 3, 4),
+    createNpc("city-resident-5", "Антон Мельников", "resident", "resident", 0, 0),
+    createNpc("city-resident-6", "Дарья Кулагина", "resident", "resident", 1, 5),
+    createNpc("city-resident-7", "Борис Колесников", "resident", "resident", 2, 1),
+    createNpc("city-resident-8", "Тамара Белова", "resident", "resident", 3, 5),
+  ];
+
+  const liquidators: Npc[] = [
+    createNpc("liq-a-leader", "Старший Лаврентьев", "liquidator", "liquidator-leader", 3, 0),
+    createNpc("liq-a-chemist", "Химик Дёмин", "liquidator", "liquidator-chemist", 3, 0),
+    createNpc("liq-a-rifle", "Стрелок Юдина", "liquidator", "liquidator-rifleman", 3, 0),
+    createNpc("liq-b-leader", "Старшая Сомова", "liquidator", "liquidator-leader", 1, 2),
+    createNpc("liq-b-chemist", "Химик Руднев", "liquidator", "liquidator-chemist", 1, 2),
+    createNpc("liq-b-rifle", "Стрелок Островский", "liquidator", "liquidator-rifleman", 1, 2),
+    createNpc("liq-c-leader", "Старший Жаров", "liquidator", "liquidator-leader", 2, 4),
+    createNpc("liq-c-chemist", "Химик Громова", "liquidator", "liquidator-chemist", 2, 4),
+    createNpc("liq-c-rifle", "Стрелок Минаев", "liquidator", "liquidator-rifleman", 2, 4),
+  ];
+
+  return [...residents, ...liquidators];
+}
+
+export function cityPopulationCounts(state: GameState): { residents: number; liquidators: number } {
+  return state.npcs.reduce(
+    (counts, npc) => {
+      if (npc.zone !== "floor554") return counts;
+      if (npc.kind === "liquidator") counts.liquidators += 1;
+      else counts.residents += 1;
+      return counts;
+    },
+    { residents: 0, liquidators: 0 },
+  );
+}
+
+export function npcById(state: GameState, npcId: string | null): Npc | null {
+  if (!npcId) return null;
+  return state.npcs.find((npc) => npc.id === npcId) ?? null;
+}
+
+export function npcRoleLabel(role: NpcRole): string {
+  return {
+    registrar: "регистратор",
+    grocer: "торговец провизией",
+    medic: "фельдшер",
+    weaponsmith: "оружейник",
+    armorer: "бронник",
+    technician: "техник",
+    courier: "курьер",
+    porter: "грузчик",
+    cook: "повар",
+    archivist: "архивист",
+    electrician: "электрик",
+    watermaster: "смотритель воды",
+    tailor: "портной",
+    teacher: "наставник",
+    watchman: "дозорный",
+    resident: "житель",
+    "liquidator-leader": "старший ликвидатор",
+    "liquidator-chemist": "ликвидатор-химик",
+    "liquidator-rifleman": "ликвидатор-стрелок",
+  }[role];
+}
+
 export function mapForZone(zone: ZoneId): MapDefinition {
+  if (zone === "floor550") return FLOOR_550_MAP;
   if (zone === "floor554") return FLOOR_554_MAP;
   if (zone === "floor555") return FLOOR_555_MAP;
   if (zone === "floor556") return FLOOR_MAP;
@@ -798,6 +1036,36 @@ function isWalkableIn(state: GameState, zone: ZoneId, point: Point): boolean {
   return tileAtZone(state, zone, point) !== "#";
 }
 
+export function isHermeticRoomTile(tile: string): boolean {
+  return tile === "g";
+}
+
+export function isCitySafeZone(zone: ZoneId): boolean {
+  return zone === "floor554";
+}
+
+export function isSamosborProtectedAt(
+  state: Pick<GameState, "mutated">,
+  zone: ZoneId,
+  point: Point,
+): boolean {
+  return isCitySafeZone(zone) || isHermeticRoomTile(tileAtZone(state, zone, point));
+}
+
+export function isHeroInHermeticRoom(state: GameState): boolean {
+  return isHermeticRoomTile(tileAt(state, state.hero.positions[state.zone]));
+}
+
+function isEnemyWalkableIn(state: GameState, zone: ZoneId, point: Point): boolean {
+  const tile = tileAtZone(state, zone, point);
+  return !isCitySafeZone(zone) && tile !== "#" && tile !== "H" && tile !== "g";
+}
+
+function isNpcWalkableIn(state: GameState, zone: ZoneId, point: Point): boolean {
+  const tile = tileAtZone(state, zone, point);
+  return tile !== "#" && tile !== "H" && tile !== "g";
+}
+
 export function isWalkable(state: GameState, point: Point): boolean {
   return isWalkableIn(state, state.zone, point);
 }
@@ -827,8 +1095,9 @@ export function hasLineOfSight(state: GameState, from: Point, to: Point): boolea
       error += dx;
       y += sy;
     }
-    if ((x !== end.x || y !== end.y) && tileAt(state, { x, y }) === "#") {
-      return false;
+    if (x !== end.x || y !== end.y) {
+      const tile = tileAt(state, { x, y });
+      if (tile === "#" || tile === "H") return false;
     }
   }
   return true;
@@ -1250,11 +1519,20 @@ function livingEnemyKeys(state: GameState, zone: ZoneId, exceptId?: string): Set
   );
 }
 
-function canUseDiagonal(state: GameState, zone: ZoneId, from: Point, to: Point): boolean {
+type PathActor = "hero" | "enemy" | "npc";
+
+function canUseDiagonal(
+  state: GameState,
+  zone: ZoneId,
+  from: Point,
+  to: Point,
+  actor: PathActor,
+): boolean {
   if (from.x === to.x || from.y === to.y) return true;
+  const walkable = actor === "enemy" ? isEnemyWalkableIn : actor === "npc" ? isNpcWalkableIn : isWalkableIn;
   return (
-    isWalkableIn(state, zone, { x: to.x, y: from.y }) &&
-    isWalkableIn(state, zone, { x: from.x, y: to.y })
+    walkable(state, zone, { x: to.x, y: from.y }) &&
+    walkable(state, zone, { x: from.x, y: to.y })
   );
 }
 
@@ -1264,10 +1542,12 @@ function findPath(
   from: Point,
   target: Point,
   blocked: Set<string>,
+  actor: PathActor = "hero",
 ): Point[] | null {
   const start = gridPoint(from);
   const goal = gridPoint(target);
-  if (!isWalkableIn(state, zone, goal) || blocked.has(pointKey(goal))) return null;
+  const walkable = actor === "enemy" ? isEnemyWalkableIn : actor === "npc" ? isNpcWalkableIn : isWalkableIn;
+  if (!walkable(state, zone, goal) || blocked.has(pointKey(goal))) return null;
   const open: Point[] = [start];
   const cameFrom = new Map<string, Point | null>([[pointKey(start), null]]);
   const cost = new Map<string, number>([[pointKey(start), 0]]);
@@ -1285,9 +1565,9 @@ function findPath(
       const next = { x: current.x + direction.x, y: current.y + direction.y };
       const key = pointKey(next);
       if (
-        !isWalkableIn(state, zone, next) ||
+        !walkable(state, zone, next) ||
         blocked.has(key) ||
-        !canUseDiagonal(state, zone, current, next)
+        !canUseDiagonal(state, zone, current, next, actor)
       ) {
         continue;
       }
@@ -1344,6 +1624,100 @@ function advanceAlongPath(
   return { position: current, path: route };
 }
 
+function hasActiveThreats(state: GameState): boolean {
+  return state.enemies.some(
+    (enemy) =>
+      enemy.zone === state.zone &&
+      enemy.hp > 0 &&
+      ["suspicious", "hunting", "combat"].includes(enemy.mode),
+  );
+}
+
+const CITY_CONVERSATIONS: [string, string][] = [
+  ["На нижней линии снова скачет напряжение.", "Крюков обещал проверить щиты после смены."],
+  ["Ликвидаторы вернулись без третьего контейнера.", "Главное, что все трое вернулись своими ногами."],
+  ["У Бородина сегодня настоящий чай.", "Тогда очередь будет до самого регистратора."],
+  ["Слышал гул со стороны пятисот пятидесятого?", "Слышал. Гермодвери проверил дважды."],
+  ["Караван с 545-го задерживается.", "Значит, пайки снова будут по спискам."],
+  ["В архиве нашли схему старой ветки метро.", "Не говори об этом рядом с обходчиками."],
+  ["После Самосбора запах держался три дня.", "Зато химики выжгли весь западный коридор."],
+  ["Сегодня город необычно тихий.", "Не произноси это вслух. Стены слушают."],
+];
+
+function npcRouteTarget(npc: Npc): Point {
+  return npc.route[npc.routeIndex % npc.route.length] ?? npc.home;
+}
+
+function closestNpcPair(npcs: Npc[]): [Npc, Npc] | null {
+  let pair: [Npc, Npc] | null = null;
+  let best = Infinity;
+  for (let left = 0; left < npcs.length; left += 1) {
+    for (let right = left + 1; right < npcs.length; right += 1) {
+      const current = distance(npcs[left].position, npcs[right].position);
+      if (current < best && current <= 4.5) {
+        best = current;
+        pair = [npcs[left], npcs[right]];
+      }
+    }
+  }
+  return pair;
+}
+
+function tickCityNpcs(state: GameState, deltaMs: number): GameState {
+  const cityActive = state.zone === "floor554";
+  const npcs = state.npcs.map((npc, index) => {
+    let current: Npc = {
+      ...npc,
+      speech: npc.speechUntilMs > state.worldTimeMs ? npc.speech : null,
+      thinkCooldownMs: Math.max(0, npc.thinkCooldownMs - deltaMs),
+    };
+    if (!cityActive || current.zone !== "floor554") return current;
+
+    let target = npcRouteTarget(current);
+    if (distance(current.position, target) < 0.35) {
+      current = { ...current, routeIndex: (current.routeIndex + 1) % current.route.length, path: [] };
+      target = npcRouteTarget(current);
+    }
+    if (!current.path.length && current.thinkCooldownMs <= 0) {
+      const path = findPath(state, current.zone, current.position, target, new Set(), "npc");
+      current = {
+        ...current,
+        path: path?.slice(1) ?? [],
+        thinkCooldownMs: 650 + ((index * 97) % 500),
+      };
+    }
+    if (current.path.length) {
+      const motion = advanceAlongPath(current.position, current.path, current.speed * (deltaMs / 1000));
+      current = { ...current, position: motion.position, path: motion.path };
+    }
+    return current;
+  });
+
+  let next: GameState = {
+    ...state,
+    npcs,
+    npcConversationCooldownMs: Math.max(0, state.npcConversationCooldownMs - deltaMs),
+  };
+  if (!cityActive || next.npcConversationCooldownMs > 0) return next;
+
+  const pair = closestNpcPair(npcs.filter((npc) => npc.zone === "floor554"));
+  if (!pair) return { ...next, npcConversationCooldownMs: 3000 };
+  const cycle = Math.floor(next.worldTimeMs / 9000);
+  const lines = CITY_CONVERSATIONS[cycle % CITY_CONVERSATIONS.length];
+  next = {
+    ...next,
+    npcConversationCooldownMs: 7000 + (cycle % 4) * 900,
+    npcs: next.npcs.map((npc) =>
+      npc.id === pair[0].id
+        ? { ...npc, speech: lines[0], speechUntilMs: next.worldTimeMs + 4200 }
+        : npc.id === pair[1].id
+          ? { ...npc, speech: lines[1], speechUntilMs: next.worldTimeMs + 4600 }
+          : npc,
+    ),
+  };
+  return appendLog(next, `${pair[0].name}: «${lines[0]}» ${pair[1].name}: «${lines[1]}»`);
+}
+
 export function commandMove(state: GameState, target: Point): GameState {
   if (!isWalkable(state, target)) return state;
   const blocked = livingEnemyKeys(state, state.zone);
@@ -1355,6 +1729,7 @@ export function commandMove(state: GameState, target: Point): GameState {
     blocked,
   );
   if (!path) return appendLog(state, "Маршрут перекрыт.");
+  const enteringEvade = state.hero.evadeMode || Boolean(state.hero.attackTargetId) || hasActiveThreats(state);
   return {
     ...state,
     hero: {
@@ -1362,6 +1737,8 @@ export function commandMove(state: GameState, target: Point): GameState {
       path: path.slice(1),
       destination: gridPoint(target),
       attackTargetId: null,
+      pendingInteraction: null,
+      evadeMode: enteringEvade,
     },
   };
 }
@@ -1407,6 +1784,8 @@ export function commandAttack(state: GameState, enemyId: string): GameState {
     hero: {
       ...state.hero,
       attackTargetId: enemyId,
+      pendingInteraction: null,
+      evadeMode: false,
       path: keepKitingRoute ? state.hero.path : route ? route.slice(1) : [],
       destination: keepKitingRoute ? state.hero.destination : route?.at(-1) ?? null,
       repathCooldownMs: 0,
@@ -1423,15 +1802,20 @@ export function commandAttackNearest(state: GameState): GameState {
 }
 
 export function cancelHeroAction(state: GameState): GameState {
-  return {
-    ...state,
-    hero: {
-      ...state.hero,
-      path: [],
-      destination: null,
-      attackTargetId: null,
+  return appendLog(
+    {
+      ...state,
+      hero: {
+        ...state.hero,
+        path: [],
+        destination: null,
+        attackTargetId: null,
+        pendingInteraction: null,
+        evadeMode: true,
+      },
     },
-  };
+    "Режим отступления включён: автоматические атаки отключены до новой команды на бой.",
+  );
 }
 
 export function canCarryItem(state: GameState, itemId: ItemId, quantity = 1): boolean {
@@ -1859,6 +2243,14 @@ const AUTOCAST_PRIORITY: ActiveSkillId[] = [
   "engineer-deploy",
 ];
 
+const EVADE_AUTOCAST_PRIORITY: ActiveSkillId[] = [
+  "resonance-stabilize",
+  "stealth-muffle",
+  "fire-relocate",
+  "bulwark-brace",
+  "stealth-decoy",
+];
+
 export function autocastConditionLabel(skillId: ActiveSkillId): string {
   return {
     "force-charge": "видимая цель вне ближней дистанции",
@@ -1913,7 +2305,8 @@ function canAutocastSkill(state: GameState, skillId: ActiveSkillId): boolean {
 function tickAutocast(state: GameState): GameState {
   if (state.hero.autocastDecisionCooldownMs > 0) return state;
   const unlocked = new Set(unlockedActiveSkills(state));
-  const skillId = AUTOCAST_PRIORITY.find((candidate) => unlocked.has(candidate) && canAutocastSkill(state, candidate));
+  const priority = state.hero.evadeMode ? EVADE_AUTOCAST_PRIORITY : AUTOCAST_PRIORITY;
+  const skillId = priority.find((candidate) => unlocked.has(candidate) && canAutocastSkill(state, candidate));
   if (!skillId) {
     return { ...state, hero: { ...state.hero, autocastDecisionCooldownMs: 180 } };
   }
@@ -1933,6 +2326,7 @@ function tickAutocast(state: GameState): GameState {
       activeSkillSlots: originalSlots,
       autocastDecisionCooldownMs: 260,
       combatDirective: combatDirectiveFor(activated),
+      evadeMode: state.hero.evadeMode,
     },
   };
 }
@@ -1994,7 +2388,14 @@ export function activateSkillSlot(state: GameState, slot: number): GameState {
     const dy = Math.sign(hero.y - target.position.y);
     const destination = gridPoint({ x: hero.x + (dx || 1) * 2, y: hero.y + dy * 2 });
     next = commandMove(next, isWalkable(next, destination) ? destination : gridPoint({ x: hero.x + (dx || 1), y: hero.y + dy }));
-    next = { ...next, hero: { ...next.hero, attackTargetId: target.id } };
+    next = {
+      ...next,
+      hero: {
+        ...next.hero,
+        attackTargetId: state.hero.evadeMode ? null : target.id,
+        evadeMode: state.hero.evadeMode,
+      },
+    };
   } else if (skillId === "stealth-muffle") {
     next = { ...next, hero: { ...next.hero, silentUntilMs: next.worldTimeMs + 6500, attackTargetId: null } };
   } else if (skillId === "stealth-decoy") {
@@ -2145,6 +2546,7 @@ function applyRescue(
     hero: {
       ...state.hero,
       positions: {
+        floor550: { ...FLOOR_550_START },
         floor554: { ...FLOOR_554_START },
         floor555: { ...FLOOR_555_START },
         floor556: { ...FLOOR_START },
@@ -2154,6 +2556,8 @@ function applyRescue(
       path: [],
       destination: null,
       attackTargetId: null,
+      pendingInteraction: null,
+      evadeMode: false,
       attackCooldownMs: 600,
       hp: 1,
       stress: Math.min(100, state.hero.stress + 18),
@@ -2347,7 +2751,7 @@ export function dropEnemyLoot(state: GameState, enemy: Enemy): GameState {
 }
 
 function heroAttackTick(state: GameState): GameState {
-  if (!state.hero.attackTargetId) return state;
+  if (state.hero.evadeMode || !state.hero.attackTargetId) return state;
   const target = enemyById(state, state.hero.attackTargetId);
   if (!target || target.zone !== state.zone) {
     return {
@@ -2492,6 +2896,7 @@ function heroAttackTick(state: GameState): GameState {
 function canEnemySeeHero(state: GameState, enemy: Enemy): boolean {
   if (enemy.zone !== state.zone || enemy.hp <= 0) return false;
   const hero = state.hero.positions[state.zone];
+  if (isSamosborProtectedAt(state, state.zone, hero)) return false;
   const stealthPenalty =
     talentBonus(state, "stealth") +
     equipmentScalar(state, "stealth") +
@@ -2511,7 +2916,7 @@ function enemyRetreatPath(state: GameState, enemy: Enemy): Point[] {
     for (let x = 0; x < map.rows[0].length; x += 1) {
       const point = { x, y };
       if (!isWalkableIn(state, enemy.zone, point)) continue;
-      const path = findPath(state, enemy.zone, enemy.position, point, blocked);
+      const path = findPath(state, enemy.zone, enemy.position, point, blocked, "enemy");
       if (!path) continue;
       const cover = tileAtZone(state, enemy.zone, point) === "c" ? 3 : 0;
       candidates.push({ path, score: distance(point, hero) + cover - path.length * 0.05 });
@@ -2553,7 +2958,7 @@ function thinkForEnemy(state: GameState, enemy: Enemy): Enemy {
       };
     }
     const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
-    const path = findPath(state, enemy.zone, enemy.position, gridPoint(hero), blocked);
+    const path = findPath(state, enemy.zone, enemy.position, gridPoint(hero), blocked, "enemy");
     return {
       ...enemy,
       mode: "hunting",
@@ -2581,7 +2986,7 @@ function thinkForEnemy(state: GameState, enemy: Enemy): Enemy {
       Math.min(enemy.hearingRadius, state.noise.radius);
   if (hearsNoise && state.noise) {
     const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
-    const path = findPath(state, enemy.zone, enemy.position, gridPoint(state.noise.position), blocked);
+    const path = findPath(state, enemy.zone, enemy.position, gridPoint(state.noise.position), blocked, "enemy");
     return {
       ...enemy,
       mode: "suspicious",
@@ -2594,7 +2999,7 @@ function thinkForEnemy(state: GameState, enemy: Enemy): Enemy {
 
   if (["hunting", "combat", "suspicious"].includes(enemy.mode) && enemy.memoryMs > 0 && enemy.lastKnownHero) {
     const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
-    const path = findPath(state, enemy.zone, enemy.position, gridPoint(enemy.lastKnownHero), blocked);
+    const path = findPath(state, enemy.zone, enemy.position, gridPoint(enemy.lastKnownHero), blocked, "enemy");
     return {
       ...enemy,
       mode: enemy.mode === "suspicious" ? "suspicious" : "hunting",
@@ -2608,7 +3013,7 @@ function thinkForEnemy(state: GameState, enemy: Enemy): Enemy {
   const patrolIndex = reached ? (enemy.patrolIndex + 1) % enemy.patrol.length : enemy.patrolIndex;
   const nextTarget = enemy.patrol[patrolIndex];
   const blocked = livingEnemyKeys(state, enemy.zone, enemy.id);
-  const path = findPath(state, enemy.zone, enemy.position, nextTarget, blocked);
+  const path = findPath(state, enemy.zone, enemy.position, nextTarget, blocked, "enemy");
   return {
     ...enemy,
     mode: "patrol",
@@ -2657,6 +3062,7 @@ function alertGroup(state: GameState): GameState {
 
 function enemyAttackTick(state: GameState, enemyId: string): GameState {
   const enemy = enemyById(state, enemyId);
+  if (isSamosborProtectedAt(state, state.zone, state.hero.positions[state.zone])) return state;
   if (!enemy || enemy.zone !== state.zone || enemy.mode !== "combat" || enemy.attackCooldownMs > 0) {
     return state;
   }
@@ -2722,7 +3128,7 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
 }
 
 function tickDrone(state: GameState): GameState {
-  if (branchTalentPoints(state, "engineer") < 1 || state.hero.droneCooldownMs > 0) return state;
+  if (state.hero.evadeMode || branchTalentPoints(state, "engineer") < 1 || state.hero.droneCooldownMs > 0) return state;
   const hero = state.hero.positions[state.zone];
   const target = state.enemies
     .filter(
@@ -2778,6 +3184,7 @@ function collectGroundLoot(state: GameState, loot: GroundLoot): GameState {
   return appendLog(
     {
       ...result.state,
+      hero: { ...result.state.hero, pendingInteraction: null },
       groundLoot: result.state.groundLoot.filter((item) => item.id !== loot.id),
     },
     `Подобрано: ${ITEMS[loot.itemId].name}${loot.quantity > 1 ? ` ×${loot.quantity}` : ""}.`,
@@ -2870,19 +3277,64 @@ function nearestInteractive(state: GameState): { point: Point; tile: string } | 
   return nearest ? { point: nearest.point, tile: nearest.tile } : null;
 }
 
+function nearestNpc(state: GameState, maximumDistance = 1.35): Npc | null {
+  const hero = state.hero.positions[state.zone];
+  return state.npcs
+    .filter((npc) => npc.zone === state.zone && distance(hero, npc.position) <= maximumDistance)
+    .sort((left, right) => distance(hero, left.position) - distance(hero, right.position))[0] ?? null;
+}
+
+function npcInteractionText(npc: Npc): string {
+  if (npc.kind === "merchant") {
+    const stock = (npc.vendorStock ?? []).map((itemId) => ITEMS[itemId].shortName).join(", ");
+    return `«Показываю текущий запас: ${stock || "поставки задерживаются"}. Полноценный городской обмен будет подключён к экономике хаба».`;
+  }
+  if (npc.role === "registrar") return "«Город считает тебя временным обходчиком. Нижний выход на этаж 550 открыт, но за воротами уже нет городской защиты».";
+  if (npc.role === "medic") return "«Сядь у стены и не дёргайся. В городе восстановление идёт быстрее, но чудес у нас не осталось».";
+  if (npc.kind === "liquidator") return "«После сирены не геройствуй. Гермодверь, тишина, потом выходишь вслед за нами».";
+  if (npc.role === "courier") return "«Трафик между кварталами держится на ногах и расписках. Лифты слишком часто думают сами».";
+  if (npc.role === "archivist") return "«У города шесть номеров этажей и одна память. Не путай карту с местностью».";
+  return "«Живём, пока держит гермоконтур. Остальное обсуждают только после закрытия дверей».";
+}
+
+function interactWithNpc(state: GameState, npc: Npc): GameState {
+  let next: GameState = {
+    ...state,
+    hero: { ...state.hero, pendingInteraction: null },
+    npcs: state.npcs.map((entry) =>
+      entry.id === npc.id
+        ? { ...entry, speech: npcInteractionText(npc), speechUntilMs: state.worldTimeMs + 5200 }
+        : entry,
+    ),
+  };
+  if (npc.role === "medic") {
+    next = {
+      ...next,
+      hero: {
+        ...next.hero,
+        hp: Math.min(maxHeroHp(next), next.hero.hp + 2),
+        stress: Math.max(0, next.hero.stress - 12),
+      },
+    };
+  }
+  return appendLog(next, `${npc.name}, ${npcRoleLabel(npc.role)}: ${npcInteractionText(npc)}`);
+}
+
 export function interactionHint(state: GameState): string {
   const loot = nearestGroundLoot(state);
   if (loot) return `Подобрать: ${ITEMS[loot.itemId].shortName}`;
+  const npc = nearestNpc(state);
+  if (npc) return `Поговорить: ${npc.name} · ${npcRoleLabel(npc.role)}`;
   const target = nearestInteractive(state);
   if (!target) return "Подойдите к объекту";
   return {
     S: "Восстановить датчик СБ-04",
-    H: "Войти в гермосектор",
+    H: "Проверить гермодверь и защищённую комнату",
     T: "Прочитать терминал",
     A: "Извлечь артефакт",
     P: state.zone === "voidLab" ? "Покинуть войд-зону через случайный разрыв" : "Войти в редкую войд-зону",
-    U: state.zone === "floor554" ? "Подняться на этаж 555" : "Перейти на этаж выше",
-    D: state.zone === "floor555" ? "Спуститься к воротам Города 550 · этаж 554" : "Перейти на этаж ниже",
+    U: state.zone === "floor550" ? "Вернуться в Город 550" : state.zone === "floor554" ? "Подняться на этаж 555" : "Перейти на этаж выше",
+    D: state.zone === "floor554" ? "Выйти из города на этаж 550" : state.zone === "floor555" ? "Спуститься в Город 550" : "Перейти на этаж ниже",
     L: "Проверить лифт",
     c: "Осмотреть укрытие",
     N: state.zone === "floor554" ? "Поговорить с регистратором Города 550" : "Поговорить с диспетчером Орловой",
@@ -2894,10 +3346,14 @@ export function interactionHint(state: GameState): string {
 
 function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
   const transition =
-    state.zone === "floor554" && tile === "U"
-      ? { zone: "floor555" as const, position: FLOOR_555_DOWN, message: "Подъём выполнен: этаж 555, ремонтный пояс." }
-      : state.zone === "floor555" && tile === "D"
-        ? { zone: "floor554" as const, position: FLOOR_554_UP, message: "Спуск выполнен: этаж 554, верхние ворота Города 550." }
+    state.zone === "floor550" && tile === "U"
+      ? { zone: "floor554" as const, position: FLOOR_554_DOWN, message: "Возвращение выполнено: Город 550, Большой разлом." }
+      : state.zone === "floor554" && tile === "D"
+        ? { zone: "floor550" as const, position: FLOOR_550_UP, message: "Городские ворота закрылись за спиной. Этаж 550, нижний выход." }
+        : state.zone === "floor554" && tile === "U"
+          ? { zone: "floor555" as const, position: FLOOR_555_DOWN, message: "Подъём выполнен: этаж 555, ремонтный пояс." }
+          : state.zone === "floor555" && tile === "D"
+            ? { zone: "floor554" as const, position: FLOOR_554_UP, message: "Спуск выполнен: Город 550, Большой разлом." }
         : state.zone === "floor555" && tile === "U"
       ? { zone: "floor556" as const, position: FLOOR_556_DOWN, message: "Подъём выполнен: этаж 556." }
       : state.zone === "floor556" && tile === "D"
@@ -2918,6 +3374,8 @@ function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
           path: [],
           destination: null,
           attackTargetId: null,
+          pendingInteraction: null,
+          evadeMode: transition.zone === "floor554" ? false : state.hero.evadeMode,
           positions: {
             ...state.hero.positions,
             [transition.zone]: copyPoint(transition.position),
@@ -2929,11 +3387,7 @@ function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
   );
 }
 
-export function interact(state: GameState): GameState {
-  const loot = nearestGroundLoot(state);
-  if (loot) return collectGroundLoot(state, loot);
-  const target = nearestInteractive(state);
-  if (!target) return appendLog(state, "Рядом нет доступного объекта.");
+function interactWithTarget(state: GameState, target: { point: Point; tile: string }): GameState {
   let next = state;
   if (state.zone === "floor556" && target.tile === "S") {
     if (state.sensorFixed) {
@@ -2985,7 +3439,8 @@ export function interact(state: GameState): GameState {
     }
   } else if (state.zone === "voidLab" && target.tile === "P") {
     const destinations: { zone: ZoneId; position: Point; label: string }[] = [
-      { zone: "floor554", position: { x: 8, y: 33 }, label: "ворота Города 550, этаж 554" },
+      { zone: "floor550", position: { x: 6, y: 33 }, label: "нижний выход, этаж 550" },
+      { zone: "floor554", position: { x: 8, y: 33 }, label: "Город 550" },
       { zone: "floor555", position: { x: 4, y: 19 }, label: "этаж 555" },
       { zone: "floor556", position: { x: 30, y: 18 }, label: "этаж 556" },
       { zone: "floor557", position: { x: 5, y: 19 }, label: "этаж 557" },
@@ -3002,6 +3457,8 @@ export function interact(state: GameState): GameState {
           path: [],
           destination: null,
           attackTargetId: null,
+          pendingInteraction: null,
+          evadeMode: false,
           positions: { ...state.hero.positions, [destination.zone]: copyPoint(destination.position) },
         },
       },
@@ -3018,6 +3475,8 @@ export function interact(state: GameState): GameState {
           path: [],
           destination: null,
           attackTargetId: null,
+          pendingInteraction: null,
+          evadeMode: false,
           positions: { ...state.hero.positions, voidLab: copyPoint(VOID_START) },
         },
       },
@@ -3025,22 +3484,101 @@ export function interact(state: GameState): GameState {
     );
   } else if (state.zone === "floor556" && target.tile === "N") {
     next = appendLog(state, "Диспетчер Орлова: «Сначала освойся в секторе. Проверь датчик СБ-04, затем доберись до гермоблока. В коридорах замечены четыре малые группы существ». ");
-  } else if (state.zone === "floor554" && target.tile === "N") {
-    next = appendLog(state, "Регистратор Климова: «Ворота Города 550 принимают новых обходчиков. Сдай маршрутный лист и пройди к внутренней линии. Районы 553–549 откроются по городской цепочке». ");
   } else if (state.zone === "floor554" && target.tile === "T") {
-    next = appendLog(state, "Схема Города 550: этаж 554 — ворота; 553 — жильё и склад; 552 — рынок; 551 — производство; 550 — центральный разлом; 549 — медблок и ликвидаторы.");
+    next = appendLog(state, "Схема Города 550: одна физическая карта объединяет кварталы уровней 554–551. Нижние ворота ведут сразу на опасный этаж 550; отдельного города под городом не будет.");
+  } else if (target.tile === "H") {
+    next = appendLog(state, "Гермодверь исправна. За ней находится автономная комната: существа, слизь и последствия Самосбора внутрь не проникают.");
   } else if (target.tile === "U" || target.tile === "D") {
     next = transitionFloor(state, target.tile);
   } else if (target.tile === "L") {
     next = appendLog(state, state.zone === "floor554"
-      ? "Внутренняя линия Города 550 ожидает допуска регистратора. Нижние городские районы будут подключены следующим этапом."
+      ? "Городская линия связывает кварталы внутри одной большой карты. Для дальнейшего спуска используй нижние ворота на этаж 550."
       : "Лифт закреплён за городом П-46. Внешние маршруты закрыты.");
   } else if (target.tile === "c") {
     next = appendLog(state, "Низкое укрытие даёт +2 к защите от дистанционных атак.");
   } else if (target.tile === "B") {
     next = openContainer(state, target.point);
   }
-  return emitNoise(next, next.hero.positions[next.zone], 3.5, "взаимодействие");
+  return emitNoise(
+    { ...next, hero: { ...next.hero, pendingInteraction: null } },
+    next.hero.positions[next.zone],
+    3.5,
+    "взаимодействие",
+  );
+}
+
+export function interact(state: GameState): GameState {
+  const loot = nearestGroundLoot(state);
+  if (loot) return collectGroundLoot(state, loot);
+  const npc = nearestNpc(state);
+  if (npc) return interactWithNpc(state, npc);
+  const target = nearestInteractive(state);
+  return target ? interactWithTarget(state, target) : appendLog(state, "Рядом нет доступного объекта.");
+}
+
+export function commandCollectLoot(state: GameState, lootId: string): GameState {
+  const loot = state.groundLoot.find((entry) => entry.id === lootId && entry.zone === state.zone);
+  if (!loot) return state;
+  if (distance(state.hero.positions[state.zone], loot.position) <= 1.2) return collectGroundLoot(state, loot);
+  const moving = commandMove(state, loot.position);
+  return {
+    ...moving,
+    hero: { ...moving.hero, pendingInteraction: { kind: "loot", id: loot.id } },
+  };
+}
+
+export function commandInteractAt(state: GameState, point: Point): GameState {
+  const tile = tileAt(state, point);
+  if (!["S", "H", "T", "A", "P", "U", "D", "L", "c", "B", "N"].includes(tile)) {
+    return commandMove(state, point);
+  }
+  if (distance(state.hero.positions[state.zone], point) <= 1.2) {
+    return interactWithTarget(state, { point: gridPoint(point), tile });
+  }
+  const moving = commandMove(state, point);
+  return {
+    ...moving,
+    hero: {
+      ...moving.hero,
+      pendingInteraction: { kind: "tile", zone: state.zone, point: gridPoint(point) },
+    },
+  };
+}
+
+export function commandTalkToNpc(state: GameState, npcId: string): GameState {
+  const npc = npcById(state, npcId);
+  if (!npc || npc.zone !== state.zone) return state;
+  if (distance(state.hero.positions[state.zone], npc.position) <= 1.35) return interactWithNpc(state, npc);
+  const moving = commandMove(state, npc.position);
+  return {
+    ...moving,
+    hero: { ...moving.hero, pendingInteraction: { kind: "npc", id: npc.id } },
+  };
+}
+
+function resolvePendingInteraction(state: GameState): GameState {
+  const pending = state.hero.pendingInteraction;
+  if (!pending) return state;
+  const hero = state.hero.positions[state.zone];
+  if (pending.kind === "loot") {
+    const loot = state.groundLoot.find((entry) => entry.id === pending.id && entry.zone === state.zone);
+    if (!loot) return { ...state, hero: { ...state.hero, pendingInteraction: null } };
+    if (distance(hero, loot.position) <= 1.2) return collectGroundLoot(state, loot);
+    if (!state.hero.path.length) return commandCollectLoot(state, loot.id);
+    return state;
+  }
+  if (pending.kind === "npc") {
+    const npc = npcById(state, pending.id);
+    if (!npc || npc.zone !== state.zone) return { ...state, hero: { ...state.hero, pendingInteraction: null } };
+    if (distance(hero, npc.position) <= 1.35) return interactWithNpc(state, npc);
+    if (!state.hero.path.length) return commandTalkToNpc(state, npc.id);
+    return state;
+  }
+  if (pending.zone !== state.zone) return { ...state, hero: { ...state.hero, pendingInteraction: null } };
+  const tile = tileAt(state, pending.point);
+  if (distance(hero, pending.point) <= 1.2) return interactWithTarget(state, { point: pending.point, tile });
+  if (!state.hero.path.length) return commandInteractAt(state, pending.point);
+  return state;
 }
 
 export function createInitialState(): GameState {
@@ -3048,6 +3586,7 @@ export function createInitialState(): GameState {
     zone: "floor556",
     hero: {
       positions: {
+        floor550: { ...FLOOR_550_START },
         floor554: { ...FLOOR_554_START },
         floor555: { ...FLOOR_555_START },
         floor556: { ...FLOOR_START },
@@ -3057,6 +3596,8 @@ export function createInitialState(): GameState {
       path: [],
       destination: null,
       attackTargetId: null,
+      pendingInteraction: null,
+      evadeMode: false,
       attackCooldownMs: 0,
       repathCooldownMs: 0,
       stepNoiseCooldownMs: 0,
@@ -3131,11 +3672,13 @@ export function createInitialState(): GameState {
     injuries: { ...EMPTY_INJURIES },
     rescueCount: 0,
     enemies: createEnemies(),
+    npcs: createCityNpcs(),
+    npcConversationCooldownMs: 4200,
     noise: null,
     effects: [],
     effectCounter: 0,
     rngSeed: 5560401,
-    visited: { floor554: [], floor555: [], floor556: [], floor557: [], voidLab: [] },
+    visited: { floor550: [], floor554: [], floor555: [], floor556: [], floor557: [], voidLab: [] },
     openedContainers: [],
     milestoneLootDrops: [],
     groundLoot: [],
@@ -3150,6 +3693,91 @@ export function createInitialState(): GameState {
     ],
   };
   return reveal(reconcilePopulationEnemies(state, 0));
+}
+
+export function migrateGameState(raw: Partial<GameState>): GameState {
+  const fresh = createInitialState();
+  const rawHero = raw.hero as Partial<Hero> | undefined;
+  const populations = fresh.populations.map((population) => {
+    const saved = raw.populations?.find((entry) => entry.id === population.id);
+    return saved ? { ...population, ...saved } : population;
+  });
+  const migrated: GameState = {
+    ...fresh,
+    ...raw,
+    hero: {
+      ...fresh.hero,
+      ...rawHero,
+      positions: { ...fresh.hero.positions, ...(rawHero?.positions ?? {}) },
+      pendingInteraction: null,
+      evadeMode: rawHero?.evadeMode ?? false,
+    },
+    visited: { ...fresh.visited, ...(raw.visited ?? {}) },
+    populations,
+    npcs: Array.isArray(raw.npcs) && raw.npcs.length === 34 ? raw.npcs : fresh.npcs,
+    npcConversationCooldownMs: raw.npcConversationCooldownMs ?? fresh.npcConversationCooldownMs,
+  };
+  return reveal(reconcilePopulationEnemies(migrated, migrated.populationCycle));
+}
+
+function ejectHermeticIntrusions(state: GameState): GameState {
+  const maps = new Map<ZoneId, Point[]>();
+  const candidatesFor = (zone: ZoneId): Point[] => {
+    const cached = maps.get(zone);
+    if (cached) return cached;
+    const map = mapForZone(zone);
+    const candidates: Point[] = [];
+    for (let y = 1; y < map.rows.length - 1; y += 1) {
+      for (let x = 1; x < map.rows[0].length - 1; x += 1) {
+        const point = { x, y };
+        if (isEnemyWalkableIn(state, zone, point)) candidates.push(point);
+      }
+    }
+    maps.set(zone, candidates);
+    return candidates;
+  };
+
+  let changed = false;
+  const enemies = state.enemies.map((enemy) => {
+    if (enemy.hp <= 0) return enemy;
+    const tile = tileAtZone(state, enemy.zone, enemy.position);
+    if (tile !== "g" && tile !== "H" && !isCitySafeZone(enemy.zone)) return enemy;
+    changed = true;
+    if (isCitySafeZone(enemy.zone)) {
+      return { ...enemy, hp: 0, mode: "disabled" as const, path: [], castUntilMs: 0 };
+    }
+    const destination = candidatesFor(enemy.zone)
+      .sort((left, right) => distance(left, enemy.position) - distance(right, enemy.position))[0];
+    return destination
+      ? {
+          ...enemy,
+          position: copyPoint(destination),
+          home: copyPoint(destination),
+          path: [],
+          mode: "suspicious" as const,
+          castUntilMs: 0,
+        }
+      : { ...enemy, path: [], mode: "retreat" as const, castUntilMs: 0 };
+  });
+  return changed ? { ...state, enemies } : state;
+}
+
+function applySafeAreaRecovery(state: GameState, previousWorldTimeMs: number): GameState {
+  const heroPosition = state.hero.positions[state.zone];
+  if (!isSamosborProtectedAt(state, state.zone, heroPosition)) return state;
+  const intervalMs = isCitySafeZone(state.zone) ? 3000 : 5000;
+  const crossedRecoveryTick =
+    Math.floor(previousWorldTimeMs / intervalMs) < Math.floor(state.worldTimeMs / intervalMs);
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      hp: crossedRecoveryTick ? Math.min(maxHeroHp(state), state.hero.hp + 1) : state.hero.hp,
+      stress: Math.max(0, state.hero.stress - (state.worldTimeMs - previousWorldTimeMs) * 0.003),
+      contamination: Math.max(0, state.hero.contamination - (state.worldTimeMs - previousWorldTimeMs) * 0.0002),
+      attackTargetId: null,
+    },
+  };
 }
 
 export function tickGame(state: GameState, rawDeltaMs: number): GameState {
@@ -3186,6 +3814,7 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
       memoryMs: Math.max(0, enemy.memoryMs - deltaMs),
     })),
   };
+  next = ejectHermeticIntrusions(next);
 
   if (!next.mutated && next.worldTimeMs >= MUTATION_AT_MS) {
     next = appendLog(
@@ -3202,6 +3831,7 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
   const heroPosition = next.hero.positions[next.zone];
   const combatDirective = combatDirectiveFor(next);
   if (
+    !next.hero.evadeMode &&
     next.hero.attackTargetId &&
     next.hero.repathCooldownMs <= 0 &&
     combatDirective !== "mobileFire"
@@ -3258,9 +3888,26 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
     }
   }
 
-  next = reveal(next);
+  next = resolvePendingInteraction(next);
+  next = tickCityNpcs(next, deltaMs);
 
-  if (!next.hero.attackTargetId) {
+  const wasProtected = isSamosborProtectedAt(
+    state,
+    state.zone,
+    state.hero.positions[state.zone],
+  );
+  next = reveal(next);
+  next = applySafeAreaRecovery(next, state.worldTimeMs);
+  const nowProtected = isSamosborProtectedAt(
+    next,
+    next.zone,
+    next.hero.positions[next.zone],
+  );
+  if (!wasProtected && nowProtected && next.zone === state.zone) {
+    next = appendLog(next, "Гермодверь закрылась за спиной. Контур изолирован: можно перевести дух и восстановиться.");
+  }
+
+  if (!next.hero.evadeMode && !next.hero.attackTargetId) {
     const heroNow = next.hero.positions[next.zone];
     const nearest = next.enemies
       .filter(
@@ -3306,6 +3953,9 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
         enemy.stunnedUntilMs > next.worldTimeMs
       ) return enemy;
       const heroNow = next.hero.positions[next.zone];
+      if (!isEnemyWalkableIn(next, enemy.zone, enemy.path[0])) {
+        return { ...enemy, path: [], mode: enemy.mode === "combat" ? "hunting" : enemy.mode };
+      }
       if (["hunting", "combat"].includes(enemy.mode) && distance(enemy.position, heroNow) <= enemy.attackRange) {
         return { ...enemy, path: [] };
       }
@@ -3347,8 +3997,9 @@ export function objectiveFor(state: GameState): string {
       ? "Вернуться к межэтажному переходу"
       : "Исследовать лабораторию или отступить";
   }
-  if (state.zone === "floor554") return "Зарегистрироваться у ворот Города 550";
-  if (state.zone === "floor555") return "Найти нижний переход и войти в Город 550 через этаж 554";
+  if (state.zone === "floor550") return "Пройти нижний выход, сохранить путь к гермокомнате и разведать дальнейшую цепочку";
+  if (state.zone === "floor554") return "Познакомиться с жителями Города 550 и найти нижние ворота на этаж 550";
+  if (state.zone === "floor555") return "Найти нижний переход и войти в Город 550";
   if (state.zone === "floor557") return "Осмотреть жилой контур или вернуться на этаж 556";
   if (state.missionComplete) return "Спуститься на этаж 555 и продолжить маршрут к Городу 550";
   return state.sensorFixed ? "Укрыться за гермодверью" : "Восстановить датчик СБ-04";
