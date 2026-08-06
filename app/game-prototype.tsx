@@ -174,6 +174,8 @@ const GENOME_LABELS = {
 
 const SKILL_BRANCHES = Object.keys(SKILL_NAMES) as SkillBranch[];
 type TalentView = "core" | SkillBranch | "hybrid" | "legendary";
+type MenuPanel = "character" | "inventory" | "talents" | null;
+type QuickConsumableCategory = "bandage" | "healing" | "pills" | "booster";
 const PAPERDOLL_SLOTS: GearSlot[] = ["head", "body", "hands", "feet", "back", "weapon", "artifact"];
 
 function pointsForDiamond(cx: number, cy: number): string {
@@ -287,6 +289,34 @@ function itemGlyph(entry: InventoryEntry): string {
   }[item.slot ?? "body"];
 }
 
+
+function consumeQuickConsumable(state: GameState, category: QuickConsumableCategory): GameState {
+  const preferredIds = category === "booster"
+    ? ["batteryPack"]
+    : category === "bandage"
+      ? ["bandage"]
+      : category === "healing"
+        ? ["traumaInjector"]
+        : ["painkillers"];
+  const entry = preferredIds
+    .map((itemId) => state.hero.inventory.find((candidate) => candidate.itemId === itemId))
+    .find(Boolean);
+  return entry ? consumeInventoryItem(state, entry.instanceId) : state;
+}
+
+function quickConsumableEntry(state: GameState, category: QuickConsumableCategory): InventoryEntry | null {
+  const preferredIds = category === "booster"
+    ? ["batteryPack"]
+    : category === "bandage"
+      ? ["bandage"]
+      : category === "healing"
+        ? ["traumaInjector"]
+        : ["painkillers"];
+  return preferredIds
+    .map((itemId) => state.hero.inventory.find((candidate) => candidate.itemId === itemId) ?? null)
+    .find((entry): entry is InventoryEntry => Boolean(entry)) ?? null;
+}
+
 function conditionTone(condition: number): string {
   if (condition < 35) return "critical";
   if (condition < 70) return "worn";
@@ -296,8 +326,9 @@ function conditionTone(condition: number): string {
 export default function GamePrototype() {
   const [state, setState] = useState<GameState>(() => createInitialState());
   const [saveLoaded, setSaveLoaded] = useState(false);
-  const [characterOpen, setCharacterOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<MenuPanel>(null);
   const [talentView, setTalentView] = useState<TalentView>("fire");
+  const [selectedTalentId, setSelectedTalentId] = useState<string>("fire:01");
   const [tvMode, setTvMode] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [lastInput, setLastInput] = useState("—");
@@ -311,6 +342,10 @@ export default function GamePrototype() {
   const gamepadButtonsRef = useRef<Set<number>>(new Set());
   const okHeldRef = useRef(false);
   const okChordRef = useRef(false);
+  const characterOpen = activePanel === "character";
+  const inventoryOpen = activePanel === "inventory";
+  const talentsOpen = activePanel === "talents";
+  const menuOpen = activePanel !== null;
   const map = mapForZone(state.zone);
   const hero = state.hero.positions[state.zone];
   const weapon = weaponFor(state);
@@ -323,7 +358,10 @@ export default function GamePrototype() {
   const hermeticSafe = isSamosborProtectedAt(state, state.zone, hero);
   const localPopulations = populationsForZone(state);
   const localPopulationPressure = populationPressureForZone(state);
-  const bandageCount = state.hero.inventory.find((entry) => entry.itemId === "bandage")?.quantity ?? 0;
+  const bandageEntry = quickConsumableEntry(state, "bandage");
+  const healingEntry = quickConsumableEntry(state, "healing");
+  const pillsEntry = quickConsumableEntry(state, "pills");
+  const boosterEntry = quickConsumableEntry(state, "booster");
   const visibleLoot = state.groundLoot.filter(
     (loot) => loot.zone === state.zone && isKnown(state, loot.position),
   );
@@ -332,11 +370,21 @@ export default function GamePrototype() {
     return order[ITEMS[a.itemId].kind] - order[ITEMS[b.itemId].kind] ||
       ITEMS[a.itemId].name.localeCompare(ITEMS[b.itemId].name, "ru");
   });
+  const equipmentInventory = sortedInventory.filter((entry) => ["weapon", "clothing", "artifact"].includes(ITEMS[entry.itemId].kind));
+  const medicineInventory = sortedInventory.filter((entry) => {
+    const category = ITEMS[entry.itemId].consumableCategory;
+    return category && ["bandage", "healing", "pills", "booster"].includes(category);
+  });
+  const serviceInventory = sortedInventory.filter((entry) => ITEMS[entry.itemId].consumableCategory === "utility");
+  const foodInventory = sortedInventory.filter((entry) => ITEMS[entry.itemId].consumableCategory === "food");
+  const utilityInventory = sortedInventory.filter((entry) => ITEMS[entry.itemId].kind === "material");
   const unlockedSkills = unlockedActiveSkills(state);
   const combatDirective = combatDirectiveFor(state);
   const experienceRequired = xpToNextLevel(state);
   const experienceProgress = experienceRequired > 0 ? (state.hero.xp / experienceRequired) * 100 : 100;
   const selectedTalents = TALENT_NODES.filter((node) => node.scope === talentView);
+  const selectedTalent = TALENT_NODES.find((node) => node.id === selectedTalentId) ?? selectedTalents[0] ?? null;
+  const talentTiers = [...new Set(selectedTalents.map((node) => node.tier))].sort((left, right) => left - right);
   const branchPoints = Object.fromEntries(
     SKILL_BRANCHES.map((branch) => [branch, branchTalentPoints(state, branch)]),
   ) as Record<SkillBranch, number>;
@@ -464,6 +512,18 @@ export default function GamePrototype() {
     setState((current) => applyFirstAid(current));
   }, []);
 
+  const healingNow = useCallback(() => {
+    setState((current) => consumeQuickConsumable(current, "healing"));
+  }, []);
+
+  const pillsNow = useCallback(() => {
+    setState((current) => consumeQuickConsumable(current, "pills"));
+  }, []);
+
+  const boosterNow = useCallback(() => {
+    setState((current) => consumeQuickConsumable(current, "booster"));
+  }, []);
+
   const artifactNow = useCallback(() => {
     setState((current) => activateEquippedArtifact(current));
   }, []);
@@ -476,8 +536,8 @@ export default function GamePrototype() {
     const moveFocus = (key: string) => {
       const focusRoot: ParentNode = diagnosticsOpen
         ? document.querySelector(".diagnostic-overlay") ?? document
-        : characterOpen
-          ? document.querySelector(".character-overlay") ?? document
+        : menuOpen
+          ? document.querySelector(".game-menu-overlay") ?? document
           : document;
       const focusable = [...focusRoot.querySelectorAll<HTMLElement>("button:not(:disabled), [tabindex='0']")]
         .filter((element) => element.offsetParent !== null);
@@ -512,17 +572,27 @@ export default function GamePrototype() {
       setLastInput(`${event.code || event.key} · ${event.keyCode}`);
       if (key === "c") {
         event.preventDefault();
-        setCharacterOpen((open) => !open);
+        setActivePanel((panel) => panel === "character" ? null : "character");
+        return;
+      }
+      if (key === "i") {
+        event.preventDefault();
+        setActivePanel((panel) => panel === "inventory" ? null : "inventory");
+        return;
+      }
+      if (key === "t") {
+        event.preventDefault();
+        setActivePanel((panel) => panel === "talents" ? null : "talents");
         return;
       }
       if (key === "escape" || key === "browserback" || event.keyCode === 461) {
         event.preventDefault();
         if (diagnosticsOpen) setDiagnosticsOpen(false);
-        else if (characterOpen) setCharacterOpen(false);
+        else if (menuOpen) setActivePanel(null);
         else cancelAction();
         return;
       }
-      if (characterOpen || diagnosticsOpen) {
+      if (menuOpen || diagnosticsOpen) {
         if (["arrowup", "arrowright", "arrowdown", "arrowleft"].includes(key)) {
           event.preventDefault();
           moveFocus(key);
@@ -537,7 +607,16 @@ export default function GamePrototype() {
         }
         return;
       }
-      if (key === "1" || key === "f") {
+      if (key === "2") {
+        event.preventDefault();
+        healingNow();
+      } else if (key === "3") {
+        event.preventDefault();
+        pillsNow();
+      } else if (key === "4") {
+        event.preventDefault();
+        boosterNow();
+      } else if (key === "1" || key === "f") {
         event.preventDefault();
         attackNearest();
       } else if (key === "x") {
@@ -578,7 +657,7 @@ export default function GamePrototype() {
       const usedChord = okChordRef.current;
       okHeldRef.current = false;
       okChordRef.current = false;
-      if (usedChord || characterOpen || diagnosticsOpen) return;
+      if (usedChord || menuOpen || diagnosticsOpen) return;
       const hint = interactionHint(stateRef.current);
       if (hint !== "Подойдите к объекту") interactNow();
       else attackNearest();
@@ -589,7 +668,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [artifactNow, attackNearest, cancelAction, characterOpen, diagnosticsOpen, firstAidNow, interactNow, moveTo]);
+  }, [artifactNow, attackNearest, boosterNow, cancelAction, diagnosticsOpen, firstAidNow, healingNow, interactNow, menuOpen, moveTo, pillsNow]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -611,15 +690,15 @@ export default function GamePrototype() {
       if (index === 0) attackNearest();
       else if (index === 1) cancelAction();
       else if (index === 2) interactNow();
-      else if (index === 3) setCharacterOpen((open) => !open);
-      else if (index >= 12 && index <= 15 && !characterOpen && !diagnosticsOpen) {
+      else if (index === 3) setActivePanel((panel) => panel === "character" ? null : "character");
+      else if (index >= 12 && index <= 15 && !menuOpen && !diagnosticsOpen) {
         const direction = index === 12 ? { x: 0, y: -1 } : index === 13 ? { x: 0, y: 1 } : index === 14 ? { x: -1, y: 0 } : { x: 1, y: 0 };
         const current = gridPoint(stateRef.current.hero.positions[stateRef.current.zone]);
         moveTo({ x: current.x + direction.x, y: current.y + direction.y });
       }
     }, 80);
     return () => window.clearInterval(timer);
-  }, [attackNearest, cancelAction, characterOpen, diagnosticsOpen, interactNow, moveTo]);
+  }, [attackNearest, cancelAction, diagnosticsOpen, interactNow, menuOpen, moveTo]);
 
   const tiles = useMemo(() => {
     const result: Point[] = [];
@@ -657,8 +736,57 @@ export default function GamePrototype() {
   const resetGame = () => {
     const fresh = createInitialState();
     setState(fresh);
-    setCharacterOpen(false);
+    setActivePanel(null);
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(fresh));
+  };
+
+  const chooseTalentView = (view: TalentView) => {
+    setTalentView(view);
+    const first = TALENT_NODES.find((node) => node.scope === view);
+    if (first) setSelectedTalentId(first.id);
+  };
+
+
+  const renderInventoryCard = (entry: InventoryEntry, compact = false) => {
+    const item = ITEMS[entry.itemId];
+    const equipped = Object.values(state.hero.equipment).includes(entry.instanceId);
+    const weaponStats = item.kind === "weapon" ? WEAPONS[entry.itemId as keyof typeof WEAPONS] : null;
+    const currentEntry = item.slot ? equippedEntry(state, item.slot) : null;
+    const currentItem = currentEntry ? ITEMS[currentEntry.itemId] : null;
+    const currentWeapon = currentEntry && currentItem?.kind === "weapon"
+      ? WEAPONS[currentEntry.itemId as keyof typeof WEAPONS]
+      : null;
+    const comparison = weaponStats && currentWeapon
+      ? weaponStats.damage - currentWeapon.damage
+      : (item.stats?.armor ?? 0) - (currentItem?.stats?.armor ?? 0);
+    return (
+      <article key={entry.instanceId} className={`inventory-item inventory-grid-item kind-${item.kind} rarity-${item.rarity ?? "common"} ${equipped ? "equipped" : ""} ${compact ? "compact" : ""}`}>
+        <span className="item-glyph">{itemGlyph(entry)}</span>
+        <div className="item-copy">
+          <h4>{item.rarity === "legendary" ? <em className="rarity-label">ЛЕГЕНДАРНОЕ</em> : null}{item.name}{entry.quantity > 1 ? ` ×${entry.quantity}` : ""}</h4>
+          {!compact ? <p>{item.description}</p> : null}
+          <div className="item-facts">
+            <span>{(item.weight * entry.quantity).toFixed(1)} кг</span>
+            {!item.stackable ? <span className={conditionTone(entry.condition)}>состояние {Math.round(entry.condition)}%</span> : null}
+            {weaponStats ? <><span>{weaponStats.damage} урон</span><span>{weaponStats.range.toFixed(1)} кл.</span></> : null}
+            {item.stats?.armor ? <span>броня +{item.stats.armor}</span> : null}
+            {item.stats?.maxHp ? <span>ОЗ +{item.stats.maxHp}</span> : null}
+            {item.slot && currentEntry && currentEntry.instanceId !== entry.instanceId && comparison !== 0 ? (
+              <span className={`item-comparison ${comparison > 0 ? "positive" : "negative"}`}>{comparison > 0 ? "+" : ""}{comparison} к ключевому параметру</span>
+            ) : null}
+            {item.grantedTalents?.map((talentId) => <span key={talentId} className="legendary-fact">узел: {TALENT_NODES.find((node) => node.id === talentId)?.name}</span>)}
+          </div>
+        </div>
+        <div className="item-actions">
+          {equipped ? <span className="equipped-label">Экипировано</span> : item.slot ? (
+            <button type="button" onClick={() => setState((current) => equipItem(current, entry.instanceId))}>Надеть</button>
+          ) : item.kind === "consumable" ? (
+            <button type="button" onClick={() => setState((current) => consumeInventoryItem(current, entry.instanceId))}>{item.useLabel ?? "Использовать"}</button>
+          ) : <span className="stored-label">В сумке</span>}
+          {!equipped ? <button type="button" className="drop-item" onClick={() => setState((current) => dropInventoryItem(current, entry.instanceId))}>Выложить</button> : null}
+        </div>
+      </article>
+    );
   };
 
   return (
@@ -1001,7 +1129,11 @@ export default function GamePrototype() {
           <section className="panel-card hero-card">
             <div className="hero-card-head">
               <div><p className="panel-label">СОТРУДНИК 556-04</p><h3>{classTitle}</h3></div>
-              <button type="button" className="character-shortcut" onClick={() => setCharacterOpen(true)}>Персонаж <kbd>C</kbd></button>
+              <div className="hero-menu-shortcuts">
+                <button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button>
+                <button type="button" onClick={() => setActivePanel("inventory")}>Инвентарь <kbd>I</kbd></button>
+                <button type="button" onClick={() => setActivePanel("talents")}>Таланты <kbd>T</kbd></button>
+              </div>
             </div>
             <div className="stat-row"><span>Здоровье</span><strong>{state.hero.hp} / {heroMaxHp}</strong></div>
             <div className="meter health-meter"><i style={{ width: `${(state.hero.hp / heroMaxHp) * 100}%` }} /></div>
@@ -1063,232 +1195,226 @@ export default function GamePrototype() {
         </aside>
       </section>
 
-      <section className="action-dock" aria-label="Управление героем">
+      <section className="action-dock action-dock-v2" aria-label="Управление героем">
         <div className="health-orb" style={{ "--health": `${(state.hero.hp / heroMaxHp) * 100}%` } as CSSProperties}>
-          <strong>{state.hero.hp}</strong><span>ОЗ</span>
+          <strong>{state.hero.hp}</strong><span>ОЗ</span><small>{heroMaxHp} максимум</small>
         </div>
-        <div className="movement-help"><strong>ДВИЖЕНИЕ</strong><span>Клик / касание по карте</span><small>WASD также доступен</small></div>
-        <div className="action-slots">
+
+        <div className="combat-cluster" aria-label="Боевые действия">
           <button type="button" className="ability attack-ability" onClick={attackNearest}>
-            <span className="ability-key">1</span><strong>{weapon.shortName}</strong><small>{heroAttackDamage(state)} урона · {weapon.range.toFixed(1)} кл.</small>
+            <span className="ability-key">1</span><strong>{weapon.shortName}</strong><small>{heroAttackDamage(state)} урон · {weapon.range.toFixed(1)} кл.</small>
             <i className="cooldown-mask" style={{ height: `${cooldownPercent}%` }} />
           </button>
           <button type="button" className={`ability retreat-ability ${state.hero.evadeMode ? "active" : ""}`} onClick={cancelAction}>
-            <span className="ability-key">X</span><strong>{state.hero.evadeMode ? "Отступление" : "Убежать"}</strong><small>{state.hero.evadeMode ? "автоатака отключена" : "разорвать бой и двигаться"}</small>
+            <span className="ability-key">X</span><strong>{state.hero.evadeMode ? "Отступление" : "Убежать"}</strong><small>{state.hero.evadeMode ? "автоатака отключена" : "разорвать бой"}</small>
           </button>
-          <button type="button" className="ability autocast-ability" onClick={() => setCharacterOpen(true)}>
-            <span className="ability-key">AUTO</span>
-            <strong>{unlockedSkills.length} протоколов</strong>
-            <small>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "сбор пачки" : "адаптивная ротация"}</small>
+          <button type="button" className="ability interact-ability" onClick={interactNow}>
+            <span className="ability-key">E</span><strong>Использовать</strong><small>{interactionHint(state)}</small>
           </button>
-          <button type="button" className="ability" onClick={interactNow}><span className="ability-key">E</span><strong>Использовать</strong><small>{interactionHint(state)}</small></button>
-          <button type="button" className="ability aid-ability" onClick={firstAidNow} disabled={!bandageCount}><span className="ability-key">Q</span><strong>Перевязка ×{bandageCount}</strong><small>2 ОЗ · стабилизация травмы</small></button>
-          <button type="button" className="ability artifact-ability" onClick={artifactNow} disabled={!artifact}><span className="ability-key">R</span><strong>{artifact ? ITEMS[artifact.itemId].shortName : "Артефакт"}</strong><small>{artifact ? ITEMS[artifact.itemId].useLabel : "Не экипирован"}</small><i className="cooldown-mask artifact-cooldown" style={{ height: `${Math.min(100, (state.hero.artifactCooldownMs / 30000) * 100)}%` }} /></button>
-          <button type="button" className="ability" onClick={() => setCharacterOpen(true)}><span className="ability-key">C</span><strong>Персонаж</strong><small>Дерево · {state.hero.talents.length}/{BASE_TALENT_COUNT + 4}</small></button>
+          <button type="button" className="ability artifact-ability" onClick={artifactNow} disabled={!artifact}>
+            <span className="ability-key">R</span><strong>{artifact ? ITEMS[artifact.itemId].shortName : "Артефакт"}</strong><small>{artifact ? ITEMS[artifact.itemId].useLabel : "Не экипирован"}</small>
+            <i className="cooldown-mask artifact-cooldown" style={{ height: `${Math.min(100, (state.hero.artifactCooldownMs / 30000) * 100)}%` }} />
+          </button>
         </div>
-        <div className="weapon-readout"><span>Оружие</span><strong>{weapon.name}</strong><small>{(heroAttackCooldown(state) / 1000).toFixed(2)} сек. между атаками</small></div>
+
+        <div className="consumable-belt" aria-label="Пояс активных расходников">
+          <div className="belt-heading"><span>ПОЛЕВОЙ ПОЯС</span><small>еда остаётся в сумке</small></div>
+          <div className="belt-slots">
+            <button type="button" className="quick-consumable bandage-slot" onClick={firstAidNow} disabled={!bandageEntry}>
+              <kbd>Q</kbd><span className="quick-icon">П</span><strong>Перевязка</strong><small>{bandageEntry ? `${ITEMS[bandageEntry.itemId].shortName} ×${bandageEntry.quantity}` : "пусто"}</small>
+            </button>
+            <button type="button" className="quick-consumable healing-slot" onClick={healingNow} disabled={!healingEntry}>
+              <kbd>2</kbd><span className="quick-icon">+</span><strong>Исцеление</strong><small>{healingEntry ? `${ITEMS[healingEntry.itemId].shortName} ×${healingEntry.quantity}` : "пусто"}</small>
+            </button>
+            <button type="button" className="quick-consumable pills-slot" onClick={pillsNow} disabled={!pillsEntry}>
+              <kbd>3</kbd><span className="quick-icon">●</span><strong>Таблетки</strong><small>{pillsEntry ? `${ITEMS[pillsEntry.itemId].shortName} ×${pillsEntry.quantity}` : "пусто"}</small>
+            </button>
+            <button type="button" className="quick-consumable booster-slot" onClick={boosterNow} disabled={!boosterEntry}>
+              <kbd>4</kbd><span className="quick-icon">↯</span><strong>Бустер</strong><small>{boosterEntry ? `${ITEMS[boosterEntry.itemId].shortName} ×${boosterEntry.quantity}` : "пусто"}</small>
+            </button>
+          </div>
+        </div>
+
+        <div className="menu-cluster" aria-label="Меню персонажа">
+          <button type="button" onClick={() => setActivePanel("character")}><kbd>C</kbd><strong>Персонаж</strong><small>характеристики</small></button>
+          <button type="button" onClick={() => setActivePanel("inventory")}><kbd>I</kbd><strong>Инвентарь</strong><small>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)} кг</small></button>
+          <button type="button" onClick={() => setActivePanel("talents")}><kbd>T</kbd><strong>Таланты</strong><small>{state.hero.generalPoints + state.hero.skillPoints} очк.</small></button>
+        </div>
+
+        <div className="experience-orb" style={{ "--experience": `${experienceProgress}%` } as CSSProperties}>
+          <strong>{state.hero.level}</strong><span>УР.</span><small>{experienceRequired > 0 ? `${state.hero.xp}/${experienceRequired}` : "MAX"}</small>
+        </div>
       </section>
 
       {characterOpen ? (
-        <div className="character-overlay" role="dialog" aria-modal="false" aria-label="Панель персонажа">
-          <div className="character-window">
-            <header>
-              <div><p className="eyebrow">ЛИЧНОЕ ДЕЛО · 556-04</p><h2>Панель персонажа</h2><p>Мир продолжает двигаться, пока открыто личное дело.</p></div>
-              <div className="window-status"><i />LIVE</div>
-              <button type="button" className="close-character" onClick={() => setCharacterOpen(false)} aria-label="Закрыть панель персонажа">×</button>
+        <div className="game-menu-overlay character-overlay" role="dialog" aria-modal="false" aria-label="Меню персонажа">
+          <div className="character-window character-sheet-window">
+            <header className="menu-window-header">
+              <div><p className="eyebrow">ЛИЧНОЕ ДЕЛО · 556-04</p><h2>Персонаж</h2><p>Сводка характеристик и экипированного комплекта. Мир продолжает жить.</p></div>
+              <nav className="menu-window-tabs"><button type="button" className="active">Персонаж <kbd>C</kbd></button><button type="button" onClick={() => setActivePanel("inventory")}>Инвентарь <kbd>I</kbd></button><button type="button" onClick={() => setActivePanel("talents")}>Таланты <kbd>T</kbd></button></nav>
+              <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть меню">×</button>
             </header>
 
-            <div className="character-grid">
-              <section className="paperdoll-section">
-                <p className="panel-label">ЭКИПИРОВКА</p>
+            <div className="character-sheet-layout">
+              <section className="paperdoll-section character-paperdoll">
+                <div className="sheet-title"><p className="panel-label">ЭКИПИРОВАНО</p><h3>{classTitle}</h3><small>Сотрудник 556-04 · уровень {state.hero.level}</small></div>
                 <div className="paperdoll">
                   <div className="doll-silhouette"><i className="doll-head" /><i className="doll-body" /><i className="doll-arm left" /><i className="doll-arm right" /><i className="doll-leg left" /><i className="doll-leg right" /></div>
                   {PAPERDOLL_SLOTS.map((slot) => {
                     const entry = equippedEntry(state, slot);
                     const item = entry ? ITEMS[entry.itemId] : null;
                     return (
-                      <div key={slot} className={`gear-slot slot-${slot} ${entry ? "filled" : "empty"} ${item?.rarity === "legendary" ? "legendary" : ""}`}>
-                        <small>{SLOT_NAMES[slot]}</small>
-                        <strong>{item?.shortName ?? "Пусто"}</strong>
-                        {entry ? <em className={conditionTone(entry.condition)}>{Math.round(entry.condition)}%</em> : null}
-                      </div>
-                    );
-                  })}
-                  <div className={`gear-slot slot-drone ${branchPoints.engineer >= 1 ? "unlocked" : ""}`}><small>Спутник</small><strong>{branchPoints.engineer >= 1 ? "Рембот Р-3" : "Требуется Инженер I"}</strong></div>
-                </div>
-                <div className="character-status-grid">
-                  <span><small>ОЗ</small><strong>{state.hero.hp}/{heroMaxHp}</strong></span>
-                  <span><small>Защита</small><strong>{heroDefense(state)}</strong></span>
-                  <span><small>Скорость</small><strong>{heroMoveSpeed(state).toFixed(1)}</strong></span>
-                  <span className={carriedWeight > weightLimit ? "danger" : ""}><small>Груз</small><strong>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)}</strong></span>
-                  <span className={state.hero.stress >= 60 ? "danger" : ""}><small>Стресс</small><strong>{Math.round(state.hero.stress)}%</strong></span>
-                  <span className={state.hero.contamination >= 40 ? "danger" : ""}><small>Заражение</small><strong>{Math.round(state.hero.contamination)}%</strong></span>
-                </div>
-                {injuries.length ? <ul className="character-injuries">{injuries.map((item) => <li key={item}>{item}</li>)}</ul> : null}
-              </section>
-
-              <section className="loadout-section inventory-section">
-                <div className="inventory-heading">
-                  <div><p className="panel-label">РЮКЗАК И ДОБЫЧА</p><h3>Предметы смены</h3></div>
-                  <strong className={carriedWeight > weightLimit ? "overloaded" : ""}>{carriedWeight.toFixed(1)} / {weightLimit.toFixed(1)} кг</strong>
-                </div>
-                <div className="carry-meter"><i style={{ width: `${Math.min(100, (carriedWeight / weightLimit) * 100)}%` }} /></div>
-                <div className="inventory-list">
-                  {sortedInventory.map((entry) => {
-                    const item = ITEMS[entry.itemId];
-                    const equipped = Object.values(state.hero.equipment).includes(entry.instanceId);
-                    const weaponStats = item.kind === "weapon" ? WEAPONS[entry.itemId as keyof typeof WEAPONS] : null;
-                    return (
-                      <article key={entry.instanceId} className={`inventory-item kind-${item.kind} rarity-${item.rarity ?? "common"} ${equipped ? "equipped" : ""}`}>
-                        <span className="item-glyph">{itemGlyph(entry)}</span>
-                        <div className="item-copy">
-                          <h4>{item.rarity === "legendary" ? <em className="rarity-label">ЛЕГЕНДАРНОЕ</em> : null}{item.name}{entry.quantity > 1 ? ` ×${entry.quantity}` : ""}</h4>
-                          <p>{item.description}</p>
-                          <div className="item-facts">
-                            <span>{(item.weight * entry.quantity).toFixed(1)} кг</span>
-                            {!item.stackable ? <span className={conditionTone(entry.condition)}>состояние {Math.round(entry.condition)}%</span> : null}
-                            {weaponStats ? <><span>{weaponStats.damage} урон</span><span>{weaponStats.range.toFixed(1)} кл.</span></> : null}
-                            {item.stats?.armor ? <span>броня +{item.stats.armor}</span> : null}
-                            {item.grantedTalents?.map((talentId) => <span key={talentId} className="legendary-fact">узел: {TALENT_NODES.find((node) => node.id === talentId)?.name}</span>)}
-                          </div>
-                        </div>
-                        <div className="item-actions">
-                          {equipped ? <span className="equipped-label">Экипировано</span> : item.slot ? (
-                            <button type="button" onClick={() => setState((current) => equipItem(current, entry.instanceId))}>Надеть</button>
-                          ) : item.kind === "consumable" ? (
-                            <button type="button" onClick={() => setState((current) => consumeInventoryItem(current, entry.instanceId))}>{item.useLabel ?? "Использовать"}</button>
-                          ) : <span className="stored-label">В рюкзаке</span>}
-                          {!equipped ? <button type="button" className="drop-item" onClick={() => setState((current) => dropInventoryItem(current, entry.instanceId))}>Выложить</button> : null}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-
-                <p className="panel-label attributes-label">ХАРАКТЕРИСТИКИ</p>
-                <div className="attribute-row">
-                  {ATTRIBUTE_OPTIONS.map(({ id, label }) => (
-                    <span key={id}>
-                      <small>{label}</small>
-                      <strong>{effectiveAttribute(state, id)}</strong>
-                      <em>база {state.hero.attributes[id]}</em>
-                      <button
-                        type="button"
-                        disabled={state.hero.attributePoints <= 0}
-                        onClick={() => setState((current) => allocateAttribute(current, id))}
-                        aria-label={`Повысить атрибут ${label}`}
-                      >
-                        +
+                      <button key={slot} type="button" className={`gear-slot slot-${slot} ${entry ? "filled" : "empty"} ${item?.rarity === "legendary" ? "legendary" : ""}`} onClick={() => setActivePanel("inventory")}>
+                        <small>{SLOT_NAMES[slot]}</small><strong>{item?.shortName ?? "Пусто"}</strong>{entry ? <em className={conditionTone(entry.condition)}>{Math.round(entry.condition)}%</em> : null}
                       </button>
-                    </span>
-                  ))}
+                    );
+                  })}
+                  <div className={`gear-slot slot-drone ${branchPoints.engineer >= 1 ? "unlocked" : ""}`}><small>Спутник</small><strong>{branchPoints.engineer >= 1 ? "Рембот Р-3" : "Не допущен"}</strong></div>
                 </div>
               </section>
 
-              <section className="skills-section">
-                <div className="skills-heading progression-heading">
-                  <div>
-                    <p className="panel-label">КОНСТРУКТОР АРХЕТИПА · 121 БАЗОВЫЙ + 4 ВНЕШНИХ</p>
-                    <h3>{classTitle}</h3>
-                    <p>Классов нет. Таланты определяют оружие, дистанцию, защиту, устройства и автоматическую боевую ротацию.</p>
-                  </div>
-                  <div className="point-wallets">
-                    <span><small>Общий контур</small><strong>{state.hero.generalPoints}</strong></span>
-                    <span><small>Профессиональный</small><strong>{state.hero.skillPoints}</strong></span>
-                    <span><small>Атрибуты</small><strong>{state.hero.attributePoints}</strong></span>
-                  </div>
-                </div>
-
-                <div className="progression-overview">
+              <section className="character-ledger">
+                <div className="identity-banner">
                   <div className="qualification-ring"><strong>{state.hero.level}</strong><span>уровень</span></div>
-                  <div className="qualification-track">
-                    <div><span>Стажёр</span><span>Специалист</span><span>Доктрина</span><span>Главный</span><span>50</span></div>
-                    <i><b style={{ width: `${Math.min(100, (state.hero.level / 50) * 100)}%` }} /></i>
-                    <small>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} до следующей квалификации` : "Основная квалификация завершена"}</small>
-                  </div>
-                  <div className="archetype-readout">
-                    <small>Автоконтур</small>
-                    <strong>{combatDirective === "mobileFire" ? "Мобильный огонь" : combatDirective === "splashGuard" ? "Силовой периметр" : "Адаптивный"}</strong>
-                    <span>{unlockedSkills.length} автоматических протоколов</span>
-                  </div>
+                  <div><p className="panel-label">ТЕКУЩИЙ АРХЕТИП</p><h3>{classTitle}</h3><span>{combatDirective === "mobileFire" ? "Мобильный огонь" : combatDirective === "splashGuard" ? "Силовой периметр" : "Адаптивный автоконтур"}</span></div>
+                  <div className="point-wallets compact-wallets"><span><small>Общие</small><strong>{state.hero.generalPoints}</strong></span><span><small>Проф.</small><strong>{state.hero.skillPoints}</strong></span><span><small>Атрибуты</small><strong>{state.hero.attributePoints}</strong></span></div>
                 </div>
 
-                <nav className="talent-tabs" aria-label="Разделы дерева">
-                  <button type="button" className={talentView === "core" ? "active" : ""} onClick={() => setTalentView("core")}>Центр</button>
-                  {SKILL_BRANCHES.map((branch) => (
-                    <button key={branch} type="button" className={`${talentView === branch ? "active" : ""} branch-${branch}`} onClick={() => setTalentView(branch)}>
-                      <span>{branchGlyph(branch)}</span>{SKILL_NAMES[branch]}<em>{branchPoints[branch]}</em>
-                    </button>
-                  ))}
-                  <button type="button" className={talentView === "hybrid" ? "active" : ""} onClick={() => setTalentView("hybrid")}>Совмещённые<em>{state.hero.talents.filter((id) => id.startsWith("hybrid:")).length}/15</em></button>
-                  <button type="button" className={`${talentView === "legendary" ? "active" : ""} legendary-tab`} onClick={() => setTalentView("legendary")}>Легендарные<em>{state.hero.discoveredTalents.length}/4</em></button>
-                </nav>
+                <div className="ledger-columns">
+                  <div className="stat-ledger-card offense"><p className="panel-label">НАСТУПЛЕНИЕ</p><dl><div><dt>Урон</dt><dd>{heroAttackDamage(state)}</dd></div><div><dt>Дальность</dt><dd>{heroAttackRange(state).toFixed(1)}</dd></div><div><dt>Интервал атаки</dt><dd>{(heroAttackCooldown(state) / 1000).toFixed(2)} с</dd></div><div><dt>Оружие</dt><dd>{weapon.shortName}</dd></div></dl></div>
+                  <div className="stat-ledger-card defense"><p className="panel-label">ЗАЩИТА</p><dl><div><dt>Здоровье</dt><dd>{state.hero.hp}/{heroMaxHp}</dd></div><div><dt>Защита</dt><dd>{heroDefense(state)}</dd></div><div><dt>Скорость</dt><dd>{heroMoveSpeed(state).toFixed(1)}</dd></div><div><dt>Гермоконтур</dt><dd>{hermeticSafe ? "внутри" : "снаружи"}</dd></div></dl></div>
+                  <div className="stat-ledger-card survival"><p className="panel-label">СОСТОЯНИЕ</p><dl><div><dt>Стресс</dt><dd>{Math.round(state.hero.stress)}%</dd></div><div><dt>Заражение</dt><dd>{Math.round(state.hero.contamination)}%</dd></div><div><dt>Груз</dt><dd>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)}</dd></div><div><dt>Автопротоколы</dt><dd>{unlockedSkills.length}</dd></div></dl></div>
+                </div>
 
-                {SKILL_BRANCHES.includes(talentView as SkillBranch) ? (
-                  <div className="branch-summary">
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 1 ? "reached" : ""}`}>Навык · 1</span>
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 4 ? "reached" : ""}`}>Связка · 4</span>
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 8 ? "reached" : ""}`}>Гибрид · 8</span>
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 12 ? "reached" : ""}`}>Доктрина · 12</span>
-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 16 ? "reached" : ""}`}>Ключ · 16</span>
-                    <p>{SKILL_DESCRIPTIONS[talentView as SkillBranch]}</p>
+                <section className="attribute-ledger">
+                  <div className="section-heading-inline"><div><p className="panel-label">БАЗОВЫЕ ХАРАКТЕРИСТИКИ</p><h3>Распределение атрибутов</h3></div><strong>{state.hero.attributePoints} свободно</strong></div>
+                  <div className="attribute-row character-attributes">
+                    {ATTRIBUTE_OPTIONS.map(({ id, label }) => (
+                      <span key={id}><small>{label}</small><strong>{effectiveAttribute(state, id)}</strong><em>база {state.hero.attributes[id]}</em><button type="button" disabled={state.hero.attributePoints <= 0} onClick={() => setState((current) => allocateAttribute(current, id))}>+</button></span>
+                    ))}
                   </div>
-                ) : null}
+                </section>
 
-                <div className={`skill-tree talent-grid view-${talentView}`}>
-                  {selectedTalents.map((node) => {
-                    const active = state.hero.talents.includes(node.id);
-                    const discovered = node.scope !== "legendary" || state.hero.discoveredTalents.includes(node.id);
-                    const available = canAllocateTalent(state, node.id);
-                    const pairProgress = node.pair ? `${branchPoints[node.pair[0]]}/8 + ${branchPoints[node.pair[1]]}/8` : null;
-                    return (
-                      <article key={node.id} className={`talent-node kind-${node.kind} ${active ? "active" : ""} ${!discovered ? "undiscovered" : ""}`}>
-                        <span className="skill-glyph">{node.scope === "legendary" ? "✦" : node.scope === "hybrid" ? "×" : node.scope === "core" ? "•" : branchGlyph(node.scope)}</span>
-                        <div>
-                          <small className="node-type">{!discovered ? "НЕИЗВЕСТНЫЙ ВНЕШНИЙ УЗЕЛ" : `${node.kind} · уровень ${node.tier}`}</small>
-                          <h4>{discovered ? node.name : "Запись отсутствует"}</h4>
-                          <p>{discovered ? node.description : "Открывается сюжетной наградой, редким боссом или легендарным предметом."}</p>
-                          {pairProgress ? <em className="pair-progress">Допуск: {pairProgress}</em> : null}
-                          {node.requiredBranchPoints ? <em className="pair-progress">Требуется {node.requiredBranchPoints} очков этой ветви</em> : null}
-                        </div>
-                        <button
-                          type="button"
-                          disabled={!available}
-                          className={active ? "allocated" : ""}
-                          onClick={() => setState((current) => allocateTalent(current, node.id))}
-                          aria-label={`Освоить ${node.name}`}
-                        >
-                          {active ? "✓" : "+"}
-                        </button>
-                      </article>
-                    );
+                <section className="condition-ledger">
+                  <div><p className="panel-label">ТРАВМЫ И ЭФФЕКТЫ</p>{injuries.length ? <ul className="character-injuries">{injuries.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="clean-status">Критических повреждений нет.</p>}</div>
+                  <div className="qualification-track"><div><span>Стажёр</span><span>Специалист</span><span>Доктрина</span><span>Главный</span><span>50</span></div><i><b style={{ width: `${Math.min(100, (state.hero.level / 50) * 100)}%` }} /></i><small>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} опыта` : "Основная квалификация завершена"}</small></div>
+                </section>
+              </section>
+            </div>
+            <footer><button type="button" className="reset-character" onClick={resetGame}>Сбросить прототип</button><button type="button" className="close-main" onClick={() => setActivePanel(null)}>Вернуться в локацию</button></footer>
+          </div>
+        </div>
+      ) : null}
+
+      {inventoryOpen ? (
+        <div className="game-menu-overlay character-overlay" role="dialog" aria-modal="false" aria-label="Инвентарь">
+          <div className="character-window inventory-window-v2">
+            <header className="menu-window-header">
+              <div><p className="eyebrow">СНАБЖЕНИЕ · РД-54</p><h2>Инвентарь</h2><p>Экипировка, медицинские подсумки, провиант и служебный груз.</p></div>
+              <nav className="menu-window-tabs"><button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button><button type="button" className="active">Инвентарь <kbd>I</kbd></button><button type="button" onClick={() => setActivePanel("talents")}>Таланты <kbd>T</kbd></button></nav>
+              <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть инвентарь">×</button>
+            </header>
+
+            <div className="inventory-layout-v2">
+              <section className="inventory-loadout-panel">
+                <div className="section-heading-inline"><div><p className="panel-label">КОМПЛЕКТ</p><h3>Надето на персонажа</h3></div><button type="button" onClick={() => setActivePanel("character")}>Характеристики</button></div>
+                <div className="paperdoll inventory-paperdoll">
+                  <div className="doll-silhouette"><i className="doll-head" /><i className="doll-body" /><i className="doll-arm left" /><i className="doll-arm right" /><i className="doll-leg left" /><i className="doll-leg right" /></div>
+                  {PAPERDOLL_SLOTS.map((slot) => {
+                    const entry = equippedEntry(state, slot);
+                    const item = entry ? ITEMS[entry.itemId] : null;
+                    return <div key={slot} className={`gear-slot slot-${slot} ${entry ? "filled" : "empty"} ${item?.rarity === "legendary" ? "legendary" : ""}`}><small>{SLOT_NAMES[slot]}</small><strong>{item?.shortName ?? "Пусто"}</strong>{entry ? <em className={conditionTone(entry.condition)}>{Math.round(entry.condition)}%</em> : null}</div>;
                   })}
                 </div>
+                <div className="loadout-summary"><span><small>Урон</small><strong>{heroAttackDamage(state)}</strong></span><span><small>Защита</small><strong>{heroDefense(state)}</strong></span><span><small>ОЗ</small><strong>{heroMaxHp}</strong></span><span><small>Груз</small><strong>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)}</strong></span></div>
+              </section>
 
-                <div className="autocast-protocols">
-                  <div className="autocast-heading">
-                    <div><p className="panel-label">АВТОМАТИЧЕСКАЯ РОТАЦИЯ</p><h3>Все открытые навыки работают сами</h3><p>Игрок управляет позицией, целью и риском. Приоритеты и условия применения рождаются из вложенных талантов, без отдельного выбора «ручной» или «автоматической» сборки.</p></div>
-                    <strong>{unlockedSkills.length} / {Object.keys(ACTIVE_SKILLS).length}</strong>
-                  </div>
-                  <div className="autocast-catalog">
-                    {(Object.keys(ACTIVE_SKILLS) as ActiveSkillId[]).map((skillId) => {
-                      const skill = ACTIVE_SKILLS[skillId];
-                      const unlocked = unlockedSkills.includes(skillId);
-                      const cooldown = state.hero.activeSkillCooldowns[skillId] ?? 0;
-                      return (
-                        <article key={skillId} className={`autocast-card branch-${skill.branch} ${unlocked ? "unlocked" : "locked"}`}>
-                          <span className="autocast-glyph">{branchGlyph(skill.branch)}</span>
-                          <div><small>{SKILL_NAMES[skill.branch]} · {skill.role}</small><h4>{skill.name}</h4><p>{autocastConditionLabel(skillId)}</p></div>
-                          <em>{unlocked ? (cooldown > 0 ? `${(cooldown / 1000).toFixed(1)} с` : "ГОТОВ") : `${skill.unlockAt} очк.`}</em>
-                        </article>
-                      );
-                    })}
-                  </div>
+              <section className="backpack-panel">
+                <div className="inventory-heading"><div><p className="panel-label">СУМКА</p><h3>Рюкзак и добыча</h3></div><strong className={carriedWeight > weightLimit ? "overloaded" : ""}>{carriedWeight.toFixed(1)} / {weightLimit.toFixed(1)} кг</strong></div>
+                <div className="carry-meter"><i style={{ width: `${Math.min(100, (carriedWeight / weightLimit) * 100)}%` }} /></div>
+
+                <div className="inventory-compartments">
+                  <section className="bag-compartment equipment-compartment"><div className="compartment-title"><span>СНАРЯЖЕНИЕ</span><small>{equipmentInventory.length} предметов</small></div><div className="inventory-grid-v2">{equipmentInventory.length ? equipmentInventory.map((entry) => renderInventoryCard(entry)) : <p className="empty-compartment">Отсек пуст.</p>}</div></section>
+
+                  <section className="bag-compartment medical-compartment"><div className="compartment-title"><span>МЕДИЦИНСКИЙ ПОДСУМОК</span><small>быстрые ячейки Q · 2 · 3 · 4</small></div><div className="pouch-grid">{medicineInventory.length ? medicineInventory.map((entry) => renderInventoryCard(entry, true)) : <p className="empty-compartment">Медицинские запасы израсходованы.</p>}</div></section>
+
+                  <section className="bag-compartment food-compartment"><div className="compartment-title"><span>ПРОВИАНТ</span><small>хранится в сумке, не занимает активный пояс</small></div><div className="pouch-grid food-grid">{foodInventory.length ? foodInventory.map((entry) => renderInventoryCard(entry, true)) : <p className="empty-compartment">Провианта нет.</p>}</div></section>
+
+                  <section className="bag-compartment service-compartment"><div className="compartment-title"><span>СЕРВИС И МАТЕРИАЛЫ</span><small>{serviceInventory.length + utilityInventory.length} позиций</small></div><div className="pouch-grid">{[...serviceInventory, ...utilityInventory].length ? [...serviceInventory, ...utilityInventory].map((entry) => renderInventoryCard(entry, true)) : <p className="empty-compartment">Служебный отсек пуст.</p>}</div></section>
                 </div>
               </section>
             </div>
+            <footer><button type="button" className="reset-character" onClick={resetGame}>Сбросить прототип</button><button type="button" className="close-main" onClick={() => setActivePanel(null)}>Вернуться в локацию</button></footer>
+          </div>
+        </div>
+      ) : null}
 
-            <footer><button type="button" className="reset-character" onClick={resetGame}>Сбросить прототип</button><button type="button" className="close-main" onClick={() => setCharacterOpen(false)}>Вернуться в локацию</button></footer>
+      {talentsOpen ? (
+        <div className="game-menu-overlay character-overlay talent-overlay" role="dialog" aria-modal="false" aria-label="Панель талантов">
+          <div className="character-window talent-window-wow">
+            <header className="menu-window-header">
+              <div><p className="eyebrow">КВАЛИФИКАЦИОННАЯ СЕТКА</p><h2>Таланты и специализация</h2><p>Отдельное дерево в духе классовой панели: ветки слева, ранги по центру, подробности справа.</p></div>
+              <nav className="menu-window-tabs"><button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button><button type="button" onClick={() => setActivePanel("inventory")}>Инвентарь <kbd>I</kbd></button><button type="button" className="active">Таланты <kbd>T</kbd></button></nav>
+              <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть таланты">×</button>
+            </header>
+
+            <div className="wow-talent-layout">
+              <aside className="talent-branch-rail">
+                <div className="talent-wallet"><span><small>Общий контур</small><strong>{state.hero.generalPoints}</strong></span><span><small>Профессиональный</small><strong>{state.hero.skillPoints}</strong></span></div>
+                <button type="button" className={talentView === "core" ? "active" : ""} onClick={() => chooseTalentView("core")}><span>•</span><div><strong>Общий контур</strong><small>выживание и логистика</small></div></button>
+                {SKILL_BRANCHES.map((branch) => <button key={branch} type="button" className={`${talentView === branch ? "active" : ""} branch-${branch}`} onClick={() => chooseTalentView(branch)}><span>{branchGlyph(branch)}</span><div><strong>{SKILL_NAMES[branch]}</strong><small>{branchPoints[branch]} вложено</small></div></button>)}
+                <button type="button" className={talentView === "hybrid" ? "active" : ""} onClick={() => chooseTalentView("hybrid")}><span>×</span><div><strong>Совмещённые</strong><small>связки двух ветвей</small></div></button>
+                <button type="button" className={`${talentView === "legendary" ? "active" : ""} legendary-tab`} onClick={() => chooseTalentView("legendary")}><span>✦</span><div><strong>Легендарные</strong><small>{state.hero.discoveredTalents.length}/4 открыто</small></div></button>
+              </aside>
+
+              <section className={`wow-tree-panel branch-surface-${talentView}`}>
+                <div className="wow-tree-heading">
+                  <div><p className="panel-label">{talentView === "core" ? "ОБЩИЙ КОНТУР" : talentView === "hybrid" ? "СОВМЕЩЁННЫЕ ДОПУСКИ" : talentView === "legendary" ? "ВНЕШНЕЕ КОЛЬЦО" : SKILL_NAMES[talentView as SkillBranch]}</p><h3>{talentView === "core" ? "Базовая подготовка" : talentView === "hybrid" ? "Пересечение специализаций" : talentView === "legendary" ? "Уникальные протоколы" : SKILL_DESCRIPTIONS[talentView as SkillBranch]}</h3></div>
+                  <div className="archetype-readout"><small>Автоконтур</small><strong>{combatDirective === "mobileFire" ? "Мобильный огонь" : combatDirective === "splashGuard" ? "Силовой периметр" : "Адаптивный"}</strong><span>{unlockedSkills.length} активных протоколов</span></div>
+                </div>
+
+                {SKILL_BRANCHES.includes(talentView as SkillBranch) ? <div className="wow-thresholds"><span className={branchPoints[talentView as SkillBranch] >= 1 ? "reached" : ""}>Навык · 1</span><span className={branchPoints[talentView as SkillBranch] >= 4 ? "reached" : ""}>Связка · 4</span><span className={branchPoints[talentView as SkillBranch] >= 8 ? "reached" : ""}>Гибрид · 8</span><span className={branchPoints[talentView as SkillBranch] >= 12 ? "reached" : ""}>Доктрина · 12</span><span className={branchPoints[talentView as SkillBranch] >= 16 ? "reached" : ""}>Ключ · 16</span></div> : null}
+
+                <div className="wow-tier-list">
+                  {talentTiers.map((tier) => (
+                    <section key={tier} className="wow-tier-row">
+                      <div className="tier-label"><small>РАНГ</small><strong>{tier}</strong></div>
+                      <div className="tier-node-grid">
+                        {selectedTalents.filter((node) => node.tier === tier).map((node) => {
+                          const active = state.hero.talents.includes(node.id);
+                          const discovered = node.scope !== "legendary" || state.hero.discoveredTalents.includes(node.id);
+                          const available = canAllocateTalent(state, node.id);
+                          return (
+                            <button key={node.id} type="button" className={`wow-talent-node kind-${node.kind} ${active ? "active" : ""} ${available ? "available" : ""} ${selectedTalent?.id === node.id ? "selected" : ""} ${!discovered ? "undiscovered" : ""}`} onClick={() => setSelectedTalentId(node.id)}>
+                              <span className="wow-node-glyph">{node.scope === "legendary" ? "✦" : node.scope === "hybrid" ? "×" : node.scope === "core" ? "•" : branchGlyph(node.scope)}</span>
+                              <div><small>{active ? "ОСВОЕНО" : !discovered ? "НЕИЗВЕСТНО" : `${node.kind} · ${node.cost} очк.`}</small><strong>{discovered ? node.name : "Запись отсутствует"}</strong><p>{discovered ? node.description : "Источник протокола ещё не обнаружен."}</p></div>
+                              <i>{active ? "✓" : available ? "+" : "·"}</i>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </section>
+
+              <aside className="talent-inspector">
+                {selectedTalent ? (() => {
+                  const active = state.hero.talents.includes(selectedTalent.id);
+                  const discovered = selectedTalent.scope !== "legendary" || state.hero.discoveredTalents.includes(selectedTalent.id);
+                  const available = canAllocateTalent(state, selectedTalent.id);
+                  return <>
+                    <div className="inspector-glyph">{selectedTalent.scope === "legendary" ? "✦" : selectedTalent.scope === "hybrid" ? "×" : selectedTalent.scope === "core" ? "•" : branchGlyph(selectedTalent.scope)}</div>
+                    <p className="panel-label">ВЫБРАННЫЙ ТАЛАНТ</p><h3>{discovered ? selectedTalent.name : "Неизвестный протокол"}</h3><p>{discovered ? selectedTalent.description : "Запись появится после сюжетной награды, редкого босса или легендарного предмета."}</p>
+                    <dl><div><dt>Тип</dt><dd>{selectedTalent.kind}</dd></div><div><dt>Ранг</dt><dd>{selectedTalent.tier}</dd></div><div><dt>Стоимость</dt><dd>{selectedTalent.cost}</dd></div>{selectedTalent.requiredBranchPoints ? <div><dt>Требование</dt><dd>{selectedTalent.requiredBranchPoints} очк. ветви</dd></div> : null}{selectedTalent.pair ? <div><dt>Гибрид</dt><dd>{SKILL_NAMES[selectedTalent.pair[0]]} + {SKILL_NAMES[selectedTalent.pair[1]]}</dd></div> : null}</dl>
+                    <button type="button" className={`learn-talent ${active ? "learned" : ""}`} disabled={!available} onClick={() => setState((current) => allocateTalent(current, selectedTalent.id))}>{active ? "Освоено" : available ? `Освоить за ${selectedTalent.cost}` : "Недостаточный допуск"}</button>
+                  </>;
+                })() : <p>Выберите узел дерева.</p>}
+
+                <section className="autocast-mini-panel"><div><p className="panel-label">АВТОМАТИЧЕСКИЕ НАВЫКИ</p><strong>{unlockedSkills.length} / {Object.keys(ACTIVE_SKILLS).length}</strong></div><ul>{unlockedSkills.slice(0, 6).map((skillId) => <li key={skillId}><span>{branchGlyph(ACTIVE_SKILLS[skillId].branch)}</span><div><strong>{ACTIVE_SKILLS[skillId].name}</strong><small>{autocastConditionLabel(skillId)}</small></div></li>)}</ul>{unlockedSkills.length > 6 ? <small>Ещё {unlockedSkills.length - 6} протоколов работают в фоне.</small> : null}</section>
+              </aside>
+            </div>
+            <footer><span>{state.hero.talents.length} / {BASE_TALENT_COUNT + 4} узлов освоено</span><button type="button" className="close-main" onClick={() => setActivePanel(null)}>Вернуться в локацию</button></footer>
           </div>
         </div>
       ) : null}
@@ -1328,7 +1454,7 @@ export default function GamePrototype() {
               <div><kbd>OK + направление</kbd><span>Движение с удержанием выбранной цели; автокаст продолжает ротацию</span></div>
               <div><kbd>Назад</kbd><span>Закрыть окно или снять цель</span></div>
             </div>
-            <footer><button type="button" onClick={() => { setDiagnosticsOpen(false); setCharacterOpen(true); }}>Проверить фокус в дереве</button><button type="button" className="close-main" onClick={() => setDiagnosticsOpen(false)}>Вернуться в игру</button></footer>
+            <footer><button type="button" onClick={() => { setDiagnosticsOpen(false); setActivePanel("talents"); }}>Проверить фокус в дереве</button><button type="button" className="close-main" onClick={() => setDiagnosticsOpen(false)}>Вернуться в игру</button></footer>
           </div>
         </div>
       ) : null}

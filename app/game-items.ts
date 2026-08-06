@@ -42,6 +42,7 @@ export type ItemId =
 
 export type ItemKind = "weapon" | "clothing" | "consumable" | "material" | "artifact";
 export type ItemRarity = "common" | "uncommon" | "rare" | "legendary";
+export type ConsumableCategory = "bandage" | "healing" | "pills" | "booster" | "food" | "utility";
 
 export type ItemStats = {
   armor?: number;
@@ -65,6 +66,7 @@ export type ItemDefinition = {
   grantedTalents?: string[];
   stats?: ItemStats;
   useLabel?: string;
+  consumableCategory?: ConsumableCategory;
 };
 
 export type WeaponDefinition = {
@@ -319,6 +321,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Восстанавливает 2 ОЗ и на 30 секунд ослабляет одну травму.",
     useLabel: "Перевязать",
+    consumableCategory: "bandage",
   },
   fieldRation: {
     id: "fieldRation",
@@ -329,6 +332,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Плотный брикет и сладкий концентрат. Восстанавливает 1 ОЗ и снижает стресс на 8.",
     useLabel: "Съесть",
+    consumableCategory: "food",
   },
   painkillers: {
     id: "painkillers",
@@ -339,6 +343,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Полевой анальгетик. На 45 секунд ослабляет самую тяжёлую травму и снижает стресс на 5.",
     useLabel: "Принять",
+    consumableCategory: "pills",
   },
   traumaInjector: {
     id: "traumaInjector",
@@ -349,6 +354,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Восстанавливает 4 ОЗ, но резко повышает стресс.",
     useLabel: "Ввести",
+    consumableCategory: "healing",
   },
   filterCartridge: {
     id: "filterCartridge",
@@ -359,6 +365,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Снижает заражение на 15 единиц.",
     useLabel: "Заменить",
+    consumableCategory: "utility",
   },
   batteryPack: {
     id: "batteryPack",
@@ -369,6 +376,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Мгновенно перезапускает атакующий контур рембота.",
     useLabel: "Подключить",
+    consumableCategory: "booster",
   },
   repairKit: {
     id: "repairKit",
@@ -379,6 +387,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Восстанавливает 25% состояния наиболее повреждённой экипировки.",
     useLabel: "Ремонтировать",
+    consumableCategory: "utility",
   },
   coilPart: {
     id: "coilPart",

@@ -86,6 +86,15 @@ test("карты прямоугольные, а базовое и легенда
 
 
 
+test("активные расходники разделены по поясу, а еда остаётся в сумке", () => {
+  assert.equal(ITEMS.bandage.consumableCategory, "bandage");
+  assert.equal(ITEMS.traumaInjector.consumableCategory, "healing");
+  assert.equal(ITEMS.painkillers.consumableCategory, "pills");
+  assert.equal(ITEMS.batteryPack.consumableCategory, "booster");
+  assert.equal(ITEMS.fieldRation.consumableCategory, "food");
+  assert.equal(ITEMS.filterCartridge.consumableCategory, "utility");
+});
+
 test("каждый текущий этаж содержит настоящую гермокомнату за гермодверью", () => {
   for (const map of [FLOOR_550_MAP, FLOOR_554_MAP, FLOOR_555_MAP, FLOOR_MAP, FLOOR_557_MAP]) {
     const joined = map.rows.join("");
