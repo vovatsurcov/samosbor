@@ -1,0 +1,23 @@
+name: Export approved state
+
+on:
+  push:
+    branches:
+      - tmp/export-approved-state
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package repository
+        run: tar --exclude=.git --exclude=node_modules -czf samosbor-approved-state.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: samosbor-approved-state
+          path: samosbor-approved-state.tar.gz
+          retention-days: 1
