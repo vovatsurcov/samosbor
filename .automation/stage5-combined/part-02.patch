@@ -1,0 +1,227 @@
+     if (target && target.zone === next.zone) {
+@@ -2959,13 +3175,17 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
+   next = handlePortalEntry(next);
+   next = reveal(next);
+ 
+-  if (!next.hero.attackTargetId && next.hero.combatDirective !== "manual") {
++  if (!next.hero.attackTargetId) {
+     const heroNow = next.hero.positions[next.zone];
+     const nearest = next.enemies
+-      .filter((enemy) => enemyVisibleToHero(next, enemy))
++      .filter(
++        (enemy) =>
++          enemyVisibleToHero(next, enemy) &&
++          ["hunting", "combat"].includes(enemy.mode),
++      )
+       .sort((a, b) => distance(heroNow, a.position) - distance(heroNow, b.position))[0];
+     if (nearest) {
+-      if (next.hero.combatDirective === "mobileFire") {
++      if (combatDirective === "mobileFire") {
+         if (
+           weaponFor(next).category === "ranged" &&
+           distance(heroNow, nearest.position) <= heroAttackRange(next) &&
+@@ -2979,6 +3199,8 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
+     }
+   }
+ 
++  next = tickAutocast(next);
++
+   next = {
+     ...next,
+     enemies: next.enemies.map((enemy) =>
+diff --git a/app/game-prototype.tsx b/app/game-prototype.tsx
+index 42e4009..75bc5ac 100644
+--- a/app/game-prototype.tsx
++++ b/app/game-prototype.tsx
+@@ -11,12 +11,12 @@ import {
+ import {
+   ACTIVE_SKILLS,
+   type ActiveSkillId,
+-  activateSkillSlot,
++  type AttributeId,
++  autocastConditionLabel,
+   activateEquippedArtifact,
++  allocateAttribute,
+   allocateTalent,
+-  applyTrainingBuild,
+   applyFirstAid,
+-  assignActiveSkill,
+   BASE_TALENT_COUNT,
+   branchTalentPoints,
+   canAllocateTalent,
+@@ -25,6 +25,7 @@ import {
+   commandAttack,
+   commandAttackNearest,
+   commandMove,
++  combatDirectiveFor,
+   consumeInventoryItem,
+   createInitialState,
+   distance,
+@@ -65,7 +66,6 @@ import {
+   SKILL_NAMES,
+   SkillBranch,
+   SLOT_NAMES,
+-  setCombatDirective,
+   TALENT_NODES,
+   tickGame,
+   tileAt,
+@@ -75,12 +75,20 @@ import {
+   xpToNextLevel,
+ } from "./game-engine";
+ 
+-const SAVE_KEY = "samosbor-shift-556-stage-4b";
++const SAVE_KEY = "samosbor-shift-556-stage-5-progression";
+ const TILE_WIDTH = 82;
+ const TILE_HEIGHT = 41;
+ const DESKTOP_FRAME_INTERVAL = 16;
+ const TV_FRAME_INTERVAL = 33;
+ 
++const ATTRIBUTE_OPTIONS: { id: AttributeId; label: string }[] = [
++  { id: "body", label: "Тело" },
++  { id: "reaction", label: "Реакция" },
++  { id: "attention", label: "Внимание" },
++  { id: "technique", label: "Техника" },
++  { id: "will", label: "Воля" },
++];
++
+ const TILE_LABELS: Record<string, string> = {
+   ".": "Проход",
+   "#": "Стена",
+@@ -239,7 +247,6 @@ export default function GamePrototype() {
+   const [saveLoaded, setSaveLoaded] = useState(false);
+   const [characterOpen, setCharacterOpen] = useState(false);
+   const [talentView, setTalentView] = useState<TalentView>("fire");
+-  const [selectedSkillSlot, setSelectedSkillSlot] = useState(0);
+   const [tvMode, setTvMode] = useState(false);
+   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+   const [lastInput, setLastInput] = useState("—");
+@@ -273,6 +280,9 @@ export default function GamePrototype() {
+       ITEMS[a.itemId].name.localeCompare(ITEMS[b.itemId].name, "ru");
+   });
+   const unlockedSkills = unlockedActiveSkills(state);
++  const combatDirective = combatDirectiveFor(state);
++  const experienceRequired = xpToNextLevel(state);
++  const experienceProgress = experienceRequired > 0 ? (state.hero.xp / experienceRequired) * 100 : 100;
+   const selectedTalents = TALENT_NODES.filter((node) => node.scope === talentView);
+   const branchPoints = Object.fromEntries(
+     SKILL_BRANCHES.map((branch) => [branch, branchTalentPoints(state, branch)]),
+@@ -393,15 +403,6 @@ export default function GamePrototype() {
+     setState((current) => activateEquippedArtifact(current));
+   }, []);
+ 
+-  const activeSkillNow = useCallback((slot: number) => {
+-    setState((current) => activateSkillSlot(current, slot));
+-  }, []);
+-
+-  const loadTrainingBuild = useCallback((build: "mobileFire" | "splashGuard") => {
+-    setState((current) => applyTrainingBuild(current, build));
+-    setTalentView(build === "mobileFire" ? "fire" : "force");
+-  }, []);
+-
+   const cancelAction = useCallback(() => {
+     setState((current) => cancelHeroAction(current));
+   }, []);
+@@ -474,9 +475,6 @@ export default function GamePrototype() {
+       if (key === "1" || key === "f") {
+         event.preventDefault();
+         attackNearest();
+-      } else if (["2", "3", "4", "5"].includes(key)) {
+-        event.preventDefault();
+-        activeSkillNow(Number(key) - 2);
+       } else if (key === "e") {
+         event.preventDefault();
+         interactNow();
+@@ -500,13 +498,8 @@ export default function GamePrototype() {
+                   : null;
+         if (direction) {
+           event.preventDefault();
+-          if (okHeldRef.current && key.startsWith("arrow")) {
+-            okChordRef.current = true;
+-            const slot = key === "arrowup" ? 0 : key === "arrowright" ? 1 : key === "arrowdown" ? 2 : 3;
+-            activeSkillNow(slot);
+-          } else {
+-            moveTo({ x: current.x + direction.x, y: current.y + direction.y });
+-          }
++          if (okHeldRef.current && key.startsWith("arrow")) okChordRef.current = true;
++          moveTo({ x: current.x + direction.x, y: current.y + direction.y });
+         }
+       }
+     };
+@@ -528,7 +521,7 @@ export default function GamePrototype() {
+       window.removeEventListener("keydown", onKeyDown);
+       window.removeEventListener("keyup", onKeyUp);
+     };
+-  }, [activeSkillNow, artifactNow, attackNearest, cancelAction, characterOpen, diagnosticsOpen, firstAidNow, interactNow, moveTo]);
++  }, [artifactNow, attackNearest, cancelAction, characterOpen, diagnosticsOpen, firstAidNow, interactNow, moveTo]);
+ 
+   useEffect(() => {
+     const timer = window.setInterval(() => {
+@@ -547,8 +540,7 @@ export default function GamePrototype() {
+       gamepadLockRef.current = performance.now() + 130;
+       const index = fresh[0];
+       setLastInput(`Gamepad · кнопка ${index}`);
+-      if (index >= 4 && index <= 7) activeSkillNow(index - 4);
+-      else if (index === 0) attackNearest();
++      if (index === 0) attackNearest();
+       else if (index === 1) cancelAction();
+       else if (index === 2) interactNow();
+       else if (index === 3) setCharacterOpen((open) => !open);
+@@ -559,7 +551,7 @@ export default function GamePrototype() {
+       }
+     }, 80);
+     return () => window.clearInterval(timer);
+-  }, [activeSkillNow, attackNearest, cancelAction, characterOpen, diagnosticsOpen, interactNow, moveTo]);
++  }, [attackNearest, cancelAction, characterOpen, diagnosticsOpen, interactNow, moveTo]);
+ 
+   const tiles = useMemo(() => {
+     const result: Point[] = [];
+@@ -848,7 +840,7 @@ export default function GamePrototype() {
+           <section className="panel-card objective-card">
+             <p className="panel-label">ТЕКУЩАЯ ДИРЕКТИВА</p>
+             <h2>{objectiveFor(state)}</h2>
+-            <p>Перемещайтесь кликом, касанием, D-pad или стиком. Боевая директива: <strong>{state.hero.combatDirective === "mobileFire" ? "мобильный огонь" : state.hero.combatDirective === "splashGuard" ? "сбор пачки" : "ручная цель"}</strong>.</p>
++            <p>Перемещайтесь кликом, касанием, D-pad или стиком. Текущий автоконтур: <strong>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "силовой периметр" : "адаптивная ротация"}</strong>.</p>
+           </section>
+ 
+           <section className="panel-card population-card">
+@@ -875,8 +867,9 @@ export default function GamePrototype() {
+             </div>
+             <div className="stat-row"><span>Здоровье</span><strong>{state.hero.hp} / {heroMaxHp}</strong></div>
+             <div className="meter health-meter"><i style={{ width: `${(state.hero.hp / heroMaxHp) * 100}%` }} /></div>
+-            <div className="stat-row compact"><span>Уровень</span><strong>{state.hero.level}</strong></div>
+-            <div className="meter xp-meter"><i style={{ width: `${(state.hero.xp / xpToNextLevel(state)) * 100}%` }} /></div>
++            <div className="stat-row compact"><span>Квалификация</span><strong>{state.hero.level} / 50</strong></div>
++            <div className="meter xp-meter"><i style={{ width: `${experienceProgress}%` }} /></div>
++            <div className="xp-caption"><span>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} опыта` : "Основной предел достигнут"}</span><strong>{state.hero.generalPoints} общ. · {state.hero.skillPoints} проф.</strong></div>
+             <div className="stat-row compact"><span>Оружие</span><strong>{weapon.shortName} · {weapon.range.toFixed(1)} кл.</strong></div>
+             <div className="stat-row compact"><span>Защита</span><strong>{heroDefense(state)}</strong></div>
+             <div className="survival-stats">
+@@ -939,25 +932,11 @@ export default function GamePrototype() {
+             <span className="ability-key">1</span><strong>{weapon.shortName}</strong><small>{heroAttackDamage(state)} урона · {weapon.range.toFixed(1)} кл.</small>
+             <i className="cooldown-mask" style={{ height: `${cooldownPercent}%` }} />
+           </button>
+-          {state.hero.activeSkillSlots.map((skillId, slot) => {
+-            const skill = skillId ? ACTIVE_SKILLS[skillId] : null;
+-            const cooldown = skillId ? state.hero.activeSkillCooldowns[skillId] ?? 0 : 0;
+-            const cooldownHeight = skill ? Math.min(100, (cooldown / skill.cooldownMs) * 100) : 0;
+-            return (
+-              <button
+-                key={`active-${slot}`}
+-                type="button"
+-                className={`ability active-skill branch-${skill?.branch ?? "empty"}`}
+-                onClick={() => activeSkillNow(slot)}
+-                disabled={!skill}
+-              >
+-                <span className="ability-key">{slot + 2}</span>
+-                <strong>{skill?.shortName ?? `Ячейка ${slot + 1}`}</strong>
+-                <small>{skill?.role ?? "Назначьте навык"}</small>
+-                <i className="cooldown-mask" style={{ height: `${cooldownHeight}%` }} />
+-              </button>
+-            );
+-          })}
++          <button type="button" className="ability autocast-ability" onClick={() => setCharacterOpen(true)}>
++            <span className="ability-key">AUTO</span>
++            <strong>{unlockedSkills.length} протоколов</strong>
++            <small>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "сбор пачки" : "адаптивная ротация"}</small>
++          </button>
+           <button type="button" className="ability" onClick={interactNow}><span className="ability-key">E</span><strong>Использовать</strong><small>{interactionHint(state)}</small></button>
