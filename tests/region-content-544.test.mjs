@@ -184,7 +184,17 @@ test("отключение босса завершает операцию пос
   const initial = createInitialState();
   let state = {
     ...initial,
-    regionProgress: { ...DEFAULT_REGIONAL_PROGRESS, lowerDockUnlocked: true, questStage: "disable-overseer", bossPhase: 3 },
+    regionProgress: {
+      ...DEFAULT_REGIONAL_PROGRESS,
+      lowerDockUnlocked: true,
+      questStage: "disable-overseer",
+      bossPhase: 3,
+      pumpsRestored: true,
+      servicesRestored: true,
+      pumpRelays: Object.values(REGION_PUMP_RELAYS).map((relay) => relay.id),
+      archiveComplete: true,
+      researchRecords: ["archive-commission", "archive-resonance", "archive-route"],
+    },
     enemies: initial.enemies.map((enemy) =>
       enemy.id === "546-overseer" ? { ...enemy, hp: 0, mode: "disabled" } : enemy,
     ),
