@@ -17,6 +17,19 @@ import {
   TALENT_NODES,
   type TalentBonusKey,
 } from "./game-skills.ts";
+import {
+  REGION_CONTAINER_CONTENTS,
+  REGION_ENEMIES,
+  REGION_MAPS,
+  REGION_NPC_MESSAGES,
+  REGION_OBJECTIVES,
+  REGION_POPULATIONS,
+  REGION_SAFE_ZONES,
+  REGION_STARTS,
+  REGION_TERMINAL_MESSAGES,
+  REGION_TRANSITIONS,
+  type RegionZoneId,
+} from "./game-region-549-545.ts";
 
 export { ITEMS, SLOT_NAMES, WEAPONS } from "./game-items.ts";
 export {
@@ -37,8 +50,17 @@ export type {
   WeaponId,
 } from "./game-items.ts";
 export type { ActiveSkillId, SkillBranch, TalentNode } from "./game-skills.ts";
+export {
+  FLOOR_545_MAP,
+  FLOOR_546_MAP,
+  FLOOR_547_MAP,
+  FLOOR_548_MAP,
+  FLOOR_549_MAP,
+  REGION_MAPS,
+  REGION_STARTS,
+} from "./game-region-549-545.ts";
 
-export type ZoneId = "floor550" | "floor554" | "floor555" | "floor556" | "floor557" | "voidLab";
+export type ZoneId = RegionZoneId | "floor550" | "floor554" | "floor555" | "floor556" | "floor557" | "voidLab";
 
 export type Point = {
   x: number;
@@ -323,7 +345,7 @@ export const FLOOR_550_MAP: MapDefinition = {
     "#......................................................#",
     "#...B...............c................B...........c.....#",
     "#......................................................#",
-    "#.U....................................................#",
+    "#.U.................................................D..#",
     "#......................................................#",
     "########################################################",
   ],
@@ -490,6 +512,11 @@ export const FLOOR_557_START: Point = { x: 2, y: 19 };
 export const VOID_START: Point = { x: 1, y: 1 };
 
 const ZONE_STARTS: Record<ZoneId, Point> = {
+  floor545: { ...REGION_STARTS.floor545 },
+  floor546: { ...REGION_STARTS.floor546 },
+  floor547: { ...REGION_STARTS.floor547 },
+  floor548: { ...REGION_STARTS.floor548 },
+  floor549: { ...REGION_STARTS.floor549 },
   floor550: FLOOR_550_START,
   floor554: FLOOR_554_START,
   floor555: FLOOR_555_START,
@@ -553,6 +580,7 @@ export function gridPoint(point: Point): Point {
 
 function createPopulations(): WorldPopulation[] {
   return [
+    ...REGION_POPULATIONS.map((population) => ({ ...population, zone: population.zone as ZoneId })),
     {
       id: "lower-gate-scavengers",
       name: "Сборщики нижнего выхода",
@@ -844,7 +872,28 @@ function createStaticEnemy(
 }
 
 function createEnemies(): Enemy[] {
+  const regionalEnemies = REGION_ENEMIES.map((spec) => {
+    const enemy = createStaticEnemy(
+      spec.id,
+      spec.name,
+      spec.kind,
+      spec.zone as ZoneId,
+      spec.position,
+      spec.patrol,
+      spec.rank ?? "common",
+    );
+    const scale = spec.scale ?? (spec.rank === "boss" ? 2.4 : spec.rank === "elite" ? 1.55 : spec.rank === "veteran" ? 1.25 : 1);
+    return {
+      ...enemy,
+      hp: Math.round(enemy.hp * scale),
+      maxHp: Math.round(enemy.maxHp * scale),
+      damage: Math.max(enemy.damage, Math.round(enemy.damage * Math.min(1.75, scale))),
+      armor: enemy.armor + (spec.rank === "boss" ? 3 : spec.rank === "elite" ? 2 : spec.rank === "veteran" ? 1 : 0),
+      xpValue: Math.round(enemy.xpValue * scale),
+    };
+  });
   return [
+    ...regionalEnemies,
     // Этаж 550: нижний выход из города, первые группы дальней цепочки.
     createStaticEnemy("550-a1", "Сборщик нижних ворот 550-А", "stalker", "floor550", { x: 12, y: 14 }, [{ x: 12, y: 14 }, { x: 18, y: 16 }]),
     createStaticEnemy("550-a2", "Постовой автомат НВ-2", "sentry", "floor550", { x: 18, y: 16 }, [{ x: 18, y: 16 }, { x: 24, y: 14 }]),
@@ -1002,6 +1051,7 @@ export function npcRoleLabel(role: NpcRole): string {
 }
 
 export function mapForZone(zone: ZoneId): MapDefinition {
+  if (zone in REGION_MAPS) return REGION_MAPS[zone as RegionZoneId] as MapDefinition;
   if (zone === "floor550") return FLOOR_550_MAP;
   if (zone === "floor554") return FLOOR_554_MAP;
   if (zone === "floor555") return FLOOR_555_MAP;
@@ -1041,7 +1091,7 @@ export function isHermeticRoomTile(tile: string): boolean {
 }
 
 export function isCitySafeZone(zone: ZoneId): boolean {
-  return zone === "floor554";
+  return zone === "floor554" || REGION_SAFE_ZONES.has(zone as RegionZoneId);
 }
 
 export function isSamosborProtectedAt(
@@ -2546,6 +2596,11 @@ function applyRescue(
     hero: {
       ...state.hero,
       positions: {
+        floor545: { ...REGION_STARTS.floor545 },
+        floor546: { ...REGION_STARTS.floor546 },
+        floor547: { ...REGION_STARTS.floor547 },
+        floor548: { ...REGION_STARTS.floor548 },
+        floor549: { ...REGION_STARTS.floor549 },
         floor550: { ...FLOOR_550_START },
         floor554: { ...FLOOR_554_START },
         floor555: { ...FLOOR_555_START },
@@ -3197,6 +3252,8 @@ function containerKey(state: GameState, point: Point): string {
 }
 
 function containerContents(key: string): { itemId: ItemId; quantity?: number; condition?: number }[] {
+  const regional = REGION_CONTAINER_CONTENTS[key];
+  if (regional) return regional as { itemId: ItemId; quantity?: number; condition?: number }[];
   if (key === "floor556:17:8") {
     return [
       { itemId: "bandage" },
@@ -3345,6 +3402,28 @@ export function interactionHint(state: GameState): string {
 }
 
 function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
+  const regionalTransition = REGION_TRANSITIONS[`${state.zone}:${tile}`];
+  if (regionalTransition) {
+    const targetZone = regionalTransition.zone as ZoneId;
+    return reveal(
+      appendLog(
+        {
+          ...state,
+          zone: targetZone,
+          hero: {
+            ...state.hero,
+            path: [],
+            destination: null,
+            attackTargetId: null,
+            pendingInteraction: null,
+            evadeMode: isCitySafeZone(targetZone) ? false : state.hero.evadeMode,
+            positions: { ...state.hero.positions, [targetZone]: copyPoint(regionalTransition.position) },
+          },
+        },
+        regionalTransition.message,
+      ),
+    );
+  }
   const transition =
     state.zone === "floor550" && tile === "U"
       ? { zone: "floor554" as const, position: FLOOR_554_DOWN, message: "Возвращение выполнено: Город 550, Большой разлом." }
@@ -3389,7 +3468,13 @@ function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
 
 function interactWithTarget(state: GameState, target: { point: Point; tile: string }): GameState {
   let next = state;
-  if (state.zone === "floor556" && target.tile === "S") {
+  const regionalTerminal = REGION_TERMINAL_MESSAGES[state.zone as RegionZoneId];
+  const regionalNpc = REGION_NPC_MESSAGES[state.zone as RegionZoneId];
+  if (target.tile === "T" && regionalTerminal) {
+    next = appendLog(state, regionalTerminal);
+  } else if (target.tile === "N" && regionalNpc) {
+    next = appendLog(state, regionalNpc);
+  } else if (state.zone === "floor556" && target.tile === "S") {
     if (state.sensorFixed) {
       next = appendLog(state, "Датчик СБ-04 работает в допустимом диапазоне.");
     } else {
@@ -3439,6 +3524,7 @@ function interactWithTarget(state: GameState, target: { point: Point; tile: stri
     }
   } else if (state.zone === "voidLab" && target.tile === "P") {
     const destinations: { zone: ZoneId; position: Point; label: string }[] = [
+      { zone: "floor547", position: { x: 28, y: 18 }, label: "архив НИИ-547" },
       { zone: "floor550", position: { x: 6, y: 33 }, label: "нижний выход, этаж 550" },
       { zone: "floor554", position: { x: 8, y: 33 }, label: "Город 550" },
       { zone: "floor555", position: { x: 4, y: 19 }, label: "этаж 555" },
@@ -3586,6 +3672,11 @@ export function createInitialState(): GameState {
     zone: "floor556",
     hero: {
       positions: {
+        floor545: { ...REGION_STARTS.floor545 },
+        floor546: { ...REGION_STARTS.floor546 },
+        floor547: { ...REGION_STARTS.floor547 },
+        floor548: { ...REGION_STARTS.floor548 },
+        floor549: { ...REGION_STARTS.floor549 },
         floor550: { ...FLOOR_550_START },
         floor554: { ...FLOOR_554_START },
         floor555: { ...FLOOR_555_START },
@@ -3678,7 +3769,7 @@ export function createInitialState(): GameState {
     effects: [],
     effectCounter: 0,
     rngSeed: 5560401,
-    visited: { floor550: [], floor554: [], floor555: [], floor556: [], floor557: [], voidLab: [] },
+    visited: { floor545: [], floor546: [], floor547: [], floor548: [], floor549: [], floor550: [], floor554: [], floor555: [], floor556: [], floor557: [], voidLab: [] },
     openedContainers: [],
     milestoneLootDrops: [],
     groundLoot: [],
@@ -3997,6 +4088,8 @@ export function objectiveFor(state: GameState): string {
       ? "Вернуться к межэтажному переходу"
       : "Исследовать лабораторию или отступить";
   }
+  const regionalObjective = REGION_OBJECTIVES[state.zone as RegionZoneId];
+  if (regionalObjective) return regionalObjective;
   if (state.zone === "floor550") return "Пройти нижний выход, сохранить путь к гермокомнате и разведать дальнейшую цепочку";
   if (state.zone === "floor554") return "Познакомиться с жителями Города 550 и найти нижние ворота на этаж 550";
   if (state.zone === "floor555") return "Найти нижний переход и войти в Город 550";
