@@ -1,0 +1,104 @@
+     next = appendLog(state, "Лифт закреплён за городом П-46. Внешние маршруты закрыты.");
+   } else if (target.tile === "c") {
+     next = appendLog(state, "Низкое укрытие даёт +2 к защите от дистанционных атак.");
+@@ -2305,7 +2473,9 @@ export function createInitialState(): GameState {
+     zone: "floor556",
+     hero: {
+       positions: {
++        floor555: { ...FLOOR_555_START },
+         floor556: { ...FLOOR_START },
++        floor557: { ...FLOOR_557_START },
+         voidLab: { ...VOID_START },
+       },
+       path: [],
+@@ -2385,13 +2555,13 @@ export function createInitialState(): GameState {
+     effects: [],
+     effectCounter: 0,
+     rngSeed: 5560401,
+-    visited: { floor556: [], voidLab: [] },
++    visited: { floor555: [], floor556: [], floor557: [], voidLab: [] },
+     openedContainers: [],
+     groundLoot: [],
+     lootCounter: 0,
+     log: [
+       "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
+-      "Учебный резерв этапа 3C: 18 очков для проверки чистых и гибридных сборок.",
++      "Учебный резерв этапа 4A: 18 очков для проверки чистых и гибридных сборок.",
+       "Директива: проверить датчик СБ-04 и укрыться в герметичном секторе.",
+       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
+     ],
+@@ -2584,6 +2754,8 @@ export function objectiveFor(state: GameState): string {
+       ? "Вернуться к межэтажному переходу"
+       : "Исследовать лабораторию или отступить";
+   }
++  if (state.zone === "floor555") return "Исследовать ремонтный пояс или вернуться на этаж 556";
++  if (state.zone === "floor557") return "Осмотреть жилой контур или вернуться на этаж 556";
+   return state.sensorFixed ? "Укрыться за гермодверью" : "Восстановить датчик СБ-04";
+ }
+ 
+diff --git a/app/game-prototype.tsx b/app/game-prototype.tsx
+index d138ea9..8590206 100644
+--- a/app/game-prototype.tsx
++++ b/app/game-prototype.tsx
+@@ -73,7 +73,7 @@ import {
+   xpToNextLevel,
+ } from "./game-engine";
+ 
+-const SAVE_KEY = "samosbor-shift-556-stage-3c";
++const SAVE_KEY = "samosbor-shift-556-stage-4a";
+ const TILE_WIDTH = 82;
+ const TILE_HEIGHT = 41;
+ const DESKTOP_FRAME_INTERVAL = 16;
+@@ -88,6 +88,8 @@ const TILE_LABELS: Record<string, string> = {
+   S: "Датчик СБ-04",
+   H: "Гермодверь",
+   P: "Межэтажный переход",
++  U: "Переход вверх",
++  D: "Переход вниз",
+   A: "Артефактное гнездо",
+   B: "Аварийный шкаф",
+ };
+@@ -99,6 +101,8 @@ const TILE_MARKS: Record<string, string> = {
+   S: "Д",
+   H: "Г",
+   P: "∅",
++  U: "↑",
++  D: "↓",
+   A: "◈",
+   B: "▣",
+ };
+@@ -152,6 +156,7 @@ function tileColor(tile: string, zoneIsVoid: boolean, visible: boolean): string
+   if (tile === "#") return zoneIsVoid ? "#34263c" : "#3c413a";
+   if (tile === "c") return zoneIsVoid ? "#57495d" : "#526059";
+   if (tile === "P") return "#5f2b76";
++  if (tile === "U" || tile === "D") return "#526f6a";
+   if (tile === "A") return "#806b45";
+   if (tile === "H") return "#586c60";
+   if (tile === "S") return "#665e43";
+@@ -298,7 +303,9 @@ export default function GamePrototype() {
+         if (saved) {
+           const parsed = JSON.parse(saved) as GameState;
+           if (
++            parsed?.hero?.positions?.floor555 &&
+             parsed?.hero?.positions?.floor556 &&
++            parsed?.hero?.positions?.floor557 &&
+             parsed?.hero?.positions?.voidLab &&
+             parsed?.hero?.equipment &&
+             Array.isArray(parsed?.hero?.inventory) &&
+@@ -578,7 +585,7 @@ export default function GamePrototype() {
+         <div>
+           <p className="eyebrow">ПРОТОКОЛ СМЕНЫ · СБ/556-04</p>
+           <h1>Самосбор: Смена 556</h1>
+-          <p className="game-subtitle">Action RPG прототип · этап 3C · дерево, ротации и легендарные допуски</p>
++          <p className="game-subtitle">Action RPG прототип · этап 4A · связанные этажи и непрерывный мир</p>
+         </div>
+         <div className="header-indicators">
+           <div className="live-indicator"><i />РЕАЛЬНОЕ ВРЕМЯ</div>
+@@ -597,9 +604,13 @@ export default function GamePrototype() {
+       </header>
+ 
+       <section className="world-strip compact-strip" aria-label="Положение в мире">
+-        <div><span className="strip-label">Город</span><strong>П-46</strong><small>пошаговая карта кластера</small></div>
++        <div><span className="strip-label">Город</span><strong>П-46</strong><small>единый кластер</small></div>
+         <span className="strip-connector">→</span>
+-        <div className={state.zone === "floor556" ? "strip-current" : ""}><span className="strip-label">Локация</span><strong>Этаж 556</strong><small>непрерывное время</small></div>
