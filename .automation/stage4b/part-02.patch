@@ -1,0 +1,130 @@
+@@ -837,6 +851,23 @@ export default function GamePrototype() {
+             <p>Перемещайтесь кликом, касанием, D-pad или стиком. Боевая директива: <strong>{state.hero.combatDirective === "mobileFire" ? "мобильный огонь" : state.hero.combatDirective === "splashGuard" ? "сбор пачки" : "ручная цель"}</strong>.</p>
+           </section>
+ 
++          <section className="panel-card population-card">
++            <div className="population-heading">
++              <div><p className="panel-label">ЖИВОЙ ЭТАЖ</p><h3>Давление популяций: {localPopulationPressure}</h3></div>
++              <span className={`population-pressure ${localPopulationPressure >= 25 ? "high" : ""}`}>{localPopulations.length}</span>
++            </div>
++            {localPopulations.length ? (
++              <ul className="population-list">
++                {localPopulations.map((population) => (
++                  <li key={population.id}>
++                    <div><strong>{population.name}</strong><small>{GENOME_LABELS[population.genome]} геном · цель: {population.goal}</small></div>
++                    <span><b>{population.count}</b><small>{Math.round(population.agitation)}% тревоги</small></span>
++                  </li>
++                ))}
++              </ul>
++            ) : <p>В зоне не зафиксировано устойчивых групп.</p>}
++          </section>
++
+           <section className="panel-card hero-card">
+             <div className="hero-card-head">
+               <div><p className="panel-label">СОТРУДНИК 556-04</p><h3>{classTitle}</h3></div>
+diff --git a/app/globals.css b/app/globals.css
+index 3d2a7aa..74bb248 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -2446,3 +2446,75 @@ kbd {
+     grid-template-columns: repeat(2, minmax(0, 1fr));
+   }
+ }
++
++.population-card {
++  border-color: #4d6258;
++  background:
++    linear-gradient(180deg, rgba(73, 113, 96, 0.08), transparent 64%),
++    var(--paper);
++}
++
++.population-heading {
++  display: flex;
++  align-items: flex-start;
++  justify-content: space-between;
++  gap: 10px;
++}
++
++.population-pressure {
++  display: grid;
++  place-items: center;
++  min-width: 32px;
++  height: 32px;
++  border: 1px solid #58756a;
++  border-radius: 50%;
++  color: #a8d0bf;
++  background: #203029;
++  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
++  font-size: 0.72rem;
++}
++
++.population-pressure.high {
++  border-color: #8e5b50;
++  color: #e4a99b;
++  background: #3d2724;
++}
++
++.population-list {
++  display: grid;
++  gap: 6px;
++  margin: 10px 0 0;
++  padding: 0;
++  list-style: none;
++}
++
++.population-list li {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) auto;
++  gap: 10px;
++  padding: 7px 8px;
++  border: 1px solid #3f4b43;
++  border-radius: 7px;
++  background: rgba(29, 35, 30, 0.82);
++}
++
++.population-list li > div,
++.population-list li > span {
++  display: grid;
++  gap: 2px;
++}
++
++.population-list li > span {
++  justify-items: end;
++}
++
++.population-list strong,
++.population-list b {
++  font-size: 0.7rem;
++}
++
++.population-list small {
++  color: #929c94;
++  font-size: 0.58rem;
++  line-height: 1.35;
++}
+diff --git a/docs/STATUS.md b/docs/STATUS.md
+index 44efcb1..4aa46b5 100644
+--- a/docs/STATUS.md
++++ b/docs/STATUS.md
+@@ -6,6 +6,7 @@
+ 
+ - этапы 1, 2, 3A, 3B и 3C;
+ - этап 4A: связанные этажи 555, 556 и 557 с переходами непосредственно на карте;
++- этап 4B: пять фоновых геномных популяций с численностью, тревогой, целью и миграцией;
+ - непрерывная локальная симуляция;
+ - бой, ИИ, экипировка, добыча, травмы и артефакты;
+ - дерево развития и активные навыки;
+@@ -16,7 +17,7 @@
+ ## Спроектировано, но отсутствует в найденном архиве исходников
+ 
+ - расширение текущих трёх этажей до пяти протяжённых этажей;
+-- пять геномных популяций с фоновой симуляцией;
++- физическое порождение новых противников из фоновых популяций;
+ - четыре масштаба поселений;
+ - четыре автономных босса с личными целями;
+ - совместные рейды боссов;
+@@ -24,4 +25,4 @@
+ - задания от города-патрона;
+ - серверный общий снимок мира.
+ 
+-Эти механики описаны в `GAME_DESIGN.md` как этап 4. Первый вертикальный срез этапа 4 уже начат: этажи 555, 556 и 557 связаны переходами вверх и вниз, позиции героя на каждом этаже сохраняются, а на соседних этажах действуют собственные противники.
