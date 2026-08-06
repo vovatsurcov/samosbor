@@ -73,7 +73,7 @@ import {
   xpToNextLevel,
 } from "./game-engine";
 
-const SAVE_KEY = "samosbor-shift-556-stage-3c";
+const SAVE_KEY = "samosbor-shift-556-stage-4a";
 const TILE_WIDTH = 82;
 const TILE_HEIGHT = 41;
 const DESKTOP_FRAME_INTERVAL = 16;
@@ -88,6 +88,8 @@ const TILE_LABELS: Record<string, string> = {
   S: "Датчик СБ-04",
   H: "Гермодверь",
   P: "Межэтажный переход",
+  U: "Переход вверх",
+  D: "Переход вниз",
   A: "Артефактное гнездо",
   B: "Аварийный шкаф",
 };
@@ -99,6 +101,8 @@ const TILE_MARKS: Record<string, string> = {
   S: "Д",
   H: "Г",
   P: "∅",
+  U: "↑",
+  D: "↓",
   A: "◈",
   B: "▣",
 };
@@ -152,6 +156,7 @@ function tileColor(tile: string, zoneIsVoid: boolean, visible: boolean): string 
   if (tile === "#") return zoneIsVoid ? "#34263c" : "#3c413a";
   if (tile === "c") return zoneIsVoid ? "#57495d" : "#526059";
   if (tile === "P") return "#5f2b76";
+  if (tile === "U" || tile === "D") return "#526f6a";
   if (tile === "A") return "#806b45";
   if (tile === "H") return "#586c60";
   if (tile === "S") return "#665e43";
@@ -298,7 +303,9 @@ export default function GamePrototype() {
         if (saved) {
           const parsed = JSON.parse(saved) as GameState;
           if (
+            parsed?.hero?.positions?.floor555 &&
             parsed?.hero?.positions?.floor556 &&
+            parsed?.hero?.positions?.floor557 &&
             parsed?.hero?.positions?.voidLab &&
             parsed?.hero?.equipment &&
             Array.isArray(parsed?.hero?.inventory) &&
@@ -578,7 +585,7 @@ export default function GamePrototype() {
         <div>
           <p className="eyebrow">ПРОТОКОЛ СМЕНЫ · СБ/556-04</p>
           <h1>Самосбор: Смена 556</h1>
-          <p className="game-subtitle">Action RPG прототип · этап 3C · дерево, ротации и легендарные допуски</p>
+          <p className="game-subtitle">Action RPG прототип · этап 4A · связанные этажи и непрерывный мир</p>
         </div>
         <div className="header-indicators">
           <div className="live-indicator"><i />РЕАЛЬНОЕ ВРЕМЯ</div>
@@ -597,9 +604,13 @@ export default function GamePrototype() {
       </header>
 
       <section className="world-strip compact-strip" aria-label="Положение в мире">
-        <div><span className="strip-label">Город</span><strong>П-46</strong><small>пошаговая карта кластера</small></div>
+        <div><span className="strip-label">Город</span><strong>П-46</strong><small>единый кластер</small></div>
         <span className="strip-connector">→</span>
-        <div className={state.zone === "floor556" ? "strip-current" : ""}><span className="strip-label">Локация</span><strong>Этаж 556</strong><small>непрерывное время</small></div>
+        <div className={state.zone === "floor555" ? "strip-current" : ""}><span className="strip-label">Ниже</span><strong>Этаж 555</strong><small>ремонтный пояс</small></div>
+        <span className="strip-connector">⇅</span>
+        <div className={state.zone === "floor556" ? "strip-current" : ""}><span className="strip-label">Опорный</span><strong>Этаж 556</strong><small>технический пояс</small></div>
+        <span className="strip-connector">⇅</span>
+        <div className={state.zone === "floor557" ? "strip-current" : ""}><span className="strip-label">Выше</span><strong>Этаж 557</strong><small>жилой контур</small></div>
         <span className="strip-connector">⇄</span>
         <div className={state.zone === "voidLab" ? "strip-current void" : ""}><span className="strip-label">Межэтажье</span><strong>ВЖ-7</strong><small>лабораторный слой</small></div>
       </section>
@@ -669,7 +680,9 @@ export default function GamePrototype() {
                         ? "#7ea59d"
                         : tile === "P" && known
                           ? "#b06bdd"
-                          : "#252a26";
+                          : (tile === "U" || tile === "D") && known
+                            ? "#82b7ad"
+                            : "#252a26";
 
                 return (
                   <g
@@ -691,11 +704,11 @@ export default function GamePrototype() {
                       opacity={visible ? 1 : known ? 0.5 : 0.78}
                       stroke={stroke}
                       strokeWidth={inTargetAggro ? 2.8 : inTargetVision || inWeaponRange ? 2 : 1.3}
-                      filter={tile === "P" && visible ? "url(#void-glow)" : undefined}
+                      filter={(tile === "P" || tile === "U" || tile === "D") && visible ? "url(#void-glow)" : undefined}
                     />
                     {marker ? (
                       <g opacity={visible ? 1 : 0.55}>
-                        <circle cx={cx} cy={cy + TILE_HEIGHT / 2 - 3} r={tile === "P" ? 13 : 10} fill="#20231f" stroke={tile === "A" ? "#e4c170" : "#aeb4a7"} strokeWidth="2" />
+                        <circle cx={cx} cy={cy + TILE_HEIGHT / 2 - 3} r={tile === "P" || tile === "U" || tile === "D" ? 13 : 10} fill="#20231f" stroke={tile === "A" ? "#e4c170" : "#aeb4a7"} strokeWidth="2" />
                         <text x={cx} y={cy + TILE_HEIGHT / 2 + 2} textAnchor="middle" className="map-symbol">{marker}</text>
                       </g>
                     ) : null}

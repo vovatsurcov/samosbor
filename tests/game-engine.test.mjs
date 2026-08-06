@@ -19,7 +19,9 @@ import {
   effectiveInjury,
   equipItem,
   equipWeapon,
+  FLOOR_555_MAP,
   FLOOR_MAP,
+  FLOOR_557_MAP,
   hasLineOfSight,
   heroAttackRange,
   heroDefense,
@@ -48,13 +50,36 @@ function heroAt(state, point) {
 }
 
 test("карты прямоугольные, а базовое и легендарное оружие задают разные дистанции боя", () => {
+  assert.equal(new Set(FLOOR_555_MAP.rows.map((row) => row.length)).size, 1);
   assert.equal(new Set(FLOOR_MAP.rows.map((row) => row.length)).size, 1);
+  assert.equal(new Set(FLOOR_557_MAP.rows.map((row) => row.length)).size, 1);
   assert.equal(new Set(VOID_MAP.rows.map((row) => row.length)).size, 1);
 
   const ranges = Object.values(WEAPONS).map((weapon) => weapon.range);
   assert.ok(new Set(ranges).size >= 4);
   assert.ok(WEAPONS.shockBaton.range < WEAPONS.servicePistol.range);
   assert.ok(WEAPONS.servicePistol.range < WEAPONS.coilRifle.range);
+});
+
+
+test("переходы вверх и вниз связывают этажи и сохраняют позиции", () => {
+  let state = heroAt(createInitialState(), { x: 9, y: 1 });
+  state = interact(state);
+  assert.equal(state.zone, "floor555");
+  assert.deepEqual(state.hero.positions.floor555, { x: 10, y: 1 });
+
+  state = interact(state);
+  assert.equal(state.zone, "floor556");
+  assert.deepEqual(state.hero.positions.floor556, { x: 9, y: 1 });
+
+  state = heroAt(state, { x: 1, y: 1 });
+  state = interact(state);
+  assert.equal(state.zone, "floor557");
+  assert.deepEqual(state.hero.positions.floor557, { x: 10, y: 1 });
+
+  state = interact(state);
+  assert.equal(state.zone, "floor556");
+  assert.deepEqual(state.hero.positions.floor556, { x: 1, y: 1 });
 });
 
 test("стена перекрывает линию видимости, а открывшийся переход её восстанавливает", () => {

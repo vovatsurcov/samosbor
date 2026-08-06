@@ -38,7 +38,7 @@ export type {
 } from "./game-items.ts";
 export type { ActiveSkillId, SkillBranch, TalentNode } from "./game-skills.ts";
 
-export type ZoneId = "floor556" | "voidLab";
+export type ZoneId = "floor555" | "floor556" | "floor557" | "voidLab";
 
 export type Point = {
   x: number;
@@ -209,19 +209,53 @@ export type MapDefinition = {
   rows: string[];
 };
 
+export const FLOOR_555_MAP: MapDefinition = {
+  id: "floor555",
+  name: "Этаж 555 · ремонтный пояс",
+  subtitle: "Затопленные мастерские и резервные линии П-46",
+  rows: [
+    "############",
+    "#....c....U#",
+    "#.##...##..#",
+    "#..B.#.....#",
+    "###..#.###.#",
+    "#....c.....#",
+    "#.##....##.#",
+    "#L....T....#",
+    "############",
+  ],
+};
+
 export const FLOOR_MAP: MapDefinition = {
   id: "floor556",
   name: "Этаж 556 · строение П-46",
   subtitle: "Внешний технический пояс города П-46",
   rows: [
     "############",
-    "#..T..c....#",
+    "#U.T..c..D.#",
     "#.###...#.S#",
     "#.Bc..#....#",
     "###.#.####.#",
     "#...#..c...#",
     "#.#####.##.#",
     "#L...c....H#",
+    "############",
+  ],
+};
+
+export const FLOOR_557_MAP: MapDefinition = {
+  id: "floor557",
+  name: "Этаж 557 · жилой контур",
+  subtitle: "Полузакрытый квартал над техническим поясом",
+  rows: [
+    "############",
+    "#....c....D#",
+    "#.###..##..#",
+    "#...B......#",
+    "#.#.####.#.#",
+    "#....c.....#",
+    "#.##....##.#",
+    "#L....H....#",
     "############",
   ],
 };
@@ -241,8 +275,22 @@ export const VOID_MAP: MapDefinition = {
   ],
 };
 
+export const FLOOR_555_START: Point = { x: 1, y: 7 };
 export const FLOOR_START: Point = { x: 1, y: 7 };
+export const FLOOR_557_START: Point = { x: 1, y: 7 };
 export const VOID_START: Point = { x: 2, y: 1 };
+
+const ZONE_STARTS: Record<ZoneId, Point> = {
+  floor555: FLOOR_555_START,
+  floor556: FLOOR_START,
+  floor557: FLOOR_557_START,
+  voidLab: VOID_START,
+};
+
+const FLOOR_555_UP: Point = { x: 10, y: 1 };
+const FLOOR_556_UP: Point = { x: 1, y: 1 };
+const FLOOR_556_DOWN: Point = { x: 9, y: 1 };
+const FLOOR_557_DOWN: Point = { x: 10, y: 1 };
 
 const GROUP_ALERT_RADIUS = 6;
 const MUTATION_AT_MS = 15000;
@@ -369,6 +417,84 @@ function createEnemies(): Enemy[] {
       castUntilMs: 0,
     },
     {
+      id: "repair-sentry-555",
+      name: "Ремонтный автомат РМ-55",
+      kind: "sentry",
+      zone: "floor555",
+      position: { x: 8, y: 5 },
+      home: { x: 8, y: 5 },
+      hp: 11,
+      maxHp: 11,
+      armor: 1,
+      visionRadius: 4,
+      hearingRadius: 5,
+      aggroRadius: 2.8,
+      attackRange: 3.2,
+      speed: 1.05,
+      accuracy: 3,
+      damage: 2,
+      attackCooldownBaseMs: 1450,
+      attackCooldownMs: 800,
+      thinkCooldownMs: 0,
+      xpValue: 11,
+      mode: "patrol",
+      path: [],
+      patrol: [
+        { x: 8, y: 5 },
+        { x: 10, y: 5 },
+        { x: 10, y: 3 },
+        { x: 8, y: 3 },
+      ],
+      patrolIndex: 1,
+      lastKnownHero: null,
+      memoryMs: 0,
+      markedUntilMs: 0,
+      resonanceStacks: 0,
+      dizzyStacks: 0,
+      dizzyUntilMs: 0,
+      stunnedUntilMs: 0,
+      castUntilMs: 0,
+    },
+    {
+      id: "tenant-stalker-557",
+      name: "Контурный жилец №557-8",
+      kind: "stalker",
+      zone: "floor557",
+      position: { x: 8, y: 3 },
+      home: { x: 8, y: 3 },
+      hp: 10,
+      maxHp: 10,
+      armor: 0,
+      visionRadius: 3.4,
+      hearingRadius: 6,
+      aggroRadius: 2.4,
+      attackRange: 1.2,
+      speed: 1.7,
+      accuracy: 4,
+      damage: 3,
+      attackCooldownBaseMs: 980,
+      attackCooldownMs: 650,
+      thinkCooldownMs: 0,
+      xpValue: 12,
+      mode: "patrol",
+      path: [],
+      patrol: [
+        { x: 8, y: 3 },
+        { x: 10, y: 3 },
+        { x: 10, y: 5 },
+        { x: 8, y: 5 },
+      ],
+      patrolIndex: 1,
+      lastKnownHero: null,
+      memoryMs: 0,
+      markedUntilMs: 0,
+      resonanceStacks: 0,
+      dizzyStacks: 0,
+      dizzyUntilMs: 0,
+      stunnedUntilMs: 0,
+      castUntilMs: 0,
+    },
+    {
       id: "collector-ls2",
       name: "Лабораторный сборщик ЛС-2",
       kind: "collector",
@@ -412,7 +538,10 @@ function createEnemies(): Enemy[] {
 }
 
 export function mapForZone(zone: ZoneId): MapDefinition {
-  return zone === "floor556" ? FLOOR_MAP : VOID_MAP;
+  if (zone === "floor555") return FLOOR_555_MAP;
+  if (zone === "floor556") return FLOOR_MAP;
+  if (zone === "floor557") return FLOOR_557_MAP;
+  return VOID_MAP;
 }
 
 function tileAtZone(
@@ -1253,7 +1382,7 @@ export function activateEquippedArtifact(state: GameState): GameState {
   }
 
   if (artifact.itemId === "reverseCoil") {
-    const destination = state.zone === "floor556" ? FLOOR_START : VOID_START;
+    const destination = ZONE_STARTS[state.zone];
     let next: GameState = {
       ...state,
       voidStabilityMs:
@@ -1571,7 +1700,9 @@ function applyRescue(
     hero: {
       ...state.hero,
       positions: {
+        floor555: { ...FLOOR_555_START },
         floor556: { ...FLOOR_START },
+        floor557: { ...FLOOR_557_START },
         voidLab: { ...VOID_START },
       },
       path: [],
@@ -2180,7 +2311,7 @@ function nearestInteractive(state: GameState): { point: Point; tile: string } | 
     for (let x = 0; x < map.rows[0].length; x += 1) {
       const point = { x, y };
       const tile = tileAt(state, point);
-      if (!["S", "H", "T", "A", "P", "L", "c", "B"].includes(tile)) continue;
+      if (!["S", "H", "T", "A", "P", "U", "D", "L", "c", "B"].includes(tile)) continue;
       const currentDistance = distance(hero, point);
       if (currentDistance <= 1.2 && (!nearest || currentDistance < nearest.distance)) {
         nearest = { point, tile, distance: currentDistance };
@@ -2201,12 +2332,47 @@ export function interactionHint(state: GameState): string {
     T: "Прочитать терминал",
     A: "Извлечь артефакт",
     P: state.zone === "voidLab" ? "Вернуться на этаж 556" : "Войти в войд-зону",
+    U: "Перейти на этаж выше",
+    D: "Перейти на этаж ниже",
     L: "Проверить лифт",
     c: "Осмотреть укрытие",
     B: state.openedContainers.includes(containerKey(state, target.point))
       ? "Проверить пустой шкаф"
       : "Открыть аварийный шкаф",
   }[target.tile] ?? "Использовать";
+}
+
+function transitionFloor(state: GameState, tile: "U" | "D"): GameState {
+  const transition =
+    state.zone === "floor555" && tile === "U"
+      ? { zone: "floor556" as const, position: FLOOR_556_DOWN, message: "Подъём выполнен: этаж 556." }
+      : state.zone === "floor556" && tile === "D"
+        ? { zone: "floor555" as const, position: FLOOR_555_UP, message: "Спуск выполнен: этаж 555, ремонтный пояс." }
+        : state.zone === "floor556" && tile === "U"
+          ? { zone: "floor557" as const, position: FLOOR_557_DOWN, message: "Подъём выполнен: этаж 557, жилой контур." }
+          : state.zone === "floor557" && tile === "D"
+            ? { zone: "floor556" as const, position: FLOOR_556_UP, message: "Спуск выполнен: этаж 556." }
+            : null;
+  if (!transition) return appendLog(state, "Переход не отвечает на вызов.");
+  return reveal(
+    appendLog(
+      {
+        ...state,
+        zone: transition.zone,
+        hero: {
+          ...state.hero,
+          path: [],
+          destination: null,
+          attackTargetId: null,
+          positions: {
+            ...state.hero.positions,
+            [transition.zone]: copyPoint(transition.position),
+          },
+        },
+      },
+      transition.message,
+    ),
+  );
 }
 
 export function interact(state: GameState): GameState {
@@ -2271,7 +2437,9 @@ export function interact(state: GameState): GameState {
       },
       "Герой вернулся на этаж 556.",
     );
-  } else if (state.zone === "floor556" && target.tile === "L") {
+  } else if (target.tile === "U" || target.tile === "D") {
+    next = transitionFloor(state, target.tile);
+  } else if (target.tile === "L") {
     next = appendLog(state, "Лифт закреплён за городом П-46. Внешние маршруты закрыты.");
   } else if (target.tile === "c") {
     next = appendLog(state, "Низкое укрытие даёт +2 к защите от дистанционных атак.");
@@ -2305,7 +2473,9 @@ export function createInitialState(): GameState {
     zone: "floor556",
     hero: {
       positions: {
+        floor555: { ...FLOOR_555_START },
         floor556: { ...FLOOR_START },
+        floor557: { ...FLOOR_557_START },
         voidLab: { ...VOID_START },
       },
       path: [],
@@ -2385,13 +2555,13 @@ export function createInitialState(): GameState {
     effects: [],
     effectCounter: 0,
     rngSeed: 5560401,
-    visited: { floor556: [], voidLab: [] },
+    visited: { floor555: [], floor556: [], floor557: [], voidLab: [] },
     openedContainers: [],
     groundLoot: [],
     lootCounter: 0,
     log: [
       "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
-      "Учебный резерв этапа 3C: 18 очков для проверки чистых и гибридных сборок.",
+      "Учебный резерв этапа 4A: 18 очков для проверки чистых и гибридных сборок.",
       "Директива: проверить датчик СБ-04 и укрыться в герметичном секторе.",
       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
     ],
@@ -2584,6 +2754,8 @@ export function objectiveFor(state: GameState): string {
       ? "Вернуться к межэтажному переходу"
       : "Исследовать лабораторию или отступить";
   }
+  if (state.zone === "floor555") return "Исследовать ремонтный пояс или вернуться на этаж 556";
+  if (state.zone === "floor557") return "Осмотреть жилой контур или вернуться на этаж 556";
   return state.sensorFixed ? "Укрыться за гермодверью" : "Восстановить датчик СБ-04";
 }
 
