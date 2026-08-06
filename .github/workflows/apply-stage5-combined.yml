@@ -1,0 +1,56 @@
+name: Apply verified Stage 5 progression patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.automation/stage5-combined/**'
+      - '.github/workflows/apply-stage5-combined.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Assemble and repair transport boundaries
+        run: |
+          cat .automation/stage5-combined/part-*.patch > /tmp/stage5.patch
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/stage5.patch')
+          lines = path.read_text().splitlines(keepends=True)
+          repaired = []
+          mode = None
+          for line in lines:
+              if line.startswith('+diff --git a/docs/PROGRESSION_UI.md'):
+                  mode = 'docs'
+              elif mode == 'docs' and line.startswith('+## 2. Что заимствует интерфейс'):
+                  mode = None
+              elif line.startswith('+diff --git a/tests/game-engine.test.mjs'):
+                  mode = 'tests'
+              elif mode == 'tests' and line.startswith('@@ -393,6 +447,40'):
+                  mode = None
+              if mode and line.startswith('+'):
+                  line = line[1:]
+              repaired.append(line)
+          path.write_text(''.join(repaired))
+          PY
+      - name: Apply and verify
+        run: |
+          git apply --check /tmp/stage5.patch
+          git apply --whitespace=nowarn /tmp/stage5.patch
+          node --experimental-strip-types --test tests/game-engine.test.mjs
+      - name: Commit clean source tree
+        run: |
+          rm -rf .automation/stage5-combined .automation/p1-xp
+          rm -f .github/workflows/apply-stage5-combined.yml .github/workflows/apply-p1-xp.yml
+          git config user.name "OpenAI Codex"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git commit -m "Implement progression, autocast archetypes and development UI"
+          git push origin HEAD:main
