@@ -1,0 +1,144 @@
+)
+-      : appendLog(
+-          { ...state, sensorFixed: true },
+-          "Датчик СБ-04 восстановлен. Диспетчерская требует пройти в гермосектор.",
+-        );
++    if (state.sensorFixed) {
++      next = appendLog(state, "Датчик СБ-04 работает в допустимом диапазоне.");
++    } else {
++      const reward = questXpReward(state, 0.08);
++      next = awardXp({ ...state, sensorFixed: true }, reward);
++      next = appendLog(next, `Датчик СБ-04 восстановлен. Полевая задача: +${reward} опыта. Диспетчерская требует пройти в гермосектор.`);
++    }
+   } else if (state.zone === "floor556" && target.tile === "H") {
+-    next = state.sensorFixed
+-      ? appendLog({ ...state, missionComplete: true }, "Смена завершена. Герметичный сектор закрыт.")
+-      : appendLog(state, "Гермодверь исправна, но директива ещё не выполнена.");
++    if (state.sensorFixed) {
++      const reward = questXpReward(state, 0.4);
++      next = awardXp(state, reward);
++      next = appendLog({ ...next, missionComplete: true }, `Смена завершена. Герметичный сектор закрыт. Операция: +${reward} опыта.`);
++    } else {
++      next = appendLog(state, "Гермодверь исправна, но директива ещё не выполнена.");
++    }
+   } else if (state.zone === "floor556" && target.tile === "T") {
+     next = appendLog(state, "Терминал: старая линия ВЖ-7 активна. В лаборатории числится производство катушек.");
+   } else if (state.zone === "voidLab" && target.tile === "A") {
+     if (state.artifactRecovered) {
+       next = appendLog(state, "Артефактное гнездо пусто.");
+     } else {
+-      const recovered: GameState = {
++      const explorationReward = questXpReward(state, 0.12);
++      const recovered = awardXp({
+         ...state,
+         artifactRecovered: true,
+         voidStabilityMs: Math.max(5000, state.voidStabilityMs - 9000),
+-      };
++      }, explorationReward);
+       const result = addInventoryItem(recovered, "reverseCoil");
+       if (result.added) {
+         const heartbeat = addInventoryItem(result.state, "elevatorHeartbeat");
+         next = heartbeat.added
+           ? appendLog(
+               heartbeat.state,
+-              "Получены Катушка обратного шага и легендарное «Сердцебиение лифта». Стабильность войд-зоны резко снизилась.",
++              `Получены Катушка обратного шага и легендарное «Сердцебиение лифта». Исследование: +${explorationReward} опыта. Стабильность войд-зоны резко снизилась.`,
+             )
+           : appendLog(
+               spawnGroundLoot(result.state, state.zone, target.point, "elevatorHeartbeat"),
+-              "Катушка получена; легендарный артефакт остался на полу из-за перегруза.",
++              `Катушка получена; легендарный артефакт остался на полу из-за перегруза. Исследование: +${explorationReward} опыта.`,
+             );
+       } else {
+         next = spawnGroundLoot(recovered, state.zone, target.point, "reverseCoil");
+         next = spawnGroundLoot(next, state.zone, target.point, "elevatorHeartbeat");
+-        next = appendLog(next, "Оба артефакта остались на полу: рюкзак перегружен.");
++        next = appendLog(next, `Оба артефакта остались на полу: рюкзак перегружен. Исследование: +${explorationReward} опыта.`);
+       }
+     }
+   } else if (state.zone === "voidLab" && target.tile === "P") {
+@@ -2768,7 +2844,10 @@ export function createInitialState(): GameState {
+       hp: 8,
+       level: 1,
+       xp: 0,
+-      skillPoints: 18,
++      totalXp: 0,
++      skillPoints: 1,
++      generalPoints: 1,
++      attributePoints: 0,
+       attributes: {
+         body: 2,
+         reaction: 3,
+@@ -2843,7 +2922,7 @@ export function createInitialState(): GameState {
+     populationCycle: 0,
+     log: [
+       "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
+-      "Учебный резерв этапа 4B: 18 очков для проверки чистых и гибридных сборок.",
++      "Квалификация: уровень 1. Доступно по одному очку общего и профессионального контуров.",
+       "Директива: проверить датчик СБ-04 и укрыться в герметичном секторе.",
+       "Лифт прибыл на этаж 556. Связь с диспетчерской нестабильна.",
+     ],
+diff --git a/tests/game-engine.test.mjs b/tests/game-engine.test.mjs
+index b5f18fd..708e4c8 100644
+--- a/tests/game-engine.test.mjs
++++ b/tests/game-engine.test.mjs
+@@ -4,6 +4,7 @@ import test from "node:test";
+ import {
+   ACTIVE_SKILLS,
+   activateSkillSlot,
++  awardXp,
+   activateEquippedArtifact,
+   allocateTalent,
+   allocateSkill,
+@@ -28,12 +29,14 @@ import {
+   heroMoveSpeed,
+   interact,
+   inventoryWeight,
++  MAX_HERO_LEVEL,
+   populationPressureForZone,
+   populationsForZone,
+   tickGame,
+   TALENT_NODES,
+   VOID_MAP,
+   WEAPONS,
++  xpRequiredForLevel,
+ } from "../app/game-engine.ts";
+ 
+ function heroAt(state, point) {
+@@ -167,7 +170,8 @@ test("смена экипировки немедленно меняет рабо
+ });
+ 
+ test("инженерная ветвь открывает рембота и активные протоколы по порогам", () => {
+-  const state = createInitialState();
++  const initial = createInitialState();
++  const state = { ...initial, hero: { ...initial.hero, skillPoints: 18 } };
+   const firstRank = allocateSkill(state, "engineer");
+   const secondRank = allocateSkill(firstRank, "engineer");
+ 
+@@ -326,6 +330,44 @@ test("побеждённый противник оставляет физиче
+   assert.ok(defeated.groundLoot.some((loot) => loot.itemId === "coilPart"));
+ });
+ 
++test("уровни 1-50 используют новую кривую опыта и раздельные очки развития", () => {
++  let state = createInitialState();
++  assert.equal(xpRequiredForLevel(1), 200);
++  assert.ok(xpRequiredForLevel(20) > xpRequiredForLevel(10));
++
++  state = awardXp(state, xpRequiredForLevel(1));
++  assert.equal(state.hero.level, 2);
++  assert.equal(state.hero.generalPoints, 2);
++  assert.equal(state.hero.skillPoints, 1);
++
++  state = awardXp(state, xpRequiredForLevel(2));
++  assert.equal(state.hero.level, 3);
++  assert.equal(state.hero.skillPoints, 2);
++
++  let capped = createInitialState();
++  for (let level = 1; level < MAX_HERO_LEVEL; level += 1) {
++    capped = awardXp(capped, xpRequiredForLevel(capped.hero.level));
++  }
++  assert.equal(capped.hero.level, MAX_HERO_LEVEL);
++  assert.equal(capped.hero.xp, 0);
++});
++
++test("полевая задача и за
