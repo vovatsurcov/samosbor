@@ -1,0 +1,129 @@
+@@ -3172,7 +3076,6 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
+     }
+   }
+ 
+-  next = handlePortalEntry(next);
+   next = reveal(next);
+ 
+   if (!next.hero.attackTargetId) {
+diff --git a/app/game-prototype.tsx b/app/game-prototype.tsx
+index 75bc5ac..a6568ab 100644
+--- a/app/game-prototype.tsx
++++ b/app/game-prototype.tsx
+@@ -102,6 +102,7 @@ const TILE_LABELS: Record<string, string> = {
+   D: "Переход вниз",
+   A: "Артефактное гнездо",
+   B: "Аварийный шкаф",
++  N: "Диспетчер Орлова",
+ };
+ 
+ const TILE_MARKS: Record<string, string> = {
+@@ -115,6 +116,7 @@ const TILE_MARKS: Record<string, string> = {
+   D: "↓",
+   A: "◈",
+   B: "▣",
++  N: "Н",
+ };
+ 
+ const MODE_LABELS: Record<EnemyMode, string> = {
+@@ -181,6 +183,7 @@ function tileColor(tile: string, zoneIsVoid: boolean, visible: boolean): string
+   if (tile === "L") return "#48515a";
+   if (tile === "T") return "#52605b";
+   if (tile === "B") return "#51584b";
++  if (tile === "N") return "#4e665e";
+   return zoneIsVoid ? "#47364d" : "#64695c";
+ }
+ 
+@@ -208,6 +211,25 @@ function enemyDescription(enemy: Enemy): string {
+   return "Бронированная лабораторная машина, охраняющая старое производство.";
+ }
+ 
++type HoverInfo = { title: string; description: string; meta?: string };
++
++function tileDescription(tile: string, zoneIsVoid: boolean): string {
++  const descriptions: Record<string, string> = {
++    N: "Дежурный диспетчер стартового сектора. Выдаёт первое поручение и объясняет текущие угрозы.",
++    S: "Повреждённый датчик СБ-04. Его восстановление является первой полевой задачей.",
++    H: "Гермопомещение, способное пережить активную фазу Самосбора при исправной двери и питании.",
++    U: "Межэтажный переход. Срабатывает только после взаимодействия рядом с узлом.",
++    D: "Спуск на следующий этаж. Переход выполняется только явной командой взаимодействия.",
++    P: zoneIsVoid ? "Нестабильный выход. Он выбросит героя на случайный этаж и исчезнет." : "Редкая войд-аномалия. После входа обратного пути не будет.",
++    B: "Аварийный шкаф с расходниками, инструментом или редкой находкой.",
++    T: "Служебный терминал с картой, журналами и локальными поручениями.",
++    L: "Лифтовый узел. Большинство линий требует допуска или восстановления.",
++    c: "Низкое укрытие. Даёт защиту от дистанционных атак.",
++    A: "Аномальное гнездо с артефактом и повышенным риском заражения.",
++  };
++  return descriptions[tile] ?? "Часть окружения текущего этажа.";
++}
++
+ function branchGlyph(branch: SkillBranch): string {
+   return {
+     force: "С",
+@@ -251,6 +273,7 @@ export default function GamePrototype() {
+   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+   const [lastInput, setLastInput] = useState("—");
+   const [measuredFps, setMeasuredFps] = useState(0);
++  const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
+   const stateRef = useRef(state);
+   const lastFrameRef = useRef(0);
+   const tvModeRef = useRef(tvMode);
+@@ -573,6 +596,10 @@ export default function GamePrototype() {
+   const originX = (map.rows.length * TILE_WIDTH) / 2 + 48;
+   const originY = 28;
+   const heroIso = toIso(hero, originX, originY);
++  const cameraWidth = Math.min(svgWidth, 1120);
++  const cameraHeight = Math.min(svgHeight, 700);
++  const cameraX = Math.max(0, Math.min(svgWidth - cameraWidth, heroIso.x - cameraWidth / 2));
++  const cameraY = Math.max(0, Math.min(svgHeight - cameraHeight, heroIso.y - cameraHeight / 2));
+   const cooldownPercent = Math.min(
+     100,
+     (state.hero.attackCooldownMs / heroAttackCooldown(state)) * 100,
+@@ -639,7 +666,7 @@ export default function GamePrototype() {
+           <div className="map-stage realtime-stage">
+             <svg
+               className="iso-map realtime-map"
+-              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
++              viewBox={`${cameraX} ${cameraY} ${cameraWidth} ${cameraHeight}`}
+               role="img"
+               aria-label={`Карта: ${map.name}`}
+             >
+@@ -695,6 +722,8 @@ export default function GamePrototype() {
+                     key={`${point.x}-${point.y}`}
+                     className={`iso-tile ${known ? "known" : "unknown"}`}
+                     onPointerDown={() => known && !isWall && moveTo(point)}
++                    onPointerEnter={() => known && !isWall && setHoverInfo({ title: TILE_LABELS[tile] ?? "Объект", description: tileDescription(tile, state.zone === "voidLab"), meta: `Координаты ${point.x}:${point.y}` })}
++                    onPointerLeave={() => setHoverInfo(null)}
+                     role={known && !isWall ? "button" : undefined}
+                     aria-label={known ? TILE_LABELS[tile] : undefined}
+                   >
+@@ -771,6 +800,8 @@ export default function GamePrototype() {
+                       event.stopPropagation();
+                       moveTo(loot.position);
+                     }}
++                    onPointerEnter={() => setHoverInfo({ title: item.name, description: item.description, meta: `Количество: ${loot.quantity} · состояние ${Math.round(loot.condition)}%` })}
++                    onPointerLeave={() => setHoverInfo(null)}
+                   >
+                     <path d="M -9 3 L -6 -7 L 7 -7 L 10 3 L 0 9 Z" fill="#39372a" stroke="#e1c86d" strokeWidth="2" />
+                     <text x="0" y="2" textAnchor="middle" fill="#f2dfa0">{item.kind === "artifact" ? "◈" : "•"}</text>
+@@ -790,6 +821,8 @@ export default function GamePrototype() {
+                       event.stopPropagation();
+                       attackEnemy(enemy.id);
+                     }}
++                    onPointerEnter={() => setHoverInfo({ title: enemy.name, description: enemyDescription(enemy), meta: `${MODE_LABELS[enemy.mode]} · ОЗ ${enemy.hp}/${enemy.maxHp} · агро ${enemy.aggroRadius.toFixed(1)}` })}
++                    onPointerLeave={() => setHoverInfo(null)}
+                     role="button"
+                     aria-label={`${enemy.name}, ${MODE_LABELS[enemy.mode]}`}
+                     filter="url(#actor-shadow)"
+@@ -818,6 +851,14 @@ export default function GamePrototype() {
+               </g>
+             </svg>
+ 
++            {hoverInfo ? (
++              <div className="map-hover-card" role="status">
++                <strong>{hoverInfo.title}</strong>
++                <p>{hoverInfo.description}</p>
++                {hoverInfo.meta ? <small>{hoverInfo.meta}</small> : null}
++              </div>
++            ) : null}
++
