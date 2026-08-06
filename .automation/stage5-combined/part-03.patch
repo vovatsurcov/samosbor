@@ -1,0 +1,134 @@
+           <button type="button" className="ability aid-ability" onClick={firstAidNow} disabled={!bandageCount}><span className="ability-key">Q</span><strong>Перевязка ×{bandageCount}</strong><small>2 ОЗ · стабилизация травмы</small></button>
+           <button type="button" className="ability artifact-ability" onClick={artifactNow} disabled={!artifact}><span className="ability-key">R</span><strong>{artifact ? ITEMS[artifact.itemId].shortName : "Артефакт"}</strong><small>{artifact ? ITEMS[artifact.itemId].useLabel : "Не экипирован"}</small><i className="cooldown-mask artifact-cooldown" style={{ height: `${Math.min(100, (state.hero.artifactCooldownMs / 30000) * 100)}%` }} /></button>
+@@ -1044,45 +1023,50 @@ export default function GamePrototype() {
+ 
+                 <p className="panel-label attributes-label">ХАРАКТЕРИСТИКИ</p>
+                 <div className="attribute-row">
+-                  <span><small>Тело</small><strong>{effectiveAttribute(state, "body")}</strong><em>база {state.hero.attributes.body}</em></span>
+-                  <span><small>Реакция</small><strong>{effectiveAttribute(state, "reaction")}</strong><em>база {state.hero.attributes.reaction}</em></span>
+-                  <span><small>Внимание</small><strong>{effectiveAttribute(state, "attention")}</strong><em>база {state.hero.attributes.attention}</em></span>
+-                  <span><small>Техника</small><strong>{effectiveAttribute(state, "technique")}</strong><em>база {state.hero.attributes.technique}</em></span>
+-                  <span><small>Воля</small><strong>{effectiveAttribute(state, "will")}</strong><em>база {state.hero.attributes.will}</em></span>
++                  {ATTRIBUTE_OPTIONS.map(({ id, label }) => (
++                    <span key={id}>
++                      <small>{label}</small>
++                      <strong>{effectiveAttribute(state, id)}</strong>
++                      <em>база {state.hero.attributes[id]}</em>
++                      <button
++                        type="button"
++                        disabled={state.hero.attributePoints <= 0}
++                        onClick={() => setState((current) => allocateAttribute(current, id))}
++                        aria-label={`Повысить атрибут ${label}`}
++                      >
++                        +
++                      </button>
++                    </span>
++                  ))}
+                 </div>
+               </section>
+ 
+               <section className="skills-section">
+-                <div className="skills-heading">
++                <div className="skills-heading progression-heading">
+                   <div>
+-                    <p className="panel-label">ДЕРЕВО ДОПУСКОВ · 121 БАЗОВЫЙ + 4 ВНЕШНИХ</p>
++                    <p className="panel-label">КОНСТРУКТОР АРХЕТИПА · 121 БАЗОВЫЙ + 4 ВНЕШНИХ</p>
+                     <h3>{classTitle}</h3>
+-                    <p>Основные очки уходят в пассивы. Активные навыки открываются на 1/4/8 очках ветви; гибридный допуск требует 8+8.</p>
++                    <p>Классов нет. Таланты определяют оружие, дистанцию, защиту, устройства и автоматическую боевую ротацию.</p>
++                  </div>
++                  <div className="point-wallets">
++                    <span><small>Общий контур</small><strong>{state.hero.generalPoints}</strong></span>
++                    <span><small>Профессиональный</small><strong>{state.hero.skillPoints}</strong></span>
++                    <span><small>Атрибуты</small><strong>{state.hero.attributePoints}</strong></span>
+                   </div>
+-                  <strong>{state.hero.skillPoints} очк.</strong>
+-                </div>
+-
+-                <div className="training-builds">
+-                  <div><p className="panel-label">ИСПЫТАТЕЛЬНЫЕ СБОРКИ ДЛЯ ПУЛЬТА</p><span>Загружают готовый боевой стенд и легендарный внешний узел.</span></div>
+-                  <button type="button" onClick={() => loadTrainingBuild("mobileFire")}>Стрелок на муве<small>кайт · головокружение · срыв кастов</small></button>
+-                  <button type="button" onClick={() => loadTrainingBuild("splashGuard")}>Воин-сплэшер<small>сбор пачки · провокация · урон по площади</small></button>
+                 </div>
+ 
+-                <div className="directive-selector" aria-label="Боевая директива">
+-                  {([
+-                    ["manual", "Ручная цель", "Все решения игрока"],
+-                    ["mobileFire", "Мобильный огонь", "Автоцель, игрок кайтит"],
+-                    ["splashGuard", "Сбор пачки", "Автоцель ближнего боя"],
+-                  ] as const).map(([directive, label, note]) => (
+-                    <button
+-                      key={directive}
+-                      type="button"
+-                      className={state.hero.combatDirective === directive ? "active" : ""}
+-                      onClick={() => setState((current) => setCombatDirective(current, directive))}
+-                    >
+-                      <strong>{label}</strong><small>{note}</small>
+-                    </button>
+-                  ))}
++                <div className="progression-overview">
++                  <div className="qualification-ring"><strong>{state.hero.level}</strong><span>уровень</span></div>
++                  <div className="qualification-track">
++                    <div><span>Стажёр</span><span>Специалист</span><span>Доктрина</span><span>Главный</span><span>50</span></div>
++                    <i><b style={{ width: `${Math.min(100, (state.hero.level / 50) * 100)}%` }} /></i>
++                    <small>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} до следующей квалификации` : "Основная квалификация завершена"}</small>
++                  </div>
++                  <div className="archetype-readout">
++                    <small>Автоконтур</small>
++                    <strong>{combatDirective === "mobileFire" ? "Мобильный огонь" : combatDirective === "splashGuard" ? "Силовой периметр" : "Адаптивный"}</strong>
++                    <span>{unlockedSkills.length} автоматических протоколов</span>
++                  </div>
+                 </div>
+ 
+                 <nav className="talent-tabs" aria-label="Разделы дерева">
+@@ -1098,9 +1082,11 @@ export default function GamePrototype() {
+ 
+                 {SKILL_BRANCHES.includes(talentView as SkillBranch) ? (
+                   <div className="branch-summary">
+-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 4 ? "reached" : ""}`}>I · 4</span>
+-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 8 ? "reached" : ""}`}>II · 8</span>
+-                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 14 ? "reached" : ""}`}>III · 14</span>
++                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 1 ? "reached" : ""}`}>Навык · 1</span>
++                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 4 ? "reached" : ""}`}>Связка · 4</span>
++                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 8 ? "reached" : ""}`}>Гибрид · 8</span>
++                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 12 ? "reached" : ""}`}>Доктрина · 12</span>
++                    <span className={`threshold ${branchPoints[talentView as SkillBranch] >= 16 ? "reached" : ""}`}>Ключ · 16</span>
+                     <p>{SKILL_DESCRIPTIONS[talentView as SkillBranch]}</p>
+                   </div>
+                 ) : null}
+@@ -1135,35 +1121,22 @@ export default function GamePrototype() {
+                   })}
+                 </div>
+ 
+-                <div className="active-loadout-editor">
+-                  <div className="active-loadout-heading">
+-                    <div><p className="panel-label">АКТИВНАЯ РОТАЦИЯ</p><h3>Четыре ячейки</h3><p>Любой навык работает отдельно и имеет межветочные теги. Выберите ячейку, затем назначьте открытый навык.</p></div>
++                <div className="autocast-protocols">
++                  <div className="autocast-heading">
++                    <div><p className="panel-label">АВТОМАТИЧЕСКАЯ РОТАЦИЯ</p><h3>Все открытые навыки работают сами</h3><p>Игрок управляет позицией, целью и риском. Приоритеты и условия применения рождаются из вложенных талантов, без отдельного выбора «ручной» или «автоматической» сборки.</p></div>
++                    <strong>{unlockedSkills.length} / {Object.keys(ACTIVE_SKILLS).length}</strong>
+                   </div>
+-                  <div className="active-slot-selector">
+-                    {state.hero.activeSkillSlots.map((skillId, slot) => (
+-                      <button key={slot} type="button" className={selectedSkillSlot === slot ? "active" : ""} onClick={() => setSelectedSkillSlot(slot)}>
+-                        <span>{slot + 2}</span><strong>{skillId ? ACTIVE_SKILLS[skillId].shortName : "Пусто"}</strong><small>ячейка {slot + 1}</small>
+-                      </button>
+-                    ))}
+-                  </div>
+-                  <div className="active-skill-catalog">
++                  <div className="autocast-catalog">
+                     {(Object.keys(ACTIVE_SKILLS) as ActiveSkillId[]).map((skillId) => {
+                       const skill = ACTIVE_SKILLS[skillId];
+                       const unlocked = unlockedSkills.includes(skillId);
+-                      const assigned = state.hero.activeSkillSlots.includes(skillId);
++                      const cooldown = state.hero.activeSkillCooldowns[skillId] ?? 0;
+                       return (
+-                        <button
+-                          key={skillId}
+-                          type="button"
+-                          className={`skill-choice branch-${skill.branch} ${assigned ? "assigned" : ""}`}
+-                          disabled={!unlocked}
+-                          onClick={() => setState((current) => assignActiveSkill(current, selectedSkillSlot, skillId))}
+-                        >
+-                          <span>{branchGlyph(skill.branch)}</span>
+-                          <strong>{skill.name}</strong>
