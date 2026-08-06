@@ -221,6 +221,7 @@ export type GameState = {
   rngSeed: number;
   visited: Record<ZoneId, string[]>;
   openedContainers: string[];
+  milestoneLootDrops: string[];
   groundLoot: GroundLoot[];
   lootCounter: number;
   populations: WorldPopulation[];
@@ -827,6 +828,11 @@ function emitNoise(
 function rollD20(state: GameState): { state: GameState; roll: number } {
   const seed = (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0;
   return { state: { ...state, rngSeed: seed }, roll: (seed % 20) + 1 };
+}
+
+function rollPercent(state: GameState): { state: GameState; roll: number } {
+  const seed = (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0;
+  return { state: { ...state, rngSeed: seed }, roll: seed % 100 };
 }
 
 export function branchTalentPoints(state: GameState, branch: SkillBranch): number {
@@ -1554,6 +1560,48 @@ export function consumeInventoryItem(state: GameState, instanceId: string): Game
     );
   }
 
+  if (entry.itemId === "fieldRation") {
+    if (state.hero.hp >= maxHeroHp(state) && state.hero.stress <= 0) {
+      return appendLog(state, "Паёк пока не требуется.");
+    }
+    let next: GameState = {
+      ...state,
+      hero: {
+        ...state.hero,
+        hp: Math.min(maxHeroHp(state), state.hero.hp + 1),
+        stress: Math.max(0, state.hero.stress - 8),
+      },
+    };
+    next = consumeEntry(next, instanceId);
+    return appendLog(next, "Паёк восстановил 1 ОЗ и снизил стресс на 8.");
+  }
+
+  if (entry.itemId === "painkillers") {
+    const injuries = (Object.keys(state.injuries) as (keyof Injuries)[])
+      .filter((injury) => state.injuries[injury] > 0)
+      .sort((a, b) => state.injuries[b] - state.injuries[a]);
+    if (!injuries.length && state.hero.stress <= 0) {
+      return appendLog(state, "Таблетки сейчас не требуются.");
+    }
+    const relievedInjury = injuries[0] ?? state.hero.relievedInjury;
+    let next: GameState = {
+      ...state,
+      hero: {
+        ...state.hero,
+        stress: Math.max(0, state.hero.stress - 5),
+        relievedInjury,
+        injuryReliefUntilMs: relievedInjury ? state.worldTimeMs + 45000 : state.hero.injuryReliefUntilMs,
+      },
+    };
+    next = consumeEntry(next, instanceId);
+    return appendLog(
+      next,
+      relievedInjury
+        ? `Приняты таблетки ПТ-3. ${injuryLabel(relievedInjury)} ослаблена на 45 секунд.`
+        : "Таблетки снизили стресс на 5.",
+    );
+  }
+
   if (entry.itemId === "traumaInjector") {
     if (state.hero.hp >= maxHeroHp(state)) return appendLog(state, "Инъектор не требуется.");
     let next: GameState = {
@@ -2173,18 +2221,79 @@ function spawnGroundLoot(
   };
 }
 
-function dropEnemyLoot(state: GameState, enemy: Enemy): GameState {
-  if (enemy.kind === "sentry") {
-    return spawnGroundLoot(state, enemy.zone, enemy.position, "coilPart");
+function markMilestoneLootDrop(state: GameState, milestone: string): GameState {
+  const milestones = state.milestoneLootDrops ?? [];
+  return milestones.includes(milestone)
+    ? state
+    : { ...state, milestoneLootDrops: [...milestones, milestone] };
+}
+
+export function dropEnemyLoot(state: GameState, enemy: Enemy): GameState {
+  const milestones = state.milestoneLootDrops ?? [];
+
+  if (enemy.zone === "floor556" && !milestones.includes("floor556-starter-armor")) {
+    const dropped = spawnGroundLoot(state, enemy.zone, enemy.position, "hermeticJacketGk3", 1, 100);
+    return markMilestoneLootDrop(dropped, "floor556-starter-armor");
   }
-  if (enemy.kind === "stalker") {
-    return spawnGroundLoot(state, enemy.zone, enemy.position, "filterCartridge");
+
+  if (enemy.zone === "floor555" && !milestones.includes("floor555-quality-weapon")) {
+    const weaponRoll = rollPercent(state);
+    const conditionRoll = rollPercent(weaponRoll.state);
+    const weaponId: ItemId = weaponRoll.roll < 50 ? "breachAxe" : "coilRifle";
+    const dropped = spawnGroundLoot(
+      conditionRoll.state,
+      enemy.zone,
+      enemy.position,
+      weaponId,
+      1,
+      92 + (conditionRoll.roll % 9),
+    );
+    return markMilestoneLootDrop(dropped, "floor555-quality-weapon");
   }
-  let next = spawnGroundLoot(state, enemy.zone, enemy.position, "quietHoodTo2", 1, 68);
-  next = spawnGroundLoot(next, enemy.zone, enemy.position, "batteryPack");
-  next = spawnGroundLoot(next, enemy.zone, enemy.position, "sectorMaul", 1, 100);
-  next = spawnGroundLoot(next, enemy.zone, enemy.position, "seventhToleranceHarness", 1, 92);
-  return next;
+
+  const chanceRoll = rollPercent(state);
+  const noDropThreshold: Record<EnemyRank, number> = {
+    common: 55,
+    enhanced: 45,
+    veteran: 35,
+    elite: 15,
+    boss: 0,
+  };
+  const rank = enemyRankForXp(enemy);
+  if (chanceRoll.roll < noDropThreshold[rank]) return chanceRoll.state;
+
+  const categoryRoll = rollPercent(chanceRoll.state);
+  let next = categoryRoll.state;
+  let itemId: ItemId;
+  let condition = 100;
+
+  if (categoryRoll.roll < 32) itemId = "bandage";
+  else if (categoryRoll.roll < 54) itemId = "fieldRation";
+  else if (categoryRoll.roll < 72) itemId = "painkillers";
+  else if (categoryRoll.roll < 82) itemId = "traumaInjector";
+  else if (categoryRoll.roll < 88) itemId = "filterCartridge";
+  else if (categoryRoll.roll < 93) itemId = enemy.kind === "sentry" ? "coilPart" : "repairKit";
+  else if (categoryRoll.roll < 98) {
+    const clothingRoll = rollPercent(next);
+    next = clothingRoll.state;
+    const clothing: ItemId[] = [
+      "respiratorIp7",
+      "repairCoatRs12",
+      "installerGloves",
+      "dielectricBoots",
+      "backpackRd54",
+      "quietHoodTo2",
+    ];
+    itemId = clothing[clothingRoll.roll % clothing.length];
+    condition = 55 + (clothingRoll.roll % 36);
+  } else {
+    const weaponRoll = rollPercent(next);
+    next = weaponRoll.state;
+    itemId = weaponRoll.roll < 50 ? "shockBaton" : "servicePistol";
+    condition = 55 + (weaponRoll.roll % 36);
+  }
+
+  return spawnGroundLoot(next, enemy.zone, enemy.position, itemId, 1, condition);
 }
 
 function heroAttackTick(state: GameState): GameState {
@@ -2955,6 +3064,7 @@ export function createInitialState(): GameState {
     rngSeed: 5560401,
     visited: { floor555: [], floor556: [], floor557: [], voidLab: [] },
     openedContainers: [],
+    milestoneLootDrops: [],
     groundLoot: [],
     lootCounter: 0,
     populations: createPopulations(),

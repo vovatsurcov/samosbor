@@ -1,5 +1,6 @@
 export type WeaponId =
   | "shockBaton"
+  | "breachAxe"
   | "servicePistol"
   | "coilRifle"
   | "horizonCarbine"
@@ -24,8 +25,11 @@ export type ItemId =
   | "dielectricBoots"
   | "backpackRd54"
   | "platedVestBn3"
+  | "hermeticJacketGk3"
   | "quietHoodTo2"
   | "bandage"
+  | "fieldRation"
+  | "painkillers"
   | "traumaInjector"
   | "filterCartridge"
   | "batteryPack"
@@ -89,6 +93,18 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     noiseRadius: 1.5,
     description: "Тихое оружие ближнего боя. Высокий урон без громкого сигнала.",
   },
+  breachAxe: {
+    id: "breachAxe",
+    name: "Штурмовой топор ШТ-6",
+    shortName: "ШТ-6",
+    category: "melee",
+    range: 1.4,
+    damage: 7,
+    accuracy: 4,
+    cooldownMs: 940,
+    noiseRadius: 3.2,
+    description: "Исправный аварийный топор для вскрытия гермоперегородок. Медленнее дубинки, но заметно мощнее.",
+  },
   servicePistol: {
     id: "servicePistol",
     name: "Импульсный пистолет ИП-4",
@@ -149,6 +165,17 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     weight: 1.4,
     stackable: false,
     description: WEAPONS.shockBaton.description,
+  },
+  breachAxe: {
+    id: "breachAxe",
+    name: WEAPONS.breachAxe.name,
+    shortName: WEAPONS.breachAxe.shortName,
+    kind: "weapon",
+    slot: "weapon",
+    weight: 3.1,
+    stackable: false,
+    rarity: "uncommon",
+    description: WEAPONS.breachAxe.description,
   },
   servicePistol: {
     id: "servicePistol",
@@ -260,6 +287,18 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     description: "Тяжёлые вставки держат удар, но мешают быстро перемещаться.",
     stats: { armor: 3, maxHp: 1, moveSpeed: -0.18 },
   },
+  hermeticJacketGk3: {
+    id: "hermeticJacketGk3",
+    name: "Гермокуртка ГК-3",
+    shortName: "ГК-3",
+    kind: "clothing",
+    slot: "body",
+    weight: 3.9,
+    stackable: false,
+    rarity: "uncommon",
+    description: "Усиленная куртка аварийной службы с жёстким воротом и внутренними шинами. +3 к максимальному здоровью.",
+    stats: { armor: 1, maxHp: 3 },
+  },
   quietHoodTo2: {
     id: "quietHoodTo2",
     name: "Тихий капюшон ТО-2",
@@ -280,6 +319,26 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     description: "Восстанавливает 2 ОЗ и на 30 секунд ослабляет одну травму.",
     useLabel: "Перевязать",
+  },
+  fieldRation: {
+    id: "fieldRation",
+    name: "Полевой паёк ПР-4",
+    shortName: "ПР-4",
+    kind: "consumable",
+    weight: 0.45,
+    stackable: true,
+    description: "Плотный брикет и сладкий концентрат. Восстанавливает 1 ОЗ и снижает стресс на 8.",
+    useLabel: "Съесть",
+  },
+  painkillers: {
+    id: "painkillers",
+    name: "Таблетки ПТ-3",
+    shortName: "ПТ-3",
+    kind: "consumable",
+    weight: 0.08,
+    stackable: true,
+    description: "Полевой анальгетик. На 45 секунд ослабляет самую тяжёлую травму и снижает стресс на 5.",
+    useLabel: "Принять",
   },
   traumaInjector: {
     id: "traumaInjector",

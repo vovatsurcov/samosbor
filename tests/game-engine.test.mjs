@@ -18,6 +18,7 @@ import {
   commandAttack,
   commandMove,
   createInitialState,
+  dropEnemyLoot,
   effectiveInjury,
   equipItem,
   equipWeapon,
@@ -29,6 +30,7 @@ import {
   heroDefense,
   heroMoveSpeed,
   interact,
+  ITEMS,
   inventoryWeight,
   MAX_HERO_LEVEL,
   populationPressureForZone,
@@ -284,6 +286,68 @@ test("экипировка, вес и состояние предметов уч
   assert.ok(heroMoveSpeed(armored) < heroMoveSpeed(state));
 });
 
+test("первые два этажа гарантируют полезную броню и исправное оружие", () => {
+  const initial = createInitialState();
+  const starterEnemy = initial.enemies.find((enemy) => enemy.zone === "floor556");
+  const withArmorDrop = dropEnemyLoot(initial, starterEnemy);
+  const armor = withArmorDrop.groundLoot.find((loot) => loot.itemId === "hermeticJacketGk3");
+
+  assert.ok(armor);
+  assert.equal(ITEMS.hermeticJacketGk3.stats?.maxHp, 3);
+  assert.ok(withArmorDrop.milestoneLootDrops.includes("floor556-starter-armor"));
+
+  const repeated = dropEnemyLoot(withArmorDrop, { ...starterEnemy, id: "starter-repeat" });
+  assert.equal(repeated.groundLoot.filter((loot) => loot.itemId === "hermeticJacketGk3").length, 1);
+
+  const floor555Enemy = {
+    ...starterEnemy,
+    id: "floor555-guaranteed",
+    zone: "floor555",
+    position: { x: 10, y: 10 },
+  };
+  const withWeaponDrop = dropEnemyLoot(repeated, floor555Enemy);
+  const weapon = withWeaponDrop.groundLoot.find(
+    (loot) => loot.zone === "floor555" && ["breachAxe", "coilRifle"].includes(loot.itemId),
+  );
+
+  assert.ok(weapon);
+  assert.ok(weapon.condition >= 92 && weapon.condition <= 100);
+  assert.ok(withWeaponDrop.milestoneLootDrops.includes("floor555-quality-weapon"));
+});
+
+test("обычный лут выпадает не всегда, а расходники заметно чаще экипировки", () => {
+  let state = {
+    ...createInitialState(),
+    milestoneLootDrops: ["floor556-starter-armor", "floor555-quality-weapon"],
+    groundLoot: [],
+  };
+  const template = state.enemies[0];
+  let emptyKills = 0;
+
+  for (let index = 0; index < 240; index += 1) {
+    const before = state.groundLoot.length;
+    state = dropEnemyLoot(state, {
+      ...template,
+      id: `loot-sim-${index}`,
+      zone: "floor557",
+      position: { x: 4 + (index % 20), y: 4 + (index % 10) },
+      rank: "common",
+    });
+    const added = state.groundLoot.length - before;
+    assert.ok(added <= 1);
+    if (added === 0) emptyKills += 1;
+  }
+
+  const consumables = state.groundLoot.filter((loot) => ITEMS[loot.itemId].kind === "consumable").length;
+  const equipment = state.groundLoot.filter((loot) => ["weapon", "clothing"].includes(ITEMS[loot.itemId].kind)).length;
+
+  assert.ok(emptyKills > 100);
+  assert.ok(consumables > equipment * 5);
+  assert.ok(state.groundLoot.some((loot) => loot.itemId === "bandage"));
+  assert.ok(state.groundLoot.some((loot) => loot.itemId === "fieldRation"));
+  assert.ok(state.groundLoot.some((loot) => loot.itemId === "painkillers"));
+});
+
 test("аварийный шкаф выдаёт добычу и запоминает открытие", () => {
   const state = heroAt(createInitialState(), { x: 17, y: 8 });
   const looted = interact(state);
@@ -358,7 +422,7 @@ test("побеждённый противник оставляет физиче�
   const defeated = tickGame(commandAttack(weakened, "guard-kl4"), 100);
 
   assert.equal(defeated.enemies.find((enemy) => enemy.id === "guard-kl4")?.hp, 0);
-  assert.ok(defeated.groundLoot.some((loot) => loot.itemId === "coilPart"));
+  assert.ok(defeated.groundLoot.some((loot) => loot.itemId === "hermeticJacketGk3"));
 });
 
 test("уровни 1-50 используют новую кривую опыта и раздельные очки развития", () => {
