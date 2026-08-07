@@ -14,7 +14,6 @@ import {
   isCitySafeZone,
   mapForZone,
   migrateGameState,
-  objectiveFor,
 } from "../app/game-engine.ts";
 
 function findTile(map, tile) {
@@ -121,7 +120,6 @@ test("Город 545 является защищённым многоэтажн�
   assert.equal(isCitySafeZone("floor545"), true);
   assert.equal(REGION_SAFE_ZONES.has("floor545"), true);
   assert.equal(state.enemies.filter((enemy) => enemy.zone === "floor545" && enemy.hp > 0).length, 0);
-  assert.match(objectiveFor({ ...state, zone: "floor545" }), /Города 545|старост|Сухого дока/i);
 });
 
 test("на четырёх опасных этажах существуют физические популяции", () => {

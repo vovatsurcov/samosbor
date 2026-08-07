@@ -1,5 +1,22 @@
 import * as base from "./game-engine-base.ts";
 import {
+  chooseStarterApproach,
+  ensureStarterCampaign,
+  recordCityServiceVisit,
+  recordDispatcherBriefing,
+  starterObjective,
+  tickStarterCampaign,
+  type StarterApproach,
+} from "./game-campaign.ts";
+import {
+  choosePrimaryProfession,
+  ensureProfessionState,
+  grantTrialProfession,
+  unlockProfessionSpecialization,
+  type ProfessionDirectionId,
+  type ProfessionSpecializationId,
+} from "./game-professions.ts";
+import {
   createRegionalProgress,
   REGION_SETTLEMENT_NPCS,
   regionalObjective,
@@ -40,19 +57,23 @@ import {
 } from "./game-world-systems.ts";
 
 export * from "./game-engine-base.ts";
+export * from "./game-campaign.ts";
+export * from "./game-professions.ts";
 export * from "./game-world-systems.ts";
 export { FLOOR_544_MAP } from "./game-region-map-544.ts";
 export const REGION_MAPS = REGION_MAPS_544;
 
 function normalizeCityState(state: any): any {
   const regional = ensureRegionalState(state);
-  return ensureWorldSystemsState({
+  const world = ensureWorldSystemsState({
     ...regional,
     regionProgress: {
       ...regional.regionProgress,
       lowerDockUnlocked: true,
     },
   });
+  const professions = ensureProfessionState(world);
+  return tickStarterCampaign(ensureStarterCampaign(professions));
 }
 
 export function mapForZone(zone: base.ZoneId | typeof FLOOR_544): base.MapDefinition {
@@ -133,52 +154,120 @@ export function commandMove(state: any, target: base.Point): any {
   };
 }
 
+function starterCityServiceForRole(role: string | undefined): string | null {
+  if (!role) return null;
+  if (role === "registrar") return "registration";
+  if (role === "medic") return "medical";
+  if (["weaponsmith", "armorer", "technician", "electrician"].includes(role)) return "workshop";
+  if (role === "archivist") return "archive";
+  if (role.startsWith("liquidator-")) return "liquidators";
+  return null;
+}
+
 export function commandTalkToNpc(state: any, npcId: string): any {
-  const npc = regionalNpc(state, npcId);
-  return npc ? applyRegionalNpc(state, npc) : base.commandTalkToNpc(state, npcId);
+  const ensured = normalizeCityState(state);
+  const actor = ensured.npcs.find((entry: base.Npc) => entry.id === npcId);
+  const regional = regionalNpc(ensured, npcId);
+  let next = regional ? applyRegionalNpc(ensured, regional) : base.commandTalkToNpc(ensured, npcId);
+  if (ensured.zone === "floor554") {
+    const service = starterCityServiceForRole(actor?.role);
+    if (service) next = recordCityServiceVisit(next, service);
+  }
+  return tickStarterCampaign(next);
+}
+
+function finalizeInteraction(stateBefore: any, tile: string, stateAfter: any): any {
+  let next = stateAfter;
+  if (stateBefore.zone === "floor556" && tile === "N") {
+    next = recordDispatcherBriefing(next);
+  }
+  return tickStarterCampaign(next);
 }
 
 export function commandInteractAt(state: any, point: base.Point): any {
   const ensured = normalizeCityState(state);
-  const nodeResult = applyRegionalNode(ensured, point);
-  if (nodeResult) return nodeResult;
   const tile = tileAt(ensured, point);
+  const nodeResult = applyRegionalNode(ensured, point);
+  if (nodeResult) return finalizeInteraction(ensured, tile, nodeResult);
 
   if (ensured.zone === FLOOR_545 && tile === "D") {
-    return transitionRegionalState(
+    return finalizeInteraction(
       ensured,
-      FLOOR_544,
-      FLOOR_544_START,
-      "Внутригородской спуск выполнен: Город 545, нижний ярус 544.",
+      tile,
+      transitionRegionalState(
+        ensured,
+        FLOOR_544,
+        FLOOR_544_START,
+        "Внутригородской спуск выполнен: Город 545, нижний ярус 544.",
+      ),
     );
   }
 
   if (ensured.zone === FLOOR_544) {
     if (tile === "U") {
-      return transitionRegionalState(
+      return finalizeInteraction(
         ensured,
-        FLOOR_545,
-        FLOOR_545_LOWER_ENTRY,
-        "Внутригородской подъём выполнен: Город 545, верхний ярус 545.",
+        tile,
+        transitionRegionalState(
+          ensured,
+          FLOOR_545,
+          FLOOR_545_LOWER_ENTRY,
+          "Внутригородской подъём выполнен: Город 545, верхний ярус 545.",
+        ),
       );
     }
     if (tile === "T") {
-      return withRegionalLog(
+      return finalizeInteraction(
         ensured,
-        "Город 545: нижний гермоконтур держит. Производство и оборона работают как части одного городского организма.",
+        tile,
+        withRegionalLog(
+          ensured,
+          "Город 545: нижний гермоконтур держит. Производство и оборона работают как части одного городского организма.",
+        ),
       );
     }
     if (tile === "N") {
-      return withRegionalLog(
+      return finalizeInteraction(
         ensured,
-        "Мастер Яшин: «Верхний и нижний док спорят постоянно, но сирену слышат как один город».",
+        tile,
+        withRegionalLog(
+          ensured,
+          "Мастер Яшин: «Верхний и нижний док спорят постоянно, но сирену слышат как один город».",
+        ),
       );
     }
-    if (tile === "B") return openLowerContainer(ensured, point);
+    if (tile === "B") return finalizeInteraction(ensured, tile, openLowerContainer(ensured, point));
   }
 
-  if (tile === "L") return withRegionalLog(ensured, liftInteractionMessage(ensured));
-  return base.commandInteractAt(ensured, point);
+  if (tile === "L") {
+    return finalizeInteraction(ensured, tile, withRegionalLog(ensured, liftInteractionMessage(ensured)));
+  }
+  return finalizeInteraction(ensured, tile, base.commandInteractAt(ensured, point));
+}
+
+export function commandGrantTrialProfession(
+  state: any,
+  specializationId: ProfessionSpecializationId,
+): any {
+  return tickStarterCampaign(grantTrialProfession(normalizeCityState(state), specializationId));
+}
+
+export function commandChoosePrimaryProfession(
+  state: any,
+  directionId: ProfessionDirectionId,
+): any {
+  return choosePrimaryProfession(normalizeCityState(state), directionId);
+}
+
+export function commandUnlockProfessionSpecialization(
+  state: any,
+  specializationId: ProfessionSpecializationId,
+): any {
+  return unlockProfessionSpecialization(normalizeCityState(state), specializationId);
+}
+
+export function commandChooseStarterApproach(state: any, approach: StarterApproach): any {
+  return chooseStarterApproach(normalizeCityState(state), approach);
 }
 
 type RegionalTarget = {
@@ -279,15 +368,19 @@ export function tickGame(state: any, rawDeltaMs: number): any {
     next = moveRegionalNpcs(next, Math.max(0, Math.min(100, rawDeltaMs)));
     next = tickRegionalBoss(next);
   }
-  return tickWorldSystems(next);
+  next = tickWorldSystems(next);
+  return tickStarterCampaign(next);
 }
 
 export function objectiveFor(state: any): string {
-  const progress = state.regionProgress ?? createRegionalProgress();
-  if (progress.questStage === "complete" && [FLOOR_544, FLOOR_545].includes(state.zone)) {
+  const ensured = normalizeCityState(state);
+  const starter = starterObjective(ensured);
+  if (starter) return starter;
+  const progress = ensured.regionProgress ?? createRegionalProgress();
+  if (progress.questStage === "complete" && [FLOOR_544, FLOOR_545].includes(ensured.zone)) {
     return "Пользоваться службами Города 545, восстанавливать связь и готовить оборону";
   }
-  return regionalObjective(progress, state.zone) ?? base.objectiveFor(state);
+  return regionalObjective(progress, ensured.zone) ?? base.objectiveFor(ensured);
 }
 
 export function cityPopulationCounts(
