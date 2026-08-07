@@ -1,0 +1,58 @@
+{
+  "$schema": "../_docs/ASSET_PIPELINE.md",
+  "id": "WPN-ENG-01",
+  "name": "Industrial Nail Gun",
+  "nameRu": "Промышленный гвоздезабиватель",
+  "category": "weapon",
+  "subcategory": "engineering",
+  "status": "planned",
+
+  "description": "Строительный гвоздезабиватель, переделанный в оружие: удлинённый магазин, самодельная рукоять, перемотанный изолентой шланг.",
+  "descriptionRu": "",
+
+  "gameItemId": null,
+  "rarity": null,
+
+  "equipSlot": "main_hand",
+  "attachmentPoint": "WEAPON_R",
+  "stowedAttachmentPoint": "BACK_WEAPON_1",
+  "hidesBodyRegions": [],
+
+  "compatibleBodies": ["CHAR-BASE-01", "CHAR-BASE-02"],
+  "compatibleSkeleton": "SKEL-HUMANOID-01",
+
+  "dimensions": {
+    "unit": "m",
+    "length": null,
+    "width": null,
+    "height": null
+  },
+  "scale": 1.0,
+
+  "conceptReferences": [
+    {
+      "path": "references/WPN-ENG-01_ref_nail-gun.jpg",
+      "source": "",
+      "license": "",
+      "notes": "внешний референс: происхождение и лицензия обязательны"
+    }
+  ],
+
+  "conceptFiles": [],
+  "sourceFiles": [],
+  "textureFiles": [],
+  "materialFiles": [],
+  "rigFiles": [],
+  "animationFiles": [],
+  "exportFiles": [],
+  "thumbnailPath": null,
+
+  "sharedAnimations": ["SKEL-HUMANOID-01"],
+
+  "createdBy": "",
+  "approvedBy": null,
+  "approvedAt": null,
+
+  "tags": ["industrial", "improvised", "samosbor"],
+  "notes": "Поля путей заполняются относительно каталога ассета. Пустой массив означает «данных ещё нет», null — «неприменимо»."
+}

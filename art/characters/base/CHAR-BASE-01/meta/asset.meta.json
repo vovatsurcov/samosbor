@@ -1,0 +1,40 @@
+{
+  "id": "CHAR-BASE-01",
+  "name": "Base body, male",
+  "nameRu": "Базовое мужское тело",
+  "category": "CHAR",
+  "subcategory": "base",
+  "status": "planned",
+
+  "description": "Базовое мужское тело обходчика Гигахрущёвки. Обычный работающий человек позднесоветской индустриальной реальности, а не героический силуэт. Задаёт эталон роста, ширины плеч и длины конечностей для всей одежды, брони и оружия проекта.",
+
+  "gameItemId": null,
+  "rarity": null,
+
+  "equipSlot": null,
+  "attachmentPoint": null,
+  "hidesBodyRegions": [],
+
+  "compatibleBodies": [],
+  "compatibleSkeleton": "SKEL-HUMANOID-01",
+
+  "dimensions": { "unit": "m", "length": null, "width": null, "height": null },
+  "scale": 1.0,
+
+  "conceptReferences": [],
+  "conceptFiles": [],
+  "sourceFiles": [],
+  "textureFiles": [],
+  "materialFiles": [],
+  "rigFiles": [],
+  "animationFiles": [],
+  "exportFiles": [],
+  "thumbnailPath": null,
+
+  "createdBy": "",
+  "approvedBy": null,
+  "approvedAt": null,
+
+  "tags": ["base", "humanoid", "player", "npc"],
+  "notes": "Пропорции героя менять после утверждения запрещено без согласования с владельцем проекта — docs/CLAUDE_VISUAL_COMBAT_WORKSTREAM_V2.md §8.3. Числовые размеры заполняются после утверждения turnaround. Ожидаемые концепты: CHAR-BASE-01_concept_front.png, _back, _side, _iso."
+}

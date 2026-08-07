@@ -1,0 +1,40 @@
+{
+  "id": "CHAR-BASE-02",
+  "name": "Base body, female",
+  "nameRu": "Базовое женское тело",
+  "category": "CHAR",
+  "subcategory": "base",
+  "status": "planned",
+
+  "description": "Базовое женское тело обходчика Гигахрущёвки. Тот же мир и та же работа, что и у CHAR-BASE-01: рабочая осанка и реальные пропорции, без героизации и без сексуализации. Второй эталон, на котором обязана проверяться вся одежда.",
+
+  "gameItemId": null,
+  "rarity": null,
+
+  "equipSlot": null,
+  "attachmentPoint": null,
+  "hidesBodyRegions": [],
+
+  "compatibleBodies": [],
+  "compatibleSkeleton": "SKEL-HUMANOID-01",
+
+  "dimensions": { "unit": "m", "length": null, "width": null, "height": null },
+  "scale": 1.0,
+
+  "conceptReferences": [],
+  "conceptFiles": [],
+  "sourceFiles": [],
+  "textureFiles": [],
+  "materialFiles": [],
+  "rigFiles": [],
+  "animationFiles": [],
+  "exportFiles": [],
+  "thumbnailPath": null,
+
+  "createdBy": "",
+  "approvedBy": null,
+  "approvedAt": null,
+
+  "tags": ["base", "humanoid", "player", "npc"],
+  "notes": "Делит скелет SKEL-HUMANOID-01 и весь набор анимаций с CHAR-BASE-01: расхождение силуэта решается формой тела, а не отдельным ригом. Ожидаемые концепты: CHAR-BASE-02_concept_front.png, _back, _side, _iso."
+}
