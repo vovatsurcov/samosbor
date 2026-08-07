@@ -173,10 +173,12 @@ test("смена редакции сюжета не сбрасывает про�
       migrationNotes: [],
     },
   });
+  assert.equal(state.mainStory.contentVersion, "1.0");
+  assert.ok(state.mainStory.migrationNotes.some((note) => note.includes("0.9->1.0")));
   state = migrateMainStoryContent(state, "1.1");
   assert.equal(state.mainStory.contentVersion, "1.1");
   assert.deepEqual(state.mainStory.completedBeats, ["MAIN-001", "MAIN-002", "MAIN-003"]);
   assert.equal(state.mainStory.choices.old_choice, "kept");
   assert.equal(state.mainStory.provisionalFacts.inspector_k0_is_role, "suggested");
-  assert.ok(state.mainStory.migrationNotes.some((note) => note.includes("0.9->1.1")));
+  assert.ok(state.mainStory.migrationNotes.some((note) => note.includes("1.0->1.1")));
 });
