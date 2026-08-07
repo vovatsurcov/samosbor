@@ -211,7 +211,7 @@ function city545Discovered(state: SettlementStoryHost): boolean {
 export function tickSettlementArcs<T extends SettlementStoryHost>(
   state: T,
 ): T & { settlementStory: SettlementStoryState } {
-  let next = ensureSettlementStoryState(state);
+  const next = ensureSettlementStoryState(state);
   if (!starterComplete(next)) return next;
 
   const arcs = { ...next.settlementStory.arcs };
@@ -423,6 +423,9 @@ export function authorizeNamedNpcCasualty<T extends SettlementStoryHost>(
   const next = ensureSettlementStoryState(state);
   if (!DESIGNATED_NPC_CASUALTY_MISSIONS.has(missionId)) {
     return appendStoryLog(next, "Именованный NPC защищён от случайной гибели вне обозначенной критической миссии.");
+  }
+  if (missionId === "DEF-545" && next.settlementStory.arcs["545-city-holds-pressure"].status !== "active") {
+    return appendStoryLog(next, "DEF-545 не активна: разрешение на сюжетную потерю NPC не выдано.");
   }
   const permission = `${missionId}:${npcId}`;
   return {
