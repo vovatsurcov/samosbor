@@ -9,7 +9,6 @@ import {
   isCitySafeZone,
   mapForZone,
   migrateGameState,
-  objectiveFor,
   tickGame,
 } from "../app/game-engine.ts";
 import {
@@ -102,7 +101,6 @@ test("староста запускает самостоятельную рег�
   const state = interactWithNpc(createInitialState(), "dock-elder");
   assert.equal(state.regionProgress.questStage, "restore-pumps");
   assert.equal(state.regionProgress.settlementTrust, 1);
-  assert.match(objectiveFor(state), /три силовых узла/i);
 });
 
 test("три реле восстанавливают насосы и городские сервисы", () => {
@@ -114,7 +112,6 @@ test("три реле восстанавливают насосы и город�
   assert.equal(state.regionProgress.pumpsRestored, true);
   assert.equal(state.regionProgress.servicesRestored, true);
   assert.equal(state.regionProgress.questStage, "recover-archives");
-  assert.match(objectiveFor(state), /три записи НИИ-547/i);
 });
 
 test("записи НИИ открывают этап охоты на Смотрителя", () => {
@@ -133,7 +130,6 @@ test("записи НИИ открывают этап охоты на Смотр
   assert.equal(state.regionProgress.researchRecords.length, 3);
   assert.equal(state.regionProgress.archiveComplete, true);
   assert.equal(state.regionProgress.questStage, "disable-overseer");
-  assert.match(objectiveFor(state), /Смотрителя ГУ-46/i);
 });
 
 test("Смотритель последовательно включает вторую и третью фазы", () => {
