@@ -4454,3 +4454,141 @@ kbd {
   overflow-wrap: anywhere;
   line-height: 1.15;
 }
+
+/* ==========================================================================
+   HUD в языке Path of Exile, но из материалов Самосбора
+   ==========================================================================
+   Раньше экран был набором карточек: правая колонка забирала четверть ширины,
+   а мир получал остаток. В изометрической action RPG наоборот — мир занимает
+   весь экран, а интерфейс живёт полосой по нижнему краю и лёгкими накладками
+   поверх мира.
+
+   Форма взята у PoE: сферы по краям полосы, расходники и умения по бокам от
+   центра, тонкая полоса опыта по нижней кромке. Материал — не фэнтезийная
+   ковка, а штампованная сталь, крашеный металл и эмалевые шкалы: та же
+   промышленная культура, что и всё остальное в игре.
+   ========================================================================== */
+
+@media (min-width: 1261px) and (min-height: 680px) {
+  /* Мир занимает всю ширину: правая колонка больше не отрезает от него кусок. */
+  .realtime-shell > .game-layout {
+    display: block;
+    position: relative;
+  }
+
+  .realtime-shell .map-card {
+    height: 100%;
+    border-radius: 10px;
+  }
+
+  /* Сводки висят поверх мира узкой колонкой и не давят на карту. */
+  .realtime-shell .side-panel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 12;
+    display: grid;
+    gap: 7px;
+    width: 296px;
+    max-height: calc(100% - 84px);
+    overflow-y: auto;
+    padding-right: 3px;
+    background: none;
+    scrollbar-width: thin;
+  }
+
+  .realtime-shell .side-panel .panel-card {
+    padding: 9px 11px;
+    border-color: rgba(126, 133, 110, 0.5);
+    background: rgba(14, 17, 14, 0.82);
+    backdrop-filter: blur(3px);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Мини-карта возвращается к правому краю окна: колонки больше нет. */
+  .world-minimap {
+    right: calc(max(0px, (100vw - 1520px) / 2) + clamp(12px, 2.6vw, 38px) + 330px);
+    top: 236px;
+  }
+
+  /* --- Нижняя полоса ---------------------------------------------------- */
+
+  .realtime-shell .action-dock.action-dock-v2 {
+    grid-template-columns: 108px minmax(0, 1fr) minmax(0, 1.15fr) 108px;
+    grid-template-rows: auto;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px 14px;
+    border-width: 2px 0 0;
+    border-radius: 0;
+    border-color: rgba(138, 128, 92, 0.55);
+    background:
+      linear-gradient(180deg, rgba(58, 57, 44, 0.97), rgba(20, 22, 18, 0.99)),
+      #15170f;
+    box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.55), inset 0 2px rgba(233, 216, 150, 0.07);
+  }
+
+  /* Сферы по краям — крупные, как в PoE, но в стальной обойме. */
+  .realtime-shell .action-dock-v2 > .health-orb { grid-column: 1; grid-row: 1; }
+  .realtime-shell .action-dock-v2 > .consumable-belt { grid-column: 2; grid-row: 1; }
+  .realtime-shell .action-dock-v2 > .combat-cluster:not(.combat-v2),
+  .realtime-shell .action-dock-v2 > .combat-v2 { grid-column: 3; grid-row: 1; }
+  .realtime-shell .action-dock-v2 > .combat-v2 { align-self: end; }
+  .realtime-shell .action-dock-v2 > .combat-cluster:not(.combat-v2) { align-self: start; }
+  .realtime-shell .action-dock-v2 > .experience-orb { grid-column: 4; grid-row: 1; }
+
+  .realtime-shell .action-dock-v2 .health-orb,
+  .realtime-shell .action-dock-v2 .experience-orb {
+    width: 96px;
+    height: 96px;
+    border-width: 3px;
+    box-shadow:
+      inset 0 0 18px rgba(0, 0, 0, 0.65),
+      0 0 0 4px rgba(38, 40, 31, 0.95),
+      0 0 0 5px rgba(146, 137, 96, 0.5);
+  }
+
+  .realtime-shell .action-dock-v2 .health-orb strong { font-size: 1.5rem; }
+
+  /* Панель направления и кнопки окон уходят из боевой полосы, но остаются
+     доступными: они всплывают над её краями, как служебные элементы по углам
+     экрана, а не как часть боевого ряда. */
+  .realtime-shell .action-dock.action-dock-v2 { position: relative; }
+
+  .realtime-shell .action-dock-v2 > .archetype-cluster,
+  .realtime-shell .action-dock-v2 > .menu-cluster {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    z-index: 14;
+    grid-column: auto;
+    grid-row: auto;
+    border: 1px solid rgba(126, 133, 110, 0.5);
+    border-radius: 9px;
+    background: rgba(14, 17, 14, 0.86);
+    backdrop-filter: blur(3px);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  }
+
+  .realtime-shell .action-dock-v2 > .archetype-cluster {
+    left: 16px;
+    width: 258px;
+    padding: 8px 10px;
+  }
+
+  .realtime-shell .action-dock-v2 > .menu-cluster {
+    right: 324px;
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .realtime-shell .action-dock-v2 .ability { min-height: 50px; }
+  .realtime-shell .action-dock-v2 .quick-consumable { min-height: 48px; }
+}
+
+@media (min-width: 1261px) and (min-height: 680px) {
+  .realtime-shell .side-panel .panel-card h2 { font-size: 0.98rem; line-height: 1.25; }
+  .realtime-shell .side-panel .panel-card h3 { font-size: 0.86rem; }
+  .realtime-shell .side-panel .panel-card p,
+  .realtime-shell .side-panel .panel-card li { font-size: 0.72rem; }
+}
