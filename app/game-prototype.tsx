@@ -250,21 +250,53 @@ function toIso(point: Point, originX: number, originY: number): Point {
   };
 }
 
+/**
+ * Материалы этажа по визуальной библии: пол — тёплый бетон, конструкции —
+ * холодный крашеный металл, ведомственное оборудование — выцветшая олива.
+ * Раньше все плитки лежали в пределах нескольких пунктов одного серо-зелёного,
+ * и этаж читался как ровное поле без материалов.
+ *
+ * Насыщенность здесь — сигнал, а не украшение: янтарь помечает то, что можно
+ * забрать, ржавчина — промышленные узлы, пурпурный закреплён за аномальным и
+ * не встречается в бытовой среде.
+ */
 function tileColor(tile: string, zoneIsVoid: boolean, visible: boolean): string {
-  if (!visible) return zoneIsVoid ? "#151019" : "#151815";
-  if (tile === "#") return zoneIsVoid ? "#34263c" : "#3c413a";
-  if (tile === "c") return zoneIsVoid ? "#57495d" : "#526059";
-  if (tile === "P") return "#5f2b76";
-  if (tile === "U" || tile === "D") return "#526f6a";
-  if (tile === "A") return "#806b45";
-  if (tile === "H") return "#759584";
-  if (tile === "g") return "#3f7565";
-  if (tile === "S") return "#665e43";
-  if (tile === "L") return "#48515a";
-  if (tile === "T") return "#52605b";
-  if (tile === "B") return "#51584b";
-  if (tile === "N") return "#4e665e";
-  return zoneIsVoid ? "#47364d" : "#64695c";
+  if (!visible) return zoneIsVoid ? "#151019" : "#14160f";
+  if (zoneIsVoid) {
+    if (tile === "#") return "#312139";
+    if (tile === "c") return "#4a3a52";
+    if (tile === "P") return "#6d2f88";
+    return "#3f2c47";
+  }
+  switch (tile) {
+    // Несущие конструкции: холодный крашеный металл поверх бетона.
+    case "#": return "#31382f";
+    // Укрытие: тот же металл, но подсвеченный как проходимый объект.
+    case "c": return "#4a5647";
+    // Аномалия: единственный пурпурный в бытовой палитре.
+    case "P": return "#5f2b76";
+    // Лестницы между этажами: окисленная медь.
+    case "U":
+    case "D": return "#4b6f66";
+    // Артефакт: янтарь, самый тёплый акцент на этаже.
+    case "A": return "#8a6f3e";
+    // Гермокомната: выцветшая ведомственная краска, читается как безопасность.
+    case "H": return "#6d8f7a";
+    // Гермодверь.
+    case "g": return "#38705d";
+    // Склад снабжения: брезент и дерево.
+    case "S": return "#6b5f3d";
+    // Лифт: тёмный технический металл.
+    case "L": return "#414a52";
+    // Терминал: подсвеченный прибор.
+    case "T": return "#4c5f5b";
+    // Контейнер: крашеный ящик со ржавчиной по кромкам.
+    case "B": return "#5c5341";
+    // Пост NPC.
+    case "N": return "#47645c";
+    // Пол: тёплый пыльный бетон.
+    default: return "#6b6a5b";
+  }
 }
 
 function injuryItems(state: GameState): string[] {
@@ -1153,7 +1185,7 @@ export default function GamePrototype() {
                     {isWall && known ? (
                       <polygon
                         points={`${cx - TILE_WIDTH / 2},${cy + TILE_HEIGHT / 2 - 9} ${cx},${cy + TILE_HEIGHT - 9} ${cx},${cy + TILE_HEIGHT} ${cx - TILE_WIDTH / 2},${cy + TILE_HEIGHT / 2}`}
-                        fill={state.zone === "voidLab" ? "#211928" : "#2d302c"}
+                        fill={state.zone === "voidLab" ? "#1c1523" : "#20251f"}
                       />
                     ) : null}
                     <polygon
