@@ -65,6 +65,8 @@ import {
   type ControlMode,
   HEAT_OVERHEAT,
   COMBAT_STATES,
+  TELEGRAPHS,
+  windUpProgress,
   RESONANCE_MAX_STACKS,
   archetypeFor,
   archetypeResourceSteps,
@@ -1304,6 +1306,47 @@ export default function GamePrototype() {
                     filter="url(#actor-shadow)"
                   >
                     {selected ? <circle cx={iso.x} cy={iso.y + 1} r="24" fill="none" stroke="#efcf68" strokeWidth="2" strokeDasharray="5 4" /> : null}
+                    {/*
+                      Замах видно заранее — иначе на него нельзя ответить.
+                      Тяжёлый показывает опасную зону и заполняющуюся дугу:
+                      игрок читает и время, и место удара, а чем ответить —
+                      выходом из зоны, уклонением, блоком, парированием или
+                      сломом стойки — решает его сборка.
+                    */}
+                    {enemy.castUntilMs > state.worldTimeMs ? (() => {
+                      const tier = enemy.castTier ?? "quick";
+                      const progress = windUpProgress(enemy.castStartedMs ?? 0, state.worldTimeMs, tier);
+                      const heavy = tier === "heavy";
+                      const radius = heavy ? 30 : 22;
+                      const circumference = 2 * Math.PI * radius;
+                      return (
+                        <g className={`telegraph telegraph-${tier}`}>
+                          {heavy ? (
+                            <ellipse
+                              cx={iso.x}
+                              cy={iso.y + 6}
+                              rx={TELEGRAPHS.heavy.areaRadius * 27}
+                              ry={TELEGRAPHS.heavy.areaRadius * 14}
+                              fill="rgba(214, 96, 72, 0.16)"
+                              stroke="#d66048"
+                              strokeWidth="1.6"
+                              strokeDasharray="6 5"
+                            />
+                          ) : null}
+                          <circle
+                            cx={iso.x}
+                            cy={iso.y - 4}
+                            r={radius}
+                            fill="none"
+                            stroke={heavy ? "#e8734f" : "#d6c06a"}
+                            strokeOpacity="0.85"
+                            strokeWidth={heavy ? 4 : 2.5}
+                            strokeDasharray={`${circumference * progress} ${circumference}`}
+                            transform={`rotate(-90 ${iso.x} ${iso.y - 4})`}
+                          />
+                        </g>
+                      );
+                    })() : null}
                     <ellipse cx={iso.x} cy={iso.y + 8} rx="17" ry="7" fill="#100f0e" opacity="0.72" />
                     <g transform={`translate(${iso.x} ${iso.y + 6})`}>
                       <path d={ENEMY_SILHOUETTES[enemy.kind]} fill="#22201d" stroke={color} strokeWidth="2" strokeLinejoin="round" />

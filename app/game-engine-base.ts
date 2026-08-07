@@ -9,6 +9,20 @@ import {
   WEAPONS,
 } from "./game-items.ts";
 import {
+  TELEGRAPHS,
+  type TelegraphTier,
+  telegraphDamage,
+} from "./game-telegraph.ts";
+export {
+  TELEGRAPHS,
+  TELEGRAPH_RESPONSES,
+  isReadable,
+  telegraphDamage,
+  windUpProgress,
+  withinParryWindow,
+} from "./game-telegraph.ts";
+export type { TelegraphResponse, TelegraphTier } from "./game-telegraph.ts";
+import {
   EXPOSURE_MS,
   armorUnderExposure,
   resonanceImpulse,
@@ -464,6 +478,12 @@ export type Enemy = {
   dizzyUntilMs: number;
   stunnedUntilMs: number;
   castUntilMs: number;
+  /** Какой удар готовится: обычный или телеграфированный тяжёлый. */
+  castTier: TelegraphTier;
+  /** Сколько ударов противник уже провёл: задаёт ритм тяжёлых замахов. */
+  attackCount: number;
+  /** Когда начался замах — нужно интерфейсу для заполнения шкалы. */
+  castStartedMs: number;
 };
 
 export type NoiseEvent = {
@@ -1042,6 +1062,9 @@ function createPopulationEnemy(
     dizzyUntilMs: 0,
     stunnedUntilMs: 0,
     castUntilMs: 0,
+    castTier: "quick" as TelegraphTier,
+    attackCount: 0,
+    castStartedMs: 0,
   };
 }
 
@@ -1135,7 +1158,7 @@ function createStaticEnemy(
     attackCooldownMs: 700, thinkCooldownMs: 0, xpValue: collector ? 24 : sentry ? 12 : 9, rank,
     mode: "patrol", path: [], patrol, patrolIndex: patrol.length > 1 ? 1 : 0,
     lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, exposedUntilMs: 0, dizzyStacks: 0,
-    dizzyUntilMs: 0, stunnedUntilMs: 0, castUntilMs: 0,
+    dizzyUntilMs: 0, stunnedUntilMs: 0, castUntilMs: 0, castTier: "quick", castStartedMs: 0, attackCount: 0,
   };
 }
 
@@ -3323,7 +3346,10 @@ function applyStrikeToEnemy(
     exposedUntilMs: stagger
       ? state.worldTimeMs + EXPOSURE_MS
       : current.exposedUntilMs ?? 0,
+    // Слом стойки во время замаха — полноценный ответ на телеграф: удар не
+    // состоится вовсе. Игрок должен видеть, что прервал именно замах.
     castUntilMs: stagger || phaseChanged ? 0 : current.castUntilMs,
+    castStartedMs: stagger || phaseChanged ? 0 : current.castStartedMs ?? 0,
     mode:
       strike.targetHp <= 0
         ? "disabled"
@@ -3354,6 +3380,11 @@ function applyStrikeToEnemy(
       next,
       `${enemy.name}: фазовая стойка сломана. Следующий слом потребует на четверть больше.`,
     );
+  }
+  // Прерывание замаха — полноценный ответ на телеграф, и игрок должен видеть,
+  // что сработал именно он, а не просто «цель ошеломлена».
+  if (stagger && enemy.castUntilMs > state.worldTimeMs) {
+    next = appendLog(next, `${enemy.name}: замах прерван сломом стойки — удар не состоится.`);
   }
   return next;
 }
@@ -4353,7 +4384,7 @@ function heroAttackTick(state: GameState): GameState {
     );
   }
   if (strike.staggered) {
-    next = appendLog(next, `${target.name}: стойка сломана — цель ошеломлена.`);
+    next = appendLog(next, `${target.name}: стойка сломана — цель ошеломлена и вскрыта.`);
   }
 
   if (weapon.category === "ranged" && talentBonus(next, "dizzy") > 0 && hp > 0) {
@@ -4625,16 +4656,32 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
   }
   if (enemy.stunnedUntilMs > state.worldTimeMs) return state;
   if (enemy.castUntilMs <= 0) {
+    // Тяжёлый замах — не случайность, а ритм: противник периодически
+    // вкладывается в один читаемый удар, и это единственный момент, когда у
+    // игрока есть настоящий выбор ответа.
+    const heavy = (enemy.attackCount ?? 0) % 3 === 2;
+    const tier: TelegraphTier = heavy ? "heavy" : "quick";
     return updateEnemy(state, enemy.id, (current) => ({
       ...current,
-      castUntilMs: state.worldTimeMs + (current.kind === "collector" ? 700 : 420),
+      castTier: tier,
+      castStartedMs: state.worldTimeMs,
+      castUntilMs:
+        state.worldTimeMs +
+        (tier === "heavy"
+          ? TELEGRAPHS.heavy.windUpMs
+          : current.kind === "collector"
+            ? 700
+            : TELEGRAPHS.quick.windUpMs),
     }));
   }
   if (enemy.castUntilMs > state.worldTimeMs) return state;
+  const tier: TelegraphTier = enemy.castTier ?? "quick";
   let next = updateEnemy(state, enemy.id, (current) => ({
     ...current,
     attackCooldownMs: current.attackCooldownBaseMs,
     castUntilMs: 0,
+    castStartedMs: 0,
+    attackCount: (current.attackCount ?? 0) + 1,
   }));
   // Кадры неуязвимости уклонения отменяют удар целиком.
   if (next.hero.dodgeInvulnerableUntilMs > next.worldTimeMs) {
@@ -4651,10 +4698,10 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
   const heroStanceMax = maxHeroStance(next);
   const strike = resolveStrike(
     {
-      damage: enemy.damage,
-      stanceDamage: Math.max(4, Math.round(enemy.damage * 0.6)),
+      damage: telegraphDamage(enemy.damage, tier),
+      stanceDamage: Math.max(4, Math.round(telegraphDamage(enemy.damage, tier) * 0.6)),
       damageType: enemy.kind === "sentry" ? "electric" : "kinetic",
-      kind: "light",
+      kind: tier === "heavy" ? "heavy" : "light",
     },
     {
       hp: next.hero.hp,
