@@ -221,3 +221,25 @@ test("миграция добавляет региональный прогре�
   assert.ok(Array.isArray(migrated.visited.floor544));
   assert.ok(migrated.worldSystems.communications.city545);
 });
+
+test("неполное сохранение без зоны безопасно возвращается на стартовый этаж", () => {
+  const migrated = migrateGameState({
+    hero: { hp: 3 },
+    worldTimeMs: 12345,
+  });
+  assert.equal(migrated.zone, "floor556");
+  assert.equal(migrated.hero.hp, 3);
+  assert.equal(migrated.worldTimeMs, 12345);
+  assert.ok(migrated.hero.positions.floor556);
+  assert.ok(migrated.hero.positions.floor544);
+});
+
+test("неизвестная зона старого сохранения не ломает миграцию", () => {
+  const migrated = migrateGameState({
+    zone: "floor999",
+    hero: { stress: 17 },
+  });
+  assert.equal(migrated.zone, "floor556");
+  assert.equal(migrated.hero.stress, 17);
+  assert.ok(Array.isArray(migrated.visited.floor556));
+});
