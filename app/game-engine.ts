@@ -9,6 +9,10 @@ import {
   type StarterApproach,
 } from "./game-campaign.ts";
 import {
+  ensureLowerRegionState,
+  isLowerRegionZone,
+} from "./game-lower-region-state.ts";
+import {
   ensureMainStoryState,
   mainStoryObjective,
   migrateMainStoryContent,
@@ -69,6 +73,7 @@ import {
 
 export * from "./game-engine-base.ts";
 export * from "./game-campaign.ts";
+export * from "./game-lower-region-state.ts";
 export * from "./game-main-story.ts";
 export * from "./game-professions.ts";
 export * from "./game-settlement-arcs.ts";
@@ -82,7 +87,8 @@ const FLOOR_543_FROM_CITY: base.Point = { x: 3, y: 33 };
 const FLOOR_543_UP: base.Point = { x: 2, y: 33 };
 
 function normalizeCityState(state: any): any {
-  const regional = ensureRegionalState(state);
+  const lower = ensureLowerRegionState(state);
+  const regional = ensureRegionalState(lower);
   const world = ensureWorldSystemsState({
     ...regional,
     regionProgress: {
@@ -153,13 +159,18 @@ export function createInitialState(): any {
 export function migrateGameState(raw: any): any {
   const fresh = base.createInitialState();
   const requestedZone = typeof raw?.zone === "string" ? raw.zone : null;
-  const knownZone = requestedZone === FLOOR_544 ||
+  const lowerRequested = isLowerRegionZone(requestedZone);
+  const knownBaseZone = requestedZone === FLOOR_544 ||
     (requestedZone != null && Object.prototype.hasOwnProperty.call(fresh.hero.positions, requestedZone));
   const safeRaw = {
     ...(raw ?? {}),
-    zone: knownZone ? requestedZone : fresh.zone,
+    zone: lowerRequested ? fresh.zone : knownBaseZone ? requestedZone : fresh.zone,
   };
-  return normalizeCityState(migrateRegionalState(safeRaw));
+  const migrated = migrateRegionalState(safeRaw);
+  const restored = lowerRequested
+    ? { ...migrated, zone: requestedZone }
+    : migrated;
+  return normalizeCityState(ensureLowerRegionState(restored, raw ?? {}));
 }
 
 export function commandMove(state: any, target: base.Point): any {
