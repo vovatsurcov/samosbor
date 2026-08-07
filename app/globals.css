@@ -4271,7 +4271,8 @@ kbd {
 @media (min-width: 1261px) and (min-height: 680px) {
   .game-shell.realtime-shell {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    /* полоса этажей · игровая область · док */
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 10px;
     height: 100dvh;
     min-height: 0;

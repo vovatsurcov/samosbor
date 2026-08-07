@@ -143,7 +143,6 @@ const SAVE_KEY = "samosbor-shift-556-stage-5-progression";
 const TILE_WIDTH = 82;
 const TILE_HEIGHT = 41;
 const DESKTOP_FRAME_INTERVAL = 16;
-const TV_FRAME_INTERVAL = 33;
 
 const ATTRIBUTE_OPTIONS: { id: AttributeId; label: string }[] = [
   { id: "body", label: "Тело" },
@@ -435,15 +434,9 @@ export default function GamePrototype() {
   const [activePanel, setActivePanel] = useState<MenuPanel>(null);
   const [talentView, setTalentView] = useState<TalentView>("precision");
   const [selectedTalentId, setSelectedTalentId] = useState<string>("precision:01");
-  const [tvMode, setTvMode] = useState(false);
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
-  const [lastInput, setLastInput] = useState("—");
-  const [measuredFps, setMeasuredFps] = useState(0);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const stateRef = useRef(state);
   const lastFrameRef = useRef(0);
-  const tvModeRef = useRef(tvMode);
-  const fpsRef = useRef({ started: 0, frames: 0 });
   const gamepadLockRef = useRef(0);
   const gamepadButtonsRef = useRef<Set<number>>(new Set());
   const okHeldRef = useRef(false);
@@ -562,19 +555,6 @@ export default function GamePrototype() {
     stateRef.current = state;
   }, [state]);
 
-  useEffect(() => {
-    tvModeRef.current = tvMode;
-  }, [tvMode]);
-
-  useEffect(() => {
-    const nav = navigator as Navigator & { deviceMemory?: number };
-    const looksLikeTv = /tv|smarttv|yandexstation|yaos/i.test(navigator.userAgent) ||
-      (nav.deviceMemory !== undefined && nav.deviceMemory <= 2 && window.innerWidth >= 960);
-    if (looksLikeTv) {
-      const timer = window.setTimeout(() => setTvMode(true), 0);
-      return () => window.clearTimeout(timer);
-    }
-  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -620,16 +600,10 @@ export default function GamePrototype() {
     const animate = (now: number) => {
       if (!lastFrameRef.current) lastFrameRef.current = now;
       const delta = now - lastFrameRef.current;
-      const frameInterval = tvModeRef.current ? TV_FRAME_INTERVAL : DESKTOP_FRAME_INTERVAL;
+      const frameInterval = DESKTOP_FRAME_INTERVAL;
       if (delta >= frameInterval) {
         lastFrameRef.current = now;
         setState((current) => tickGame(current, delta));
-        if (!fpsRef.current.started) fpsRef.current.started = now;
-        fpsRef.current.frames += 1;
-        if (now - fpsRef.current.started >= 1000) {
-          setMeasuredFps(Math.round((fpsRef.current.frames * 1000) / (now - fpsRef.current.started)));
-          fpsRef.current = { started: now, frames: 0 };
-        }
       }
       frame = window.requestAnimationFrame(animate);
     };
@@ -759,11 +733,9 @@ export default function GamePrototype() {
 
   useEffect(() => {
     const moveFocus = (key: string) => {
-      const focusRoot: ParentNode = diagnosticsOpen
-        ? document.querySelector(".diagnostic-overlay") ?? document
-        : menuOpen
-          ? document.querySelector(".game-menu-overlay") ?? document
-          : document;
+      const focusRoot: ParentNode = menuOpen
+        ? document.querySelector(".game-menu-overlay") ?? document
+        : document;
       const focusable = [...focusRoot.querySelectorAll<HTMLElement>("button:not(:disabled), [tabindex='0']")]
         .filter((element) => element.offsetParent !== null);
       if (!focusable.length) return;
@@ -794,7 +766,6 @@ export default function GamePrototype() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      setLastInput(`${event.code || event.key} · ${event.keyCode}`);
       if (key === "c") {
         event.preventDefault();
         setActivePanel((panel) => panel === "character" ? null : "character");
@@ -817,12 +788,11 @@ export default function GamePrototype() {
       }
       if (key === "escape" || key === "browserback" || event.keyCode === 461) {
         event.preventDefault();
-        if (diagnosticsOpen) setDiagnosticsOpen(false);
-        else if (menuOpen) setActivePanel(null);
+        if (menuOpen) setActivePanel(null);
         else cancelAction();
         return;
       }
-      if (menuOpen || diagnosticsOpen) {
+      if (menuOpen) {
         if (["arrowup", "arrowright", "arrowdown", "arrowleft"].includes(key)) {
           event.preventDefault();
           moveFocus(key);
@@ -919,7 +889,7 @@ export default function GamePrototype() {
       const usedChord = okChordRef.current;
       okHeldRef.current = false;
       okChordRef.current = false;
-      if (usedChord || menuOpen || diagnosticsOpen) return;
+      if (usedChord || menuOpen) return;
       const hint = interactionHint(stateRef.current);
       if (hint !== "Подойдите к объекту") interactNow();
       else attackNearest();
@@ -930,7 +900,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, finishCharge, startCharge, boosterNow, cancelAction, cycleControlMode, diagnosticsOpen, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow, setBlocking]);
+  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, finishCharge, startCharge, boosterNow, cancelAction, cycleControlMode, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow, setBlocking]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -948,19 +918,18 @@ export default function GamePrototype() {
       if (!fresh.length || performance.now() < gamepadLockRef.current) return;
       gamepadLockRef.current = performance.now() + 130;
       const index = fresh[0];
-      setLastInput(`Gamepad · кнопка ${index}`);
       if (index === 0) attackNearest();
       else if (index === 1) cancelAction();
       else if (index === 2) interactNow();
       else if (index === 3) setActivePanel((panel) => panel === "character" ? null : "character");
-      else if (index >= 12 && index <= 15 && !menuOpen && !diagnosticsOpen) {
+      else if (index >= 12 && index <= 15 && !menuOpen) {
         const direction = index === 12 ? { x: 0, y: -1 } : index === 13 ? { x: 0, y: 1 } : index === 14 ? { x: -1, y: 0 } : { x: 1, y: 0 };
         const current = gridPoint(stateRef.current.hero.positions[stateRef.current.zone]);
         moveTo({ x: current.x + direction.x, y: current.y + direction.y });
       }
     }, 80);
     return () => window.clearInterval(timer);
-  }, [attackNearest, cancelAction, diagnosticsOpen, interactNow, menuOpen, moveTo]);
+  }, [attackNearest, cancelAction, interactNow, menuOpen, moveTo]);
 
   const tiles = useMemo(() => {
     const result: Point[] = [];
@@ -1063,41 +1032,7 @@ export default function GamePrototype() {
   };
 
   return (
-    <main className={`game-shell realtime-shell ${tvMode ? "tv-mode" : ""} ${state.hero.evadeMode ? "evade-mode" : ""}`}>
-      <header className="game-header compact-header">
-        <div>
-          <p className="eyebrow">ПРОТОКОЛ СМЕНЫ · СБ/556-04</p>
-          <h1>Самосбор: Смена 556</h1>
-          <p className="game-subtitle">Action RPG прототип · этап 4B · фоновые популяции живого мира</p>
-        </div>
-        <div className="header-indicators">
-          <div className="live-indicator"><i />РЕАЛЬНОЕ ВРЕМЯ</div>
-          <button
-            type="button"
-            className={`tv-profile-button ${tvMode ? "active" : ""}`}
-            onClick={() => setDiagnosticsOpen(true)}
-          >
-            {tvMode ? "ТВ · 30 FPS" : "Экран / пульт"}
-          </button>
-          <div className={`header-status ${samosborAlarm || activeThreats.length ? "alert" : ""} ${samosborAlarm ? "samosbor" : ""}`}>
-            <span className="status-dot" />
-            <span>
-              {samosborLethal
-                ? hermeticSafe
-                  ? "Самосбор · контур держит"
-                  : "Самосбор · открытое пространство смертельно"
-                : samosborWarning
-                  ? `Самосбор · ${samosborPhaseLabel(samosborPhase).toLowerCase()}`
-                  : state.hero.evadeMode
-                    ? "Отступление · автоатака отключена"
-                    : activeThreats.length
-                      ? `Тревога · ${activeThreats.length}`
-                      : "Связь нестабильна"}
-            </span>
-          </div>
-        </div>
-      </header>
-
+    <main className={`game-shell realtime-shell ${state.hero.evadeMode ? "evade-mode" : ""}`}>
       <section className="world-strip compact-strip" aria-label="Положение в мире">
         <div className={state.zone === "floor557" ? "strip-current" : ""}><span className="strip-label">Выше</span><strong>Этаж 557</strong><small>жилой контур</small></div>
         <span className="strip-connector">⇅</span>
@@ -2039,45 +1974,6 @@ export default function GamePrototype() {
         </div>
       ) : null}
 
-      {diagnosticsOpen ? (
-        <div className="character-overlay diagnostic-overlay" role="dialog" aria-modal="false" aria-label="Диагностика телевизора и пульта">
-          <div className="diagnostic-window">
-            <header>
-              <div><p className="eyebrow">ТЕХНИЧЕСКИЙ ПОДХОД · ТВ-БРАУЗЕР</p><h2>Диагностика пульта и производительности</h2><p>Нажимайте кнопки пульта или геймпада: последнее событие отображается без привязки к конкретной прошивке.</p></div>
-              <button type="button" className="close-character" onClick={() => setDiagnosticsOpen(false)} aria-label="Закрыть диагностику">×</button>
-            </header>
-            <div className="diagnostic-grid">
-              <section>
-                <p className="panel-label">ПРОФИЛЬ</p>
-                <strong>{tvMode ? "Телевизор · 1280×720 логический слой · 30 FPS" : "Стандартный · адаптивный слой · до 60 FPS"}</strong>
-                <button type="button" className={tvMode ? "active" : ""} onClick={() => setTvMode((value) => !value)}>{tvMode ? "Отключить ТВ-профиль" : "Включить ТВ-профиль"}</button>
-              </section>
-              <section>
-                <p className="panel-label">ФАКТИЧЕСКИЙ КАДР</p>
-                <strong>{measuredFps || "…"} FPS</strong>
-                <span>Цель: {tvMode ? "стабильные 30" : "до 60"}</span>
-              </section>
-              <section>
-                <p className="panel-label">ПОСЛЕДНИЙ ВВОД</p>
-                <strong>{lastInput}</strong>
-                <span>Проверяются key, code и числовой код.</span>
-              </section>
-              <section>
-                <p className="panel-label">ГЕЙМПАД</p>
-                <strong>{typeof navigator !== "undefined" && navigator.getGamepads?.().some((pad) => pad?.connected) ? "Подключён" : "Не обнаружен"}</strong>
-                <span>A — выбрать ближайшую угрозу, X — действие. Навыки применяются автоконтуром.</span>
-              </section>
-            </div>
-            <div className="remote-map">
-              <div><kbd>↑ ↓ ← →</kbd><span>Движение героя; в меню — пространственный фокус</span></div>
-              <div><kbd>OK</kbd><span>Контекстное действие или атака ближайшей цели</span></div>
-              <div><kbd>OK + направление</kbd><span>Движение с удержанием выбранной цели; автокаст продолжает ротацию</span></div>
-              <div><kbd>Назад</kbd><span>Закрыть окно или снять цель</span></div>
-            </div>
-            <footer><button type="button" onClick={() => { setDiagnosticsOpen(false); setActivePanel("talents"); }}>Проверить фокус в дереве</button><button type="button" className="close-main" onClick={() => setDiagnosticsOpen(false)}>Вернуться в игру</button></footer>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

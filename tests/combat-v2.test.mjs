@@ -119,17 +119,17 @@ test("добивание недоступно по цели, которая де
 
 test("уклонение тратит дыхание, даёт кадры неуязвимости и не повторяется мгновенно", () => {
   let state = heroAt(createInitialState(), { x: 9, y: 4 });
-  const dodged = commandDodge(state, { x: 9, y: 8 });
+  const dodged = commandDodge(state, { x: 9, y: 9 });
   assert.ok(dodged.hero.breath < state.hero.breath, "уклонение стоит дыхания");
   assert.ok(dodged.hero.dodgeInvulnerableUntilMs > dodged.worldTimeMs);
   assert.ok(dodged.hero.dodgeReadyAtMs > dodged.hero.dodgeInvulnerableUntilMs);
 
-  const repeated = commandDodge(dodged, { x: 9, y: 8 });
+  const repeated = commandDodge(dodged, { x: 9, y: 9 });
   assert.equal(repeated.hero.breath, dodged.hero.breath, "повтор до восстановления невозможен");
 
   const drained = { ...state, hero: { ...state.hero, breath: 0 } };
   assert.equal(canSpendBreath(drained, 22), false);
-  assert.match(commandDodge(drained, { x: 9, y: 8 }).log[0], /дыхания/i);
+  assert.match(commandDodge(drained, { x: 9, y: 9 }).log[0], /дыхания/i);
 });
 
 test("неуязвимость уклонения отменяет удар противника целиком", () => {
@@ -288,23 +288,31 @@ test("все шесть архетипов реализованы, у каждо
 
 test("разгон силача копится движением к цели и обнуляется остановкой", () => {
   // Открытый коридор восьмой строки: герой справа, противник слева в поле зрения.
-  let state = heroAt(investDirection(createInitialState(), "power"), { x: 16, y: 8 });
-  state = withEnemy(state, "guard-kl4", { position: { x: 2, y: 8 }, attackCooldownMs: 99999 });
-  state = commandMove(state, { x: 3, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "power"), { x: 16, y: 9 });
+  state = withEnemy(state, "guard-kl4", { position: { x: 2, y: 9 }, attackCooldownMs: 99999 });
+  state = commandMove(state, { x: 3, y: 9 });
   // Цель фиксируется на весь путь: иначе разгон честно обнулится, когда герой
   // пройдёт мимо ближайших противников и начнёт от них удаляться.
   state = { ...state, hero: { ...state.hero, attackTargetId: "guard-kl4" } };
   assert.ok(state.hero.path.length > 0, "маршрут к противнику построен");
 
   // Ступень разгона требует двух секунд непрерывного сближения.
+  // Разгон проверяется на всём сближении, а не только на последнем кадре:
+  // добежав до цели, герой перестаёт сокращать дистанцию, и разгон честно
+  // обнуляется — это и есть правило, а не сбой.
   let moving = state;
+  let peakSteps = 0;
+  let peakSurge = 0;
   for (let frame = 0; frame < 60 && moving.hero.path.length > 0; frame += 1) {
     moving = tickGame(moving, 100);
+    peakSteps = Math.max(peakSteps, archetypeResourceSteps(moving));
+    peakSurge = Math.max(peakSurge, moving.hero.surgeMs);
   }
-  assert.ok(moving.hero.surgeMs > 0, "движение к цели копит разгон");
-  assert.ok(archetypeResourceSteps(moving) >= 1, "набрана хотя бы одна ступень");
+  assert.ok(peakSurge > 0, "движение к цели копит разгон");
+  assert.ok(peakSteps >= 1, "набрана хотя бы одна ступень");
 
-  const stopped = tickGame({ ...moving, hero: { ...moving.hero, path: [] } }, 100);
+  const charging = { ...moving, hero: { ...moving.hero, surgeMs: 2400, path: [] } };
+  const stopped = tickGame(charging, 100);
   assert.equal(stopped.hero.surgeMs, 0, "остановка обнуляет разгон");
 });
 

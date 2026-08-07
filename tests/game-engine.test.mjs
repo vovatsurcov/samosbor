@@ -118,9 +118,9 @@ test("гермокомната блокирует существ, линию о�
       enemy.id === "556-d1"
         ? {
             ...enemy,
-            position: { x: 30, y: 17 },
-            home: { x: 30, y: 17 },
-            path: [{ x: 30, y: 16 }, { x: 30, y: 15 }],
+            position: { x: 30, y: 10 },
+            home: { x: 30, y: 10 },
+            path: [{ x: 30, y: 11 }, { x: 30, y: 15 }],
             mode: "combat",
             attackRange: 3,
             accuracy: 100,
@@ -134,15 +134,15 @@ test("гермокомната блокирует существ, линию о�
 
   assert.equal(tileAt(state, { x: 30, y: 15 }), "g");
   assert.equal(isSamosborProtectedAt(state, "floor556", { x: 30, y: 15 }), true);
-  assert.equal(isSamosborProtectedAt(state, "floor556", { x: 20, y: 17 }), false);
+  assert.equal(isSamosborProtectedAt(state, "floor556", { x: 20, y: 10 }), false);
   assert.equal(isSamosborProtectedAt(state, "floor554", { x: 20, y: 20 }), true);
-  assert.equal(hasLineOfSight(state, { x: 30, y: 17 }, { x: 30, y: 15 }), false);
+  assert.equal(hasLineOfSight(state, { x: 30, y: 10 }, { x: 30, y: 15 }), false);
 
   const recovered = tickGame(state, 100);
   const blockedEnemy = recovered.enemies.find((enemy) => enemy.id === "556-d1");
   assert.ok(recovered.hero.hp >= 4, "гермокомната восстанавливает, а не отнимает");
   assert.ok(recovered.hero.stress < 50);
-  assert.deepEqual(blockedEnemy.position, { x: 30, y: 17 });
+  assert.deepEqual(blockedEnemy.position, { x: 30, y: 10 });
   assert.equal(blockedEnemy.path.length, 0);
 });
 
@@ -229,10 +229,12 @@ test("завершение обучения не замораживает мир
 });
 test("стена перекрывает линию видимости, а открывшийся переход её восстанавливает", () => {
   const state = createInitialState();
-  const from = { x: 3, y: 3 };
-  const to = { x: 5, y: 3 };
-  assert.equal(hasLineOfSight(state, from, to), true);
-  assert.equal(hasLineOfSight({ ...state, mutated: true }, from, to), false);
+  // Перегородка между техническими помещениями закрывает обзор, пока её не
+  // вскрыли: аномальный ключ пробивает проход и линия видимости появляется.
+  const from = { x: 7, y: 5 };
+  const to = { x: 9, y: 5 };
+  assert.equal(hasLineOfSight(state, from, to), false);
+  assert.equal(hasLineOfSight({ ...state, mutated: true }, from, to), true);
 });
 
 test("герой движется непрерывно, а не перескакивает на клетку за ход", () => {
@@ -459,10 +461,10 @@ test("обычный лут выпадает не всегда, а расход�
 });
 
 test("аварийный шкаф выдаёт добычу и запоминает открытие", () => {
-  const state = heroAt(createInitialState(), { x: 17, y: 8 });
+  const state = heroAt(createInitialState(), { x: 11, y: 12 });
   const looted = interact(state);
 
-  assert.ok(looted.openedContainers.includes("floor556:17:8"));
+  assert.ok(looted.openedContainers.includes("floor556:11:13"));
   assert.ok(looted.hero.inventory.some((entry) => entry.itemId === "keyWithoutDoor"));
   assert.ok(looted.hero.inventory.some((entry) => entry.itemId === "repairKit"));
   assert.equal(looted.hero.inventory.find((entry) => entry.itemId === "bandage")?.quantity, 3);
@@ -487,7 +489,7 @@ test("перевязка временно ослабляет травму и р�
 });
 
 test("Ключ без двери открывает проход ценой заражения", () => {
-  const state = heroAt(createInitialState(), { x: 17, y: 8 });
+  const state = heroAt(createInitialState(), { x: 11, y: 12 });
   const looted = interact(state);
   const key = looted.hero.inventory.find((entry) => entry.itemId === "keyWithoutDoor");
   const equipped = equipItem(looted, key.instanceId);
@@ -568,7 +570,7 @@ test("очко базового атрибута распределяется и
 });
 
 test("полевая задача и завершение операции выдают опыт только один раз", () => {
-  let state = heroAt(createInitialState(), { x: 29, y: 3 });
+  let state = heroAt(createInitialState(), { x: 24, y: 5 });
   const before = state.hero.totalXp;
   state = interact(state);
   assert.equal(state.sensorFixed, true);
@@ -577,7 +579,7 @@ test("полевая задача и завершение операции вы�
   state = interact(state);
   assert.equal(state.hero.totalXp, afterSensor);
 
-  state = heroAt(state, { x: 30, y: 17 });
+  state = heroAt(state, { x: 29, y: 10 });
   state = interact(state);
   assert.equal(state.missionComplete, true);
   assert.ok(state.hero.totalXp > afterSensor);
