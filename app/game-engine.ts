@@ -3931,19 +3931,23 @@ export function releaseCharge(state: GameState): GameState {
   const cleared: GameState = { ...state, hero: { ...state.hero, chargingSinceMs: 0 } };
   if (steps <= 0) return commandAttackNearest(cleared);
 
-  const target = enemyById(cleared, cleared.hero.attackTargetId) ?? skillTarget(cleared);
-  if (!target) return appendLog(cleared, "Заряд сброшен: цели нет.");
-  const tuning = heroChargeTuning(cleared);
-  if (!canSpendBreath(cleared, tuning.breathCost)) {
-    return appendLog(cleared, "Не хватает дыхания на заряженный удар.");
+  // Если цель не захвачена, заряд не пропадает: берём ближайшую видимую, как
+  // это делает обычная команда атаки.
+  const acquired = enemyById(cleared, cleared.hero.attackTargetId) ?? skillTarget(cleared);
+  const withTarget = acquired ? cleared : commandAttackNearest(cleared);
+  const target = acquired ?? enemyById(withTarget, withTarget.hero.attackTargetId);
+  if (!target) return appendLog(withTarget, "Заряд сброшен: видимых целей нет.");
+  const tuning = heroChargeTuning(withTarget);
+  if (!canSpendBreath(withTarget, tuning.breathCost)) {
+    return appendLog(withTarget, "Не хватает дыхания на заряженный удар.");
   }
-  const hero = cleared.hero.positions[cleared.zone];
-  if (distance(hero, target.position) > heroAttackRange(cleared)) {
-    return appendLog(cleared, "Цель слишком далеко для заряженного удара.");
+  const hero = withTarget.hero.positions[withTarget.zone];
+  if (distance(hero, target.position) > heroAttackRange(withTarget)) {
+    return appendLog(withTarget, "Цель слишком далеко для заряженного удара.");
   }
 
-  const weapon = weaponFor(cleared);
-  let next = spendBreath(cleared, tuning.breathCost);
+  const weapon = weaponFor(withTarget);
+  let next = spendBreath(withTarget, tuning.breathCost);
   const spread = rollPercent(next);
   next = spread.state;
   const criticalRoll = rollPercent(next);
@@ -5617,8 +5621,11 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
   // Сохранение до боевой модели v2 не знает о стойке: его полосы пересчитываются
   // долей, иначе герой с 5 ОЗ из 8 очнётся почти трупом на шкале в 120.
   const legacyBars = rawHero !== undefined && rawHero.stance === undefined;
+  // Пустой или дореформенный список противников заменяется свежим: мир без
+  // врагов — это испорченное сохранение, а не законная ситуация.
   const legacyEnemies =
-    Array.isArray(raw.enemies) && raw.enemies.some((enemy) => enemy?.maxStance === undefined);
+    Array.isArray(raw.enemies) &&
+    (raw.enemies.length === 0 || raw.enemies.some((enemy) => enemy?.maxStance === undefined));
 
   const migrated: GameState = {
     ...fresh,

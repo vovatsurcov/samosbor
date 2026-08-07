@@ -47,4 +47,5 @@ test("renders development preview metadata", async () => {
   assert.doesNotMatch(html, /Смена архетипа/, "выбора класса в интерфейсе нет");
   assert.match(html, /Разгон/, "ресурс ведущего направления");
   assert.match(html, /Директива/, "режим управления");
+  assert.match(html, /Правила/, "доступ к редактору правил директивы");
 });

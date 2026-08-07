@@ -385,6 +385,16 @@ test("удержание команды атаки заряжает удар, о
   // Короткое нажатие остаётся обычной атакой, а не заряженным ударом.
   const tapped = releaseCharge(beginCharge(state));
   assert.doesNotMatch(tapped.log.join("\n"), /Заряженный удар/);
+
+  // Заряд без захваченной цели не пропадает: цель берётся на отпускании.
+  let loose = heroAt(createInitialState(), { x: 9, y: 4 });
+  loose = { ...loose, worldTimeMs: 20000 };
+  loose = withEnemy(loose, "guard-kl4", { position: { x: 10, y: 4 }, hp: 900, maxHp: 900, attackCooldownMs: 99999 });
+  assert.equal(loose.hero.attackTargetId, null, "цель заранее не захвачена");
+  const looseCharge = beginCharge(loose);
+  const looseHeld = { ...looseCharge, worldTimeMs: looseCharge.worldTimeMs + heroChargeTuning(looseCharge).stepMs * 2 + 10 };
+  const looseHit = releaseCharge(looseHeld);
+  assert.doesNotMatch(looseHit.log.join("\n"), /цели нет/, "заряд не потерян");
 });
 
 test("пассивы силового направления настраивают заряд без правки боевой системы", () => {
