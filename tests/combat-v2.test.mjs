@@ -196,22 +196,26 @@ test("стойка героя восстанавливается после па
   assert.ok(restored.hero.stance > shaken.hero.stance);
 });
 
-test("серый прототип реализует силача и стрелка, остальные архетипы объявлены", () => {
-  assert.deepEqual(IMPLEMENTED_ARCHETYPES.sort(), ["marksman", "power"]);
+test("все шесть архетипов реализованы, у каждого свой ресурс и цепочка", () => {
   assert.equal(Object.keys(ARCHETYPES).length, 6);
+  assert.equal(IMPLEMENTED_ARCHETYPES.length, 6);
+
+  const resources = new Set();
   for (const id of ["power", "bulwark", "skirmisher", "marksman", "heavy_gunner", "resonance"]) {
-    assert.ok(ARCHETYPES[id], id);
-    assert.ok(ARCHETYPES[id].chain.length >= 5, `${id}: цепочка описана`);
+    const archetype = ARCHETYPES[id];
+    assert.ok(archetype, id);
+    assert.ok(archetype.chain.length >= 5, `${id}: цепочка описана`);
+    assert.ok(archetype.abilities.length >= 5, `${id}: пять способностей`);
+    assert.ok(archetype.abilities.every((ability) => ability.description.length > 20), `${id}: описания`);
+    resources.add(archetype.resourceId);
   }
-  for (const id of IMPLEMENTED_ARCHETYPES) {
-    assert.ok(ARCHETYPES[id].abilities.length >= 5, `${id}: пять способностей`);
-  }
+  assert.equal(resources.size, 6, "ресурс каждого архетипа уникален");
 
   const state = createInitialState();
   assert.equal(archetypeFor(state), "power");
-  const notReady = setArchetype(state, "resonance");
-  assert.match(notReady.log[0], /ещё не реализован/i);
-  assert.equal(archetypeFor(notReady), "power");
+  for (const id of ["bulwark", "skirmisher", "marksman", "heavy_gunner", "resonance"]) {
+    assert.equal(archetypeFor(setArchetype(state, id)), id, id);
+  }
 });
 
 test("разгон силача копится движением к цели и обнуляется остановкой", () => {
