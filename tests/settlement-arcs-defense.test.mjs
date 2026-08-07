@@ -8,7 +8,6 @@ import {
   chooseCity545DefensePriorities,
   chooseSettlementArcOption,
   claimCity545DefenseReward,
-  completeSettlementArc,
   createInitialState,
   migrateGameState,
   prepareCity545Defense,
