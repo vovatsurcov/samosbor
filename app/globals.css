@@ -334,7 +334,6 @@ button:disabled {
 }
 
 .map-symbol,
-.enemy-symbol,
 .combat-effect text {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-weight: 850;
@@ -344,10 +343,6 @@ button:disabled {
 .map-symbol {
   fill: #eeecd7;
   font-size: 11px;
-}
-
-.enemy-symbol {
-  font-size: 12px;
 }
 
 .hero-marker,
@@ -3354,13 +3349,6 @@ kbd {
 /* Living City 550 and explicit retreat state */
 .npc-marker {
   cursor: pointer;
-}
-
-.npc-symbol {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 900;
-  pointer-events: none;
 }
 
 .npc-speech {

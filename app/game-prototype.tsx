@@ -202,22 +202,40 @@ const MODE_COLORS: Record<EnemyMode, string> = {
   disabled: "#62675f",
 };
 
-const ENEMY_SIGNS: Record<Enemy["kind"], string> = {
-  sentry: "А",
-  stalker: "О",
-  collector: "С",
+/**
+ * Силуэты существ по визуальной библии: происхождение читается формой, а не
+ * подписью. Раньше все существа были одинаковым кружком или квадратом с буквой,
+ * и различить их можно было только прочитав символ.
+ *
+ * Ноль по X — центр фигуры, ноль по Y — точка опоры на плитке, поэтому силуэт
+ * ставится обычным переносом в изометрическую координату.
+ *
+ * Формы намеренно крупные и простые: библия требует читаемости силуэта с
+ * игровой дистанции, а не анатомической точности.
+ */
+
+/** Человеческое происхождение: прямая осанка, снаряжение на поясе. */
+const SILHOUETTE_HUMAN =
+  "M -6 -21 L 6 -21 L 8 -9 L 4 -9 L 4 0 L 1.5 0 L 1.5 -8 L -1.5 -8 L -1.5 0 L -4 0 L -4 -9 L -8 -9 Z";
+
+/** Аномальное: сутулость, смещённая ось, вывернутые пропорции. */
+const SILHOUETTE_ANOMALOUS =
+  "M -9 -14 L -2 -20 L 6 -18 L 9 -8 L 5 -7 L 6 0 L 3 0 L 1 -7 L -1 -6 L -2 0 L -5 0 L -5 -8 L -9 -9 Z";
+
+/** Промышленное: корпус, кожух, узнаваемо заводская форма. */
+const SILHOUETTE_INDUSTRIAL =
+  "M -8 -22 L 8 -22 L 8 -8 L 5 -8 L 5 0 L 2 0 L 2 -8 L -2 -8 L -2 0 L -5 0 L -5 -8 L -8 -8 Z";
+
+const ENEMY_SILHOUETTES: Record<Enemy["kind"], string> = {
+  sentry: SILHOUETTE_INDUSTRIAL,
+  stalker: SILHOUETTE_ANOMALOUS,
+  collector: SILHOUETTE_HUMAN,
 };
 
 const NPC_COLORS: Record<Npc["kind"], string> = {
   resident: "#8eb5a8",
   merchant: "#d6bd69",
   liquidator: "#c87962",
-};
-
-const NPC_SIGNS: Record<Npc["kind"], string> = {
-  resident: "Ж",
-  merchant: "Т",
-  liquidator: "Л",
 };
 
 const GENOME_LABELS = {
@@ -955,6 +973,17 @@ export default function GamePrototype() {
   const visibleNpcs = state.npcs.filter(
     (npc) => npc.zone === state.zone && isKnown(state, npc.position),
   );
+  // В городе разговаривают одновременно несколько жителей, их реплики
+  // накладывались друг на друга и становились нечитаемыми. Показываем реплику
+  // только ближайшего к герою — того, кого он и мог бы расслышать.
+  const heroPoint = state.hero.positions[state.zone];
+  const speakingNpcId = visibleNpcs
+    .filter((npc) => npc.speech && npc.speechUntilMs > state.worldTimeMs)
+    .sort(
+      (left, right) =>
+        (left.position.x - heroPoint.x) ** 2 + (left.position.y - heroPoint.y) ** 2 -
+        ((right.position.x - heroPoint.x) ** 2 + (right.position.y - heroPoint.y) ** 2),
+    )[0]?.id ?? null;
   const cityCounts = cityPopulationCounts(state);
   const visibleEnemies = state.enemies.filter((enemy) => enemyVisibleToHero(state, enemy));
   const activeThreats = state.enemies.filter(
@@ -1289,10 +1318,27 @@ export default function GamePrototype() {
                     aria-label={`${npc.name}, ${npcRoleLabel(npc.role)}`}
                     filter="url(#actor-shadow)"
                   >
-                    <ellipse cx={iso.x} cy={iso.y + 8} rx="16" ry="7" fill="#11130f" opacity="0.55" />
-                    <circle cx={iso.x} cy={iso.y - 8} r="12" fill="#29332f" stroke={color} strokeWidth="3" />
-                    <text x={iso.x} y={iso.y - 4} textAnchor="middle" className="npc-symbol" fill={color}>{NPC_SIGNS[npc.kind]}</text>
-                    {npc.speech && npc.speechUntilMs > state.worldTimeMs ? (
+                    <ellipse cx={iso.x} cy={iso.y + 8} rx="15" ry="6" fill="#11130f" opacity="0.55" />
+                    {/*
+                      Жители различаются занятием и снаряжением, а не цветом:
+                      перекрашенный дубль — не новый персонаж. Торговца выдаёт
+                      короб за спиной, ликвидатора — наплечная защита и оружие
+                      на ремне, жильца — отсутствие и того, и другого.
+                    */}
+                    <g transform={`translate(${iso.x} ${iso.y + 6})`}>
+                      {npc.kind === "merchant" ? (
+                        <rect x="-11" y="-19" width="7" height="11" rx="1" fill="#22261f" stroke={color} strokeWidth="1.6" />
+                      ) : null}
+                      <path d={SILHOUETTE_HUMAN} fill="#252b25" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+                      {npc.kind === "liquidator" ? (
+                        <>
+                          <path d="M -7 -20 L -3 -22 M 7 -20 L 3 -22" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" />
+                          <path d="M 6 -22 L 11 -6" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+                        </>
+                      ) : null}
+                      <circle cx="0" cy="-26" r="4.5" fill="#252b25" stroke={color} strokeWidth="2" />
+                    </g>
+                    {npc.id === speakingNpcId ? (
                       <g className="npc-speech" transform={`translate(${iso.x - 74} ${iso.y - 62})`}>
                         <rect width="148" height="30" rx="6" fill="#171a16" stroke={color} strokeWidth="1.5" />
                         <text x="74" y="19" textAnchor="middle" fill="#e7eadf">{npc.speech.length > 42 ? `${npc.speech.slice(0, 42)}…` : npc.speech}</text>
@@ -1321,9 +1367,17 @@ export default function GamePrototype() {
                     filter="url(#actor-shadow)"
                   >
                     {selected ? <circle cx={iso.x} cy={iso.y + 1} r="24" fill="none" stroke="#efcf68" strokeWidth="2" strokeDasharray="5 4" /> : null}
-                    <ellipse cx={iso.x} cy={iso.y + 8} rx="19" ry="8" fill="#100f0e" opacity="0.72" />
-                    <rect x={iso.x - 14} y={iso.y - 22} width="28" height="28" rx={enemy.kind === "stalker" ? 14 : 5} fill="#292523" stroke={color} strokeWidth="3" />
-                    <text x={iso.x} y={iso.y - 4} textAnchor="middle" className="enemy-symbol" fill={color}>{ENEMY_SIGNS[enemy.kind]}</text>
+                    <ellipse cx={iso.x} cy={iso.y + 8} rx="17" ry="7" fill="#100f0e" opacity="0.72" />
+                    <g transform={`translate(${iso.x} ${iso.y + 6})`}>
+                      <path d={ENEMY_SILHOUETTES[enemy.kind]} fill="#22201d" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+                      {enemy.kind === "sentry" ? (
+                        // Манипулятор ведомственного автомата: это рабочий
+                        // инструмент, применяемый не по назначению.
+                        <path d="M 8 -18 L 15 -15 L 15 -11" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
+                      ) : (
+                        <circle cx={enemy.kind === "stalker" ? 2 : 0} cy={enemy.kind === "stalker" ? -24 : -26} r="4.5" fill="#22201d" stroke={color} strokeWidth="2" />
+                      )}
+                    </g>
                     <rect x={iso.x - 18} y={iso.y + 13} width="36" height="4" rx="2" fill="#171412" />
                     <rect x={iso.x - 18} y={iso.y + 13} width={36 * (enemy.hp / enemy.maxHp)} height="4" rx="2" fill={color} />
                   </g>
@@ -1338,9 +1392,27 @@ export default function GamePrototype() {
               ) : null}
 
               <g className="hero-marker" aria-label="Главный герой" filter="url(#actor-shadow)">
-                <ellipse cx={heroIso.x} cy={heroIso.y + 7} rx="18" ry="8" fill="#11140f" opacity="0.68" />
-                <circle cx={heroIso.x} cy={heroIso.y - 8} r="14" fill={state.hero.hp <= Math.ceil(heroMaxHp / 3) ? "#c86e5b" : "#d2c06e"} stroke="#f7eaa1" strokeWidth="3" />
-                <path d={`M ${heroIso.x - 7} ${heroIso.y - 9} L ${heroIso.x} ${heroIso.y - 17} L ${heroIso.x + 7} ${heroIso.y - 9}`} fill="none" stroke="#34362e" strokeWidth="3" strokeLinecap="round" />
+                <ellipse cx={heroIso.x} cy={heroIso.y + 7} rx="17" ry="7" fill="#11140f" opacity="0.68" />
+                {/*
+                  Герой отличается от жителей не яркостью, а снаряжённостью: он
+                  единственный на этаже, кто собран в дорогу. Отсюда рюкзак,
+                  ремни и капюшон поверх того же человеческого силуэта.
+                  Цвет остаётся сигналом состояния: тревожный оттенок на низком
+                  здоровье виден раньше, чем игрок прочитает полосу ОЗ.
+                */}
+                {(() => {
+                  const hurt = state.hero.hp <= Math.ceil(heroMaxHp / 3);
+                  const edge = hurt ? "#e2856d" : "#f2dc9c";
+                  const cloth = hurt ? "#4a2f2a" : "#3b3f2f";
+                  return (
+                    <g transform={`translate(${heroIso.x} ${heroIso.y + 6})`}>
+                      <rect x="-12" y="-20" width="8" height="12" rx="1.5" fill={cloth} stroke={edge} strokeWidth="1.6" />
+                      <path d={SILHOUETTE_HUMAN} fill={cloth} stroke={edge} strokeWidth="2.4" strokeLinejoin="round" />
+                      <path d="M -6 -16 L 6 -16" fill="none" stroke={edge} strokeWidth="1.6" strokeLinecap="round" />
+                      <path d="M -5.5 -23 Q 0 -32 5.5 -23 Z" fill={cloth} stroke={edge} strokeWidth="2.2" strokeLinejoin="round" />
+                    </g>
+                  );
+                })()}
               </g>
             </svg>
 
