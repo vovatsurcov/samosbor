@@ -69,13 +69,20 @@ export type ItemDefinition = {
   consumableCategory?: ConsumableCategory;
 };
 
+export type WeaponDamageType = "kinetic" | "electric" | "thermal" | "resonant";
+
 export type WeaponDefinition = {
   id: WeaponId;
   name: string;
   shortName: string;
   category: "melee" | "ranged";
   range: number;
+  /** Урон по ОЗ в шкале боевой модели v2. */
   damage: number;
+  /** Урон по стойке: отдельный канал, см. COMBAT_NUMERIC_MODEL_V2.md §1.2. */
+  stanceDamage: number;
+  damageType: WeaponDamageType;
+  penetration: number;
   accuracy: number;
   cooldownMs: number;
   noiseRadius: number;
@@ -89,9 +96,12 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     shortName: "ШД-8",
     category: "melee",
     range: 1.25,
-    damage: 5,
+    damage: 30,
+    stanceDamage: 14,
+    damageType: "electric",
+    penetration: 0,
     accuracy: 5,
-    cooldownMs: 680,
+    cooldownMs: 780,
     noiseRadius: 1.5,
     description: "Тихое оружие ближнего боя. Высокий урон без громкого сигнала.",
   },
@@ -101,7 +111,10 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     shortName: "ШТ-6",
     category: "melee",
     range: 1.4,
-    damage: 7,
+    damage: 38,
+    stanceDamage: 22,
+    damageType: "kinetic",
+    penetration: 6,
     accuracy: 4,
     cooldownMs: 940,
     noiseRadius: 3.2,
@@ -113,9 +126,12 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     shortName: "ИП-4",
     category: "ranged",
     range: 3.6,
-    damage: 3,
+    damage: 24,
+    stanceDamage: 6,
+    damageType: "kinetic",
+    penetration: 0,
     accuracy: 4,
-    cooldownMs: 920,
+    cooldownMs: 820,
     noiseRadius: 7,
     description: "Штатное оружие аварийной службы. Универсальная средняя дистанция.",
   },
@@ -125,9 +141,12 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     shortName: "КВ-11",
     category: "ranged",
     range: 5.8,
-    damage: 6,
+    damage: 52,
+    stanceDamage: 16,
+    damageType: "electric",
+    penetration: 10,
     accuracy: 3,
-    cooldownMs: 1550,
+    cooldownMs: 1450,
     noiseRadius: 9,
     description: "Тяжёлая дальнобойная система. Медленный, но разрушительный выстрел.",
   },
@@ -137,9 +156,12 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     shortName: "Маятник",
     category: "ranged",
     range: 5.2,
-    damage: 4,
+    damage: 34,
+    stanceDamage: 10,
+    damageType: "kinetic",
+    penetration: 4,
     accuracy: 5,
-    cooldownMs: 760,
+    cooldownMs: 820,
     noiseRadius: 7.5,
     description: "Легендарный гиростабилизированный карабин. Сохраняет огонь в движении.",
   },
@@ -149,7 +171,10 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     shortName: "Секция-12",
     category: "melee",
     range: 1.45,
-    damage: 8,
+    damage: 48,
+    stanceDamage: 30,
+    damageType: "kinetic",
+    penetration: 12,
     accuracy: 4,
     cooldownMs: 1120,
     noiseRadius: 4.5,
@@ -243,7 +268,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     weight: 3.5,
     stackable: false,
     description: "Плотный штатный ватник. Немного защищает корпус.",
-    stats: { armor: 1, maxHp: 1 },
+    stats: { armor: 10, maxHp: 14 },
   },
   installerGloves: {
     id: "installerGloves",
@@ -287,7 +312,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     weight: 6.2,
     stackable: false,
     description: "Тяжёлые вставки держат удар, но мешают быстро перемещаться.",
-    stats: { armor: 3, maxHp: 1, moveSpeed: -0.18 },
+    stats: { armor: 25, maxHp: 16, moveSpeed: -0.18 },
   },
   hermeticJacketGk3: {
     id: "hermeticJacketGk3",
@@ -299,7 +324,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: false,
     rarity: "uncommon",
     description: "Усиленная куртка аварийной службы с жёстким воротом и внутренними шинами. +3 к максимальному здоровью.",
-    stats: { armor: 1, maxHp: 3 },
+    stats: { armor: 12, maxHp: 36 },
   },
   quietHoodTo2: {
     id: "quietHoodTo2",
@@ -431,7 +456,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     rarity: "legendary",
     grantedTalents: ["legendary:seventh-tolerance"],
     description: "Опытный образец НИИ связывает устройства с аномальным контуром и открывает внешний талант.",
-    stats: { armor: 2, maxHp: 2, attributes: { technique: 1, will: 1 } },
+    stats: { armor: 18, maxHp: 26, attributes: { technique: 1, will: 1 } },
   },
   elevatorHeartbeat: {
     id: "elevatorHeartbeat",

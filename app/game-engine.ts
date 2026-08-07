@@ -50,6 +50,37 @@ import {
 } from "./game-samosbor.ts";
 
 import {
+  AIM_DAMAGE_BONUS,
+  ARCHETYPES,
+  type ArchetypeId,
+  MARK_DAMAGE_BONUS,
+  MARK_DURATION_MS,
+  SCOUT_DURATION_MS,
+  SCOUT_VISION_BONUS,
+  aimStepsFor,
+  surgeSpeedBonus,
+  surgeStanceMultiplier,
+  surgeStepsFor,
+} from "./game-archetypes.ts";
+import {
+  type CombatantRank,
+  type StanceState,
+  breathRegenPerSecond,
+  capBossHitOnHero,
+  maxHeroBreath as modelMaxHeroBreath,
+  maxHeroHp as modelMaxHeroHp,
+  maxHeroStance as modelMaxHeroStance,
+  migrateHpShare,
+  resolveStrike,
+  scaleEnemy,
+  staggerProfile,
+  stanceState,
+  BLOCK,
+  BREATH_COSTS,
+  CRITICAL_EFFECT_PROFILE,
+  DODGE,
+} from "./game-combat-model.ts";
+import {
   type AutopilotTemper,
   CONTROL_MODE_COST,
   CONTROL_MODE_LABELS,
@@ -63,6 +94,30 @@ import {
 } from "./game-combat-modes.ts";
 
 export { ITEMS, SLOT_NAMES, WEAPONS } from "./game-items.ts";
+export {
+  ARCHETYPES,
+  IMPLEMENTED_ARCHETYPES,
+  aimDamageBonus,
+  aimStepsFor,
+  archetypeAbility,
+  surgeSpeedBonus,
+  surgeStanceMultiplier,
+  surgeStepsFor,
+} from "./game-archetypes.ts";
+export type { ArchetypeAbility, ArchetypeAbilityId, ArchetypeId } from "./game-archetypes.ts";
+export {
+  BLOCK,
+  BOSS,
+  DODGE,
+  BREATH_COSTS,
+  armorMitigation,
+  floorTier,
+  resolveStrike,
+  scaleEnemy,
+  staggerProfile,
+  stanceState,
+} from "./game-combat-model.ts";
+export type { DamageType, StanceState } from "./game-combat-model.ts";
 export {
   AUTOPILOT_TEMPER_LABELS,
   CONTROL_MODE_COST,
@@ -252,6 +307,27 @@ export type Hero = {
   stepNoiseCooldownMs: number;
   droneCooldownMs: number;
   hp: number;
+  /** Полоса стойки: ломается, а не отнимается. */
+  stance: number;
+  stanceIdleMs: number;
+  staggeredUntilMs: number;
+  staggerImmuneUntilMs: number;
+  /** Полоса дыхания: тратится на рывки, блок, уклонение и тяжёлые атаки. */
+  breath: number;
+  breathIdleMs: number;
+  blockingSinceMs: number;
+  blockBrokenUntilMs: number;
+  dodgeInvulnerableUntilMs: number;
+  dodgeReadyAtMs: number;
+  perfectDodgeUntilMs: number;
+  riposteUntilMs: number;
+  /** Выбранный боевой архетип: определяет ресурс и цепочку. */
+  archetype: ArchetypeId;
+  /** Разгон силача: время непрерывного движения к цели. */
+  surgeMs: number;
+  /** Прицел стрелка: время неподвижности. */
+  aimMs: number;
+  scoutUntilMs: number;
   level: number;
   xp: number;
   totalXp: number;
@@ -295,6 +371,11 @@ export type Enemy = {
   hp: number;
   maxHp: number;
   armor: number;
+  stance: number;
+  maxStance: number;
+  stanceIdleMs: number;
+  staggerImmuneUntilMs: number;
+  flatAbsorb: number;
   visionRadius: number;
   hearingRadius: number;
   aggroRadius: number;
@@ -834,9 +915,16 @@ function createPopulationEnemy(
   occupied.add(`${population.zone}:${pointKey(point)}`);
   const kind = populationEnemyKind(population.genome);
   const rank = populationEnemyRank(population);
-  const rankScale = rank === "veteran" ? 1.55 : rank === "enhanced" ? 1.25 : 1;
-  const baseHp = kind === "collector" ? 16 : kind === "sentry" ? 11 : 9;
-  const baseDamage = kind === "collector" ? 4 : kind === "sentry" ? 2 : 3;
+  // Проявление популяции масштабируется тем же правилом, что и статические
+  // противники: глубина этажа, ранг и тревога — модель v2 §8.
+  const scaled = scaleEnemy(
+    kind === "collector"
+      ? { hp: 72, damage: 13, armor: 12, stance: 44 }
+      : kind === "sentry"
+        ? { hp: 58, damage: 10, armor: 6, stance: 33 }
+        : { hp: 52, damage: 9, armor: 2, stance: 27 },
+    { floor: zoneFloorNumber(population.zone), rank, agitation: population.agitation },
+  );
   const id = `population:${population.id}:${cycle}:${index}`;
   return {
     id,
@@ -845,16 +933,21 @@ function createPopulationEnemy(
     zone: population.zone,
     position: copyPoint(point),
     home: copyPoint(point),
-    hp: Math.round(baseHp * rankScale),
-    maxHp: Math.round(baseHp * rankScale),
-    armor: kind === "collector" ? 2 : kind === "sentry" ? 1 : 0,
+    hp: scaled.hp,
+    maxHp: scaled.hp,
+    armor: scaled.armor,
+    stance: scaled.stance,
+    maxStance: scaled.stance,
+    stanceIdleMs: 0,
+    staggerImmuneUntilMs: 0,
+    flatAbsorb: scaled.flatAbsorb,
     visionRadius: kind === "stalker" ? 5.5 : 4.5,
     hearingRadius: kind === "stalker" ? 7 : 5,
     aggroRadius: 3 + population.agitation / 50,
     attackRange: kind === "sentry" ? 3.5 : kind === "collector" ? 1.8 : 1.35,
     speed: kind === "stalker" ? 1.55 : kind === "collector" ? 0.9 : 1.1,
     accuracy: rank === "veteran" ? 5 : rank === "enhanced" ? 4 : 3,
-    damage: Math.round(baseDamage * rankScale),
+    damage: scaled.damage,
     attackCooldownBaseMs: kind === "stalker" ? 1050 : kind === "collector" ? 1700 : 1400,
     attackCooldownMs: 500 + index * 130,
     thinkCooldownMs: index * 80,
@@ -944,21 +1037,36 @@ function createStaticEnemy(
 ): Enemy {
   const sentry = kind === "sentry";
   const collector = kind === "collector";
-  const hp = collector ? 18 : sentry ? 11 : 8;
+  // Базовые профили вида в шкале модели v2; глубина и ранг добавляются масштабированием.
+  const base = collector
+    ? { hp: 78, damage: 13, armor: 12, stance: 46 }
+    : sentry
+      ? { hp: 60, damage: 10, armor: 6, stance: 34 }
+      : { hp: 55, damage: 9, armor: 2, stance: 28 };
+  const scaled = scaleEnemy(base, { floor: zoneFloorNumber(zone), rank });
   return {
     id, name, kind, zone, position: copyPoint(position), home: copyPoint(position),
-    hp, maxHp: hp, armor: collector ? 2 : sentry ? 1 : 0,
+    hp: scaled.hp, maxHp: scaled.hp, armor: scaled.armor,
+    stance: scaled.stance, maxStance: scaled.stance, stanceIdleMs: 0, staggerImmuneUntilMs: 0,
+    flatAbsorb: scaled.flatAbsorb,
     visionRadius: collector ? 4.5 : sentry ? 4.2 : 3.4,
     hearingRadius: sentry ? 5 : 6, aggroRadius: sentry ? 2.8 : 2.3,
     attackRange: collector ? 2.2 : sentry ? 3.2 : 1.2,
     speed: collector ? 0.9 : sentry ? 1.05 : 1.55, accuracy: sentry ? 3 : 4,
-    damage: collector ? 4 : sentry ? 2 : 3,
+    damage: scaled.damage,
     attackCooldownBaseMs: collector ? 1650 : sentry ? 1450 : 980,
     attackCooldownMs: 700, thinkCooldownMs: 0, xpValue: collector ? 24 : sentry ? 12 : 9, rank,
     mode: "patrol", path: [], patrol, patrolIndex: patrol.length > 1 ? 1 : 0,
     lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, dizzyStacks: 0,
     dizzyUntilMs: 0, stunnedUntilMs: 0, castUntilMs: 0,
   };
+}
+
+/** Номер этажа для масштабирования: войд считается по глубине лабораторного слоя. */
+export function zoneFloorNumber(zone: ZoneId): number {
+  if (zone === "voidLab") return 547;
+  const parsed = Number.parseInt(zone.replace("floor", ""), 10);
+  return Number.isFinite(parsed) ? parsed : 556;
 }
 
 function createEnemies(): Enemy[] {
@@ -972,14 +1080,16 @@ function createEnemies(): Enemy[] {
       spec.patrol,
       spec.rank ?? "common",
     );
-    const scale = spec.scale ?? (spec.rank === "boss" ? 2.4 : spec.rank === "elite" ? 1.55 : spec.rank === "veteran" ? 1.25 : 1);
+    // Ранг и глубина уже учтены в createStaticEnemy через модель; spec.scale
+    // остаётся ручной поправкой для отдельных именных противников региона.
+    const tuning = spec.scale ?? 1;
     return {
       ...enemy,
-      hp: Math.round(enemy.hp * scale),
-      maxHp: Math.round(enemy.maxHp * scale),
-      damage: Math.max(enemy.damage, Math.round(enemy.damage * Math.min(1.75, scale))),
-      armor: enemy.armor + (spec.rank === "boss" ? 3 : spec.rank === "elite" ? 2 : spec.rank === "veteran" ? 1 : 0),
-      xpValue: Math.round(enemy.xpValue * scale),
+      hp: Math.round(enemy.hp * tuning),
+      maxHp: Math.round(enemy.maxHp * tuning),
+      stance: Math.round(enemy.stance * tuning),
+      maxStance: Math.round(enemy.maxStance * tuning),
+      xpValue: Math.round(enemy.xpValue * tuning),
     };
   });
   return [
@@ -1283,11 +1393,6 @@ function emitNoise(
   };
 }
 
-function rollD20(state: GameState): { state: GameState; roll: number } {
-  const seed = (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0;
-  return { state: { ...state, rngSeed: seed }, roll: (seed % 20) + 1 };
-}
-
 function rollPercent(state: GameState): { state: GameState; roll: number } {
   const seed = (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0;
   return { state: { ...state, rngSeed: seed }, roll: seed % 100 };
@@ -1573,28 +1678,67 @@ export function equippedArtifact(state: GameState): InventoryEntry | null {
 }
 
 export function maxHeroHp(state: GameState): number {
-  const torsoPenalty = Math.min(2, effectiveInjury(state, "torso")) * 2;
-  const contaminationPenalty = Math.floor(state.hero.contamination / 40);
-  return Math.max(
-    4,
-    8 -
-      torsoPenalty -
-      contaminationPenalty +
-      talentBonus(state, "maxHp") +
-      Math.round(equipmentScalar(state, "maxHp")),
-  );
+  return modelMaxHeroHp({
+    level: state.hero.level,
+    body: effectiveAttribute(state, "body"),
+    equipment: Math.round(equipmentScalar(state, "maxHp")),
+    talents: Math.round(talentBonus(state, "maxHp") * 12),
+    torsoInjury: Math.min(2, effectiveInjury(state, "torso")),
+    contamination: state.hero.contamination,
+  });
+}
+
+export function maxHeroStance(state: GameState): number {
+  return modelMaxHeroStance({
+    level: state.hero.level,
+    body: effectiveAttribute(state, "body"),
+    will: effectiveAttribute(state, "will"),
+    equipment: Math.round(equipmentScalar(state, "armor") * 0.5),
+  });
+}
+
+export function maxHeroBreath(state: GameState): number {
+  return modelMaxHeroBreath({
+    reaction: effectiveAttribute(state, "reaction"),
+    will: effectiveAttribute(state, "will"),
+  });
+}
+
+/** Множитель регенерации дыхания от состояния лицевого снаряжения. */
+function maskFactor(state: GameState): number {
+  const mask = equippedEntry(state, "head");
+  if (!mask) return isCitySafeZone(state.zone) ? 1 : 0.65;
+  return mask.condition < 40 ? 0.8 : 1;
+}
+
+export function heroBreathRegen(state: GameState): number {
+  const overload = Math.max(0, inventoryWeight(state) - carryCapacity(state));
+  return breathRegenPerSecond({
+    overloadShare: overload / Math.max(1, carryCapacity(state)),
+    contamination: state.hero.contamination,
+    stress: state.hero.stress,
+    maskFactor: maskFactor(state),
+  });
+}
+
+export function heroStanceState(state: GameState): StanceState {
+  if (state.hero.staggeredUntilMs > state.worldTimeMs) return "staggered";
+  return stanceState(state.hero.stance, maxHeroStance(state));
 }
 
 export function heroMoveSpeed(state: GameState): number {
   const injuryFactor = 1 - Math.min(2, effectiveInjury(state, "leg")) * 0.16;
   const overload = Math.max(0, inventoryWeight(state) - carryCapacity(state));
   const overloadFactor = Math.max(0.55, 1 - overload * 0.08);
+  const surge =
+    state.hero.archetype === "power" ? surgeSpeedBonus(surgeStepsFor(state.hero.surgeMs)) : 0;
   return Math.max(
     0.65,
     (2.35 +
       effectiveAttribute(state, "reaction") * 0.08 +
       equipmentScalar(state, "moveSpeed") +
-      talentBonus(state, "moveSpeed")) *
+      talentBonus(state, "moveSpeed") +
+      surge) *
       injuryFactor *
       overloadFactor,
   );
@@ -1679,9 +1823,10 @@ function questXpReward(state: GameState, share: number): number {
 }
 
 function visibleRadius(state: GameState): number {
+  const scouting = state.hero.scoutUntilMs > state.worldTimeMs ? SCOUT_VISION_BONUS : 0;
   return Math.max(
     2,
-    5 + Math.floor(effectiveAttribute(state, "attention") / 2) - effectiveInjury(state, "eye"),
+    5 + Math.floor(effectiveAttribute(state, "attention") / 2) - effectiveInjury(state, "eye") + scouting,
   );
 }
 
@@ -2193,7 +2338,7 @@ export function consumeInventoryItem(state: GameState, instanceId: string): Game
     };
     next = {
       ...next,
-      hero: { ...next.hero, hp: Math.min(maxHeroHp(next), next.hero.hp + 2) },
+      hero: { ...next.hero, hp: Math.min(maxHeroHp(next), next.hero.hp + Math.round(maxHeroHp(next) * 0.18)) },
     };
     next = consumeEntry(next, instanceId);
     return appendLog(
@@ -2212,7 +2357,7 @@ export function consumeInventoryItem(state: GameState, instanceId: string): Game
       ...state,
       hero: {
         ...state.hero,
-        hp: Math.min(maxHeroHp(state), state.hero.hp + 1),
+        hp: Math.min(maxHeroHp(state), state.hero.hp + Math.round(maxHeroHp(state) * 0.08)),
         stress: Math.max(0, state.hero.stress - 8),
       },
     };
@@ -2252,7 +2397,7 @@ export function consumeInventoryItem(state: GameState, instanceId: string): Game
       ...state,
       hero: {
         ...state.hero,
-        hp: Math.min(maxHeroHp(state), state.hero.hp + 4),
+        hp: Math.min(maxHeroHp(state), state.hero.hp + Math.round(maxHeroHp(state) * 0.35)),
         stress: Math.min(100, state.hero.stress + 14),
       },
     };
@@ -2368,7 +2513,7 @@ export function activateEquippedArtifact(state: GameState): GameState {
       ...state,
       hero: {
         ...state.hero,
-        hp: Math.min(maxHeroHp(state), state.hero.hp + 3),
+        hp: Math.min(maxHeroHp(state), state.hero.hp + Math.round(maxHeroHp(state) * 0.25)),
         stress: Math.max(0, state.hero.stress - 18),
         artifactCooldownMs: 28000,
       },
@@ -2986,6 +3131,385 @@ export function dropEnemyLoot(state: GameState, enemy: Enemy): GameState {
   return spawnGroundLoot(next, enemy.zone, enemy.position, itemId, 1, condition);
 }
 
+/** Ранг для профиля ошеломления: элита и ветеран держат удар лучше обычных. */
+function staggerClassOf(rank: EnemyRank | undefined): "common" | "elite" | "boss" {
+  if (rank === "boss") return "boss";
+  return rank === "elite" || rank === "veteran" ? "elite" : "common";
+}
+
+function enemyCombatProfile(state: GameState, enemy: Enemy) {
+  return {
+    hp: enemy.hp,
+    maxHp: enemy.maxHp,
+    armor: enemy.armor + (tileAtZone(state, enemy.zone, enemy.position) === "c" ? 6 : 0),
+    flatAbsorb: enemy.flatAbsorb ?? 0,
+    stance: enemy.stance ?? enemy.maxStance ?? 0,
+    maxStance: enemy.maxStance ?? 1,
+    rank: (enemy.rank ?? "common") as CombatantRank,
+    staggered: enemy.stunnedUntilMs > state.worldTimeMs,
+  };
+}
+
+/** Куда пришёлся удар: цель, не видящая героя, получает больше всех. */
+function strikeFacing(state: GameState, enemy: Enemy): "front" | "flank" | "back" | "unaware" {
+  if (!["hunting", "combat"].includes(enemy.mode)) return "unaware";
+  if (!enemy.lastKnownHero) return "back";
+  const hero = state.hero.positions[state.zone];
+  const facingAway =
+    distance(enemy.lastKnownHero, hero) > 2.5 && enemy.stunnedUntilMs <= state.worldTimeMs;
+  return facingAway ? "flank" : "front";
+}
+
+/** Записывает результат удара в противника: ОЗ, стойку, ошеломление и иммунитет. */
+function applyStrikeToEnemy(
+  state: GameState,
+  enemyId: string,
+  strike: ReturnType<typeof resolveStrike>,
+  heroPosition: Point,
+): GameState {
+  const enemy = enemyById(state, enemyId);
+  if (!enemy) return state;
+  const profile = staggerProfile(staggerClassOf(enemy.rank));
+  const immune = enemy.staggerImmuneUntilMs > state.worldTimeMs;
+  const stagger = strike.staggered && !immune;
+  return updateEnemy(state, enemyId, (current) => ({
+    ...current,
+    hp: strike.targetHp,
+    stance: stagger
+      ? Math.round((current.maxStance ?? 0) * profile.stanceReturn)
+      : strike.targetStance,
+    stanceIdleMs: 0,
+    stunnedUntilMs: stagger
+      ? state.worldTimeMs + profile.durationMs
+      : current.stunnedUntilMs,
+    staggerImmuneUntilMs: stagger
+      ? state.worldTimeMs + profile.durationMs + profile.immunityMs
+      : current.staggerImmuneUntilMs,
+    castUntilMs: stagger ? 0 : current.castUntilMs,
+    mode:
+      strike.targetHp <= 0
+        ? "disabled"
+        : strike.targetHp <= Math.ceil(current.maxHp * 0.3)
+          ? "retreat"
+          : "combat",
+    lastKnownHero: copyPoint(heroPosition),
+    memoryMs: 5000,
+  }));
+}
+
+/** Стойка противников восстанавливается после паузы без тяжёлых воздействий. */
+function tickEnemyStance(state: GameState, deltaMs: number): GameState {
+  return {
+    ...state,
+    enemies: state.enemies.map((enemy) => {
+      if (enemy.hp <= 0 || !enemy.maxStance) return enemy;
+      if (enemy.stunnedUntilMs > state.worldTimeMs) return enemy;
+      const idle = enemy.stanceIdleMs + deltaMs;
+      if (idle < 1600) return { ...enemy, stanceIdleMs: idle };
+      const restored = Math.min(
+        enemy.maxStance,
+        enemy.stance + (enemy.maxStance * 0.12 * deltaMs) / 1000,
+      );
+      return { ...enemy, stanceIdleMs: idle, stance: restored };
+    }),
+  };
+}
+
+/** Дыхание и стойка героя: восстановление, задержка и выход из ошеломления. */
+function tickHeroBars(state: GameState, deltaMs: number): GameState {
+  const maxStance = maxHeroStance(state);
+  const maxBreath = maxHeroBreath(state);
+  const blocking = state.hero.blockingSinceMs > 0;
+  const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
+
+  const breathIdle = state.hero.breathIdleMs + deltaMs;
+  const breathRegen =
+    !blocking && breathIdle >= 700 ? (heroBreathRegen(state) * deltaMs) / 1000 : 0;
+  const blockDrain = blocking ? (BREATH_COSTS.blockHoldPerSecond * deltaMs) / 1000 : 0;
+  const breath = Math.max(0, Math.min(maxBreath, state.hero.breath + breathRegen - blockDrain));
+
+  const stanceIdle = state.hero.stanceIdleMs + deltaMs;
+  const stanceRegen =
+    !staggered && stanceIdle >= 1600 ? (maxStance * 0.12 * deltaMs) / 1000 : 0;
+  const stance = Math.min(maxStance, state.hero.stance + stanceRegen);
+
+  let next: GameState = {
+    ...state,
+    hero: {
+      ...state.hero,
+      breath,
+      breathIdleMs: blocking ? 0 : breathIdle,
+      stance,
+      stanceIdleMs: stanceIdle,
+    },
+  };
+
+  // Срыв защиты: блок при нулевом дыхании ломается вместе со стойкой.
+  if (blocking && breath <= 0) {
+    next = appendLog(
+      {
+        ...next,
+        hero: {
+          ...next.hero,
+          blockingSinceMs: 0,
+          stance: Math.max(0, next.hero.stance - maxStance * BLOCK.breakStanceLoss),
+          blockBrokenUntilMs: next.worldTimeMs + BLOCK.breakVulnerableMs,
+        },
+      },
+      "Дыхание кончилось: защита сорвана.",
+    );
+  }
+  return next;
+}
+
+export function archetypeFor(state: GameState): ArchetypeId {
+  return state.hero.archetype ?? "power";
+}
+
+export function setArchetype(state: GameState, archetype: ArchetypeId): GameState {
+  const definition = ARCHETYPES[archetype];
+  if (!definition.implemented) {
+    return appendLog(state, `${definition.name}: архетип ещё не реализован в прототипе.`);
+  }
+  return appendLog(
+    { ...state, hero: { ...state.hero, archetype, surgeMs: 0, aimMs: 0 } },
+    `Боевой архетип: ${definition.name.toLowerCase()}. Ресурс — ${definition.resourceName.toLowerCase()}.`,
+  );
+}
+
+/** Ступени ресурса специализации: разгон силача либо прицел стрелка. */
+export function archetypeResourceSteps(state: GameState): number {
+  if (archetypeFor(state) === "power") return surgeStepsFor(state.hero.surgeMs);
+  if (archetypeFor(state) === "marksman") return aimStepsFor(state.hero.aimMs);
+  return 0;
+}
+
+export function archetypeResourceShare(state: GameState): number {
+  const definition = ARCHETYPES[archetypeFor(state)];
+  return Math.min(1, archetypeResourceSteps(state) / Math.max(1, definition.maxResource));
+}
+
+/**
+ * Ресурс копится действием: силач — движением к цели, стрелок — неподвижностью.
+ * Обе шкалы обнуляются от того, что противоречит характеру архетипа.
+ */
+function tickArchetypeResource(state: GameState, deltaMs: number, movedTowardTarget: boolean): GameState {
+  const archetype = archetypeFor(state);
+  if (archetype === "power") {
+    const surgeMs = movedTowardTarget ? state.hero.surgeMs + deltaMs : 0;
+    return surgeMs === state.hero.surgeMs ? state : { ...state, hero: { ...state.hero, surgeMs } };
+  }
+  if (archetype === "marksman") {
+    const still = state.hero.path.length === 0;
+    const aimMs = still ? state.hero.aimMs + deltaMs : 0;
+    return aimMs === state.hero.aimMs ? state : { ...state, hero: { ...state.hero, aimMs } };
+  }
+  return state;
+}
+
+/** Разведка стрелка: расширенный обзор на несколько секунд. */
+export function commandScout(state: GameState): GameState {
+  if (archetypeFor(state) !== "marksman") {
+    return appendLog(state, "Разведка доступна стрелку.");
+  }
+  if (state.hero.scoutUntilMs > state.worldTimeMs) return state;
+  return reveal(
+    appendLog(
+      { ...state, hero: { ...state.hero, scoutUntilMs: state.worldTimeMs + SCOUT_DURATION_MS } },
+      "Разведка: обзор расширен, цели за укрытием подсвечены.",
+    ),
+  );
+}
+
+/** Метка: цель получает больше урона из любого источника и видна сквозь стены. */
+export function commandMarkTarget(state: GameState): GameState {
+  const target = enemyById(state, state.hero.attackTargetId) ?? skillTarget(state);
+  if (!target) return appendLog(state, "Для метки нет видимой цели.");
+  return appendLog(
+    updateEnemy(state, target.id, (enemy) => ({
+      ...enemy,
+      markedUntilMs: state.worldTimeMs + MARK_DURATION_MS,
+    })),
+    `${target.name}: метка установлена, входящий урон повышен на ${Math.round(MARK_DAMAGE_BONUS * 100)}%.`,
+  );
+}
+
+/** Хватает ли дыхания на действие. */
+export function canSpendBreath(state: GameState, cost: number): boolean {
+  return state.hero.breath >= cost && state.hero.staggeredUntilMs <= state.worldTimeMs;
+}
+
+function spendBreath(state: GameState, cost: number): GameState {
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      breath: Math.max(0, state.hero.breath - cost),
+      breathIdleMs: 0,
+    },
+  };
+}
+
+/** Поднять или опустить блок. Идеальное окно считается от момента подъёма. */
+export function commandBlock(state: GameState, holding: boolean): GameState {
+  if (!holding) {
+    return state.hero.blockingSinceMs === 0
+      ? state
+      : { ...state, hero: { ...state.hero, blockingSinceMs: 0 } };
+  }
+  if (state.hero.blockingSinceMs > 0) return state;
+  if (state.hero.blockBrokenUntilMs > state.worldTimeMs) {
+    return appendLog(state, "Защита ещё не восстановлена после срыва.");
+  }
+  if (state.hero.staggeredUntilMs > state.worldTimeMs) return state;
+  return {
+    ...state,
+    hero: { ...state.hero, blockingSinceMs: state.worldTimeMs, path: [], destination: null },
+  };
+}
+
+/** Уклонение: кадры неуязвимости, смещение и запрет повтора на время восстановления. */
+export function commandDodge(state: GameState, direction?: Point): GameState {
+  if (state.hero.dodgeReadyAtMs > state.worldTimeMs) return state;
+  if (!canSpendBreath(state, BREATH_COSTS.dodge)) {
+    return appendLog(state, "Не хватает дыхания на уклонение.");
+  }
+  const from = state.hero.positions[state.zone];
+  const target = direction ?? { x: from.x, y: from.y + 1 };
+  const length = Math.max(0.001, distance(from, target));
+  const step = {
+    x: (target.x - from.x) / length,
+    y: (target.y - from.y) / length,
+  };
+  let landing = { ...from };
+  for (let travelled = 0.5; travelled <= DODGE.distance; travelled += 0.5) {
+    const candidate = { x: from.x + step.x * travelled, y: from.y + step.y * travelled };
+    if (!isWalkable(state, gridPoint(candidate))) break;
+    landing = candidate;
+  }
+  const next = spendBreath(state, BREATH_COSTS.dodge);
+  return {
+    ...next,
+    hero: {
+      ...next.hero,
+      positions: { ...next.hero.positions, [next.zone]: landing },
+      path: [],
+      destination: null,
+      blockingSinceMs: 0,
+      dodgeInvulnerableUntilMs: next.worldTimeMs + DODGE.invulnerableMs,
+      dodgeReadyAtMs: next.worldTimeMs + DODGE.recoveryMs,
+    },
+  };
+}
+
+/** Тяжёлая атака: дороже, медленнее, но ломает стойку втрое быстрее. */
+export function commandHeavyAttack(state: GameState): GameState {
+  const target = enemyById(state, state.hero.attackTargetId) ?? skillTarget(state);
+  if (!target) return appendLog(state, "Для тяжёлого удара нет цели.");
+  const riposte = state.hero.riposteUntilMs > state.worldTimeMs;
+  if (!riposte && !canSpendBreath(state, BREATH_COSTS.heavyAttack)) {
+    return appendLog(state, "Не хватает дыхания на тяжёлый удар.");
+  }
+  const hero = state.hero.positions[state.zone];
+  if (distance(hero, target.position) > heroAttackRange(state)) {
+    return appendLog(state, "Цель слишком далеко для тяжёлого удара.");
+  }
+  const weapon = weaponFor(state);
+  let next = riposte ? state : spendBreath(state, BREATH_COSTS.heavyAttack);
+  const spread = rollPercent(next);
+  next = spread.state;
+  const criticalRoll = rollPercent(next);
+  next = criticalRoll.state;
+  const strike = resolveStrike(
+    {
+      damage: heroAttackDamage(next),
+      stanceDamage: weapon.stanceDamage,
+      damageType: weapon.damageType,
+      kind: "heavy",
+      penetration: weapon.penetration,
+      criticalChance: talentBonus(next, "critical"),
+      // Встречный удар: цель уже начала собственный замах.
+      counterTiming: target.castUntilMs > next.worldTimeMs,
+    },
+    enemyCombatProfile(next, target),
+    {
+      roll: spread.roll / 99,
+      criticalRoll: criticalRoll.roll / 100,
+      facing: strikeFacing(next, target),
+    },
+  );
+  next = applyStrikeToEnemy(next, target.id, strike, hero);
+  next = addEffect(next, hero, target.position, "hero-hit", strike.damage);
+  next = {
+    ...next,
+    hero: {
+      ...next.hero,
+      attackCooldownMs: heroAttackCooldown(next) * 1.4,
+      riposteUntilMs: 0,
+    },
+  };
+  next = appendLog(
+    next,
+    `Тяжёлый удар: ${strike.damage} урона, стойка −${strike.stanceDamage}${strike.staggered ? "; цель ошеломлена" : ""}.`,
+  );
+  return strike.targetHp <= 0 ? finishEnemy(next, target.id) : next;
+}
+
+/** Добивание ошеломлённой цели: дорого, долго, но решает бой. */
+export function commandFinisher(state: GameState): GameState {
+  const target = enemyById(state, state.hero.attackTargetId) ?? skillTarget(state);
+  if (!target) return appendLog(state, "Для добивания нет цели.");
+  if (target.stunnedUntilMs <= state.worldTimeMs) {
+    return appendLog(state, "Добивание доступно только по ошеломлённой цели.");
+  }
+  if (!canSpendBreath(state, BREATH_COSTS.finisher)) {
+    return appendLog(state, "Не хватает дыхания на добивание.");
+  }
+  const hero = state.hero.positions[state.zone];
+  if (distance(hero, target.position) > Math.max(1.6, heroAttackRange(state))) {
+    return appendLog(state, "Цель слишком далеко для добивания.");
+  }
+  const weapon = weaponFor(state);
+  let next = spendBreath(state, BREATH_COSTS.finisher);
+  const spread = rollPercent(next);
+  next = spread.state;
+  const strike = resolveStrike(
+    {
+      damage: heroAttackDamage(next),
+      stanceDamage: weapon.stanceDamage,
+      damageType: weapon.damageType,
+      kind: "finisher",
+      penetration: weapon.penetration,
+    },
+    { ...enemyCombatProfile(next, target), finishing: true },
+    { roll: spread.roll / 99, facing: "unaware" },
+  );
+  next = applyStrikeToEnemy(next, target.id, strike, hero);
+  next = addEffect(next, hero, target.position, "control", strike.damage);
+  next = {
+    ...next,
+    hero: {
+      ...next.hero,
+      attackCooldownMs: heroAttackCooldown(next) * 1.6,
+      stance: Math.min(maxHeroStance(next), next.hero.stance + maxHeroStance(next) * 0.25),
+    },
+  };
+  next = appendLog(next, `Добивание: ${strike.damage} урона.`);
+  return strike.targetHp <= 0 ? finishEnemy(next, target.id) : next;
+}
+
+/** Общая обработка гибели противника: опыт, добыча и учёт потерь популяции. */
+function finishEnemy(state: GameState, enemyId: string): GameState {
+  const enemy = state.enemies.find((entry) => entry.id === enemyId);
+  if (!enemy) return state;
+  const reward = enemyXpReward(state, enemy);
+  let next = awardXp(state, reward);
+  next = dropEnemyLoot(next, enemy);
+  next = registerPopulationCasualty(next, enemy);
+  next = { ...next, hero: { ...next.hero, attackTargetId: null } };
+  return appendLog(next, `${enemy.name} выведен из строя. Получено ${reward} опыта.`);
+}
+
 function heroAttackTick(state: GameState): GameState {
   if (state.hero.evadeMode || !state.hero.attackTargetId) return state;
   const target = enemyById(state, state.hero.attackTargetId);
@@ -3002,31 +3526,17 @@ function heroAttackTick(state: GameState): GameState {
   if (!inRange || state.hero.attackCooldownMs > 0) return state;
 
   const weapon = weaponFor(state);
-  const rolled = rollD20(state);
-  const branchAccuracy = talentBonus(rolled.state, "accuracy");
-  const marked = target.markedUntilMs > rolled.state.worldTimeMs;
-  const modifier = Math.max(
-    0,
-    weapon.accuracy +
-      branchAccuracy +
-      (marked ? 1 + talentBonus(rolled.state, "markPower") : 0) +
-      Math.floor(effectiveAttribute(rolled.state, "reaction") / 2) -
-      effectiveInjury(rolled.state, "arm") -
-      (weapon.category === "ranged" ? effectiveInjury(rolled.state, "eye") : 0) -
-      (rolled.state.hero.stress >= 60 ? 1 : 0) -
-      ((weaponEntry(rolled.state)?.condition ?? 100) < 35 ? 1 : 0),
-  );
-  const defense = 10 + target.armor + (tileAt(rolled.state, target.position) === "c" ? 2 : 0);
-  const total = rolled.roll + modifier;
-  const hit = rolled.roll === 20 || (rolled.roll !== 1 && total >= defense);
-  const movingFire = weapon.category === "ranged" && talentBonus(rolled.state, "movingFire") >= 1;
+  // Броска на попадание больше нет: урон разрешается напрямую, а избежать его
+  // можно блоком, уклонением и позицией — COMBAT_NUMERIC_MODEL_V2.md §2.1.
+  const marked = target.markedUntilMs > state.worldTimeMs;
+  const movingFire = weapon.category === "ranged" && talentBonus(state, "movingFire") >= 1;
   let next: GameState = {
-    ...rolled.state,
+    ...state,
     hero: {
-      ...rolled.state.hero,
-      attackCooldownMs: heroAttackCooldown(rolled.state),
-      path: movingFire ? rolled.state.hero.path : [],
-      destination: movingFire ? rolled.state.hero.destination : null,
+      ...state.hero,
+      attackCooldownMs: heroAttackCooldown(state),
+      path: movingFire ? state.hero.path : [],
+      destination: movingFire ? state.hero.destination : null,
     },
   };
   next = emitNoise(
@@ -3042,30 +3552,52 @@ function heroAttackTick(state: GameState): GameState {
     weapon.category === "melee" ? "удар" : "выстрел",
   );
 
-  if (!hit) {
-    next = addEffect(next, heroPosition, target.position, "miss", 0);
-    return appendLog(next, `${weapon.shortName}: d20 ${rolled.roll} + ${modifier} = ${total}; промах.`);
-  }
-
-  const criticalThreshold = 20 - Math.floor(talentBonus(next, "critical") * 20);
-  const critical = rolled.roll === 20 || (rolled.roll >= criticalThreshold && rolled.roll !== 1);
   const isolated = next.hero.isolatedTargetId === target.id && next.hero.isolatedUntilMs > next.worldTimeMs;
-  const baseDamage = heroAttackDamage(next) + (marked ? Math.ceil(talentBonus(next, "markPower") / 2) : 0) + (isolated ? 2 : 0);
-  const damage = critical ? baseDamage * 2 : baseDamage;
-  const hp = Math.max(0, target.hp - damage);
-  next = updateEnemy(next, target.id, (enemy) => ({
-    ...enemy,
-    hp,
-    mode:
-      hp <= 0
-        ? "disabled"
-        : hp <= Math.ceil(enemy.maxHp * 0.3)
-          ? "retreat"
-          : "combat",
-    lastKnownHero: copyPoint(heroPosition),
-    memoryMs: 5000,
-  }));
-  next = addEffect(next, heroPosition, target.position, "hero-hit", damage);
+  const spread = rollPercent(next);
+  next = spread.state;
+  const criticalRoll = rollPercent(next);
+  next = criticalRoll.state;
+  const strike = resolveStrike(
+    {
+      damage: heroAttackDamage(next),
+      stanceDamage: Math.round(
+        weapon.stanceDamage *
+          (archetypeFor(next) === "power" ? surgeStanceMultiplier(surgeStepsFor(next.hero.surgeMs)) : 1),
+      ),
+      damageType: weapon.damageType,
+      kind: "light",
+      penetration: weapon.penetration,
+      damageBonus:
+        (marked ? MARK_DAMAGE_BONUS + talentBonus(next, "markPower") * 0.05 : 0) +
+        (archetypeFor(next) === "marksman" ? AIM_DAMAGE_BONUS * aimStepsFor(next.hero.aimMs) : 0) +
+        (isolated ? 0.15 : 0) +
+        talentBonus(next, "accuracy") * 0.04 +
+        (next.hero.riposteUntilMs > next.worldTimeMs ? 0.25 : 0),
+      criticalChance: talentBonus(next, "critical"),
+      criticalPower: talentBonus(next, "markPower") * 0.2,
+    },
+    enemyCombatProfile(next, target),
+    {
+      roll: spread.roll / 99,
+      criticalRoll: criticalRoll.roll / 100,
+      facing: strikeFacing(next, target),
+      perfectDodgeTempo: next.hero.perfectDodgeUntilMs > next.worldTimeMs,
+    },
+  );
+  const damage = strike.damage;
+  const critical = strike.critical;
+  const hp = strike.targetHp;
+  next = applyStrikeToEnemy(next, target.id, strike, heroPosition);
+  next = addEffect(next, heroPosition, target.position, critical ? "control" : "hero-hit", damage);
+  if (critical && strike.criticalEffect) {
+    next = appendLog(
+      next,
+      `${weapon.shortName}: критическое попадание, ${CRITICAL_EFFECT_PROFILE[strike.criticalEffect].label.toLowerCase()}.`,
+    );
+  }
+  if (strike.staggered) {
+    next = appendLog(next, `${target.name}: стойка сломана — цель ошеломлена.`);
+  }
 
   if (weapon.category === "ranged" && talentBonus(next, "dizzy") > 0 && hp > 0) {
     const current = enemyById(next, target.id);
@@ -3125,7 +3657,7 @@ function heroAttackTick(state: GameState): GameState {
   }
   return appendLog(
     next,
-    `${weapon.shortName}: d20 ${rolled.roll} + ${modifier} = ${total}; ${damage} урона${critical ? " (крит.)" : ""}.`,
+    `${weapon.shortName}: ${damage} урона${critical ? " (крит.)" : ""}${strike.stanceDamage ? `, стойка −${strike.stanceDamage}` : ""}.`,
   );
 }
 
@@ -3342,36 +3874,82 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
     }));
   }
   if (enemy.castUntilMs > state.worldTimeMs) return state;
-  const rolled = rollD20(state);
-  const defense = heroDefense(rolled.state);
-  const total = rolled.roll + enemy.accuracy;
-  const hit = rolled.roll === 20 || (rolled.roll !== 1 && total >= defense);
-  let next = updateEnemy(rolled.state, enemy.id, (current) => ({
+  let next = updateEnemy(state, enemy.id, (current) => ({
     ...current,
     attackCooldownMs: current.attackCooldownBaseMs,
     castUntilMs: 0,
   }));
-  if (!hit) {
+  // Кадры неуязвимости уклонения отменяют удар целиком.
+  if (next.hero.dodgeInvulnerableUntilMs > next.worldTimeMs) {
     next = addEffect(next, enemy.position, heroPosition, "miss", 0);
-    return appendLog(next, `${enemy.name}: d20 ${rolled.roll} + ${enemy.accuracy} = ${total}; промах.`);
+    return appendLog(next, `${enemy.name}: удар прошёл мимо — уклонение.`);
   }
-  const rawDamage = rolled.roll === 20 ? enemy.damage * 2 : enemy.damage;
-  const blockChance = Math.min(0.45, talentBonus(next, "block") + (next.hero.braceUntilMs > next.worldTimeMs ? 0.18 : 0));
-  const blockRoll = ((next.rngSeed >>> 8) % 100) / 100;
-  const blocked = blockRoll < blockChance;
-  const damage = blocked ? Math.max(0, rawDamage - 2) : rawDamage;
+  const holding = next.hero.blockingSinceMs > 0;
+  const perfect =
+    holding && next.worldTimeMs - next.hero.blockingSinceMs <= BLOCK.perfectWindowMs;
+  const spread = rollPercent(next);
+  next = spread.state;
+  const heroStanceMax = maxHeroStance(next);
+  const strike = resolveStrike(
+    {
+      damage: enemy.damage,
+      stanceDamage: Math.max(4, Math.round(enemy.damage * 0.6)),
+      damageType: enemy.kind === "sentry" ? "electric" : "kinetic",
+      kind: "light",
+    },
+    {
+      hp: next.hero.hp,
+      maxHp: maxHeroHp(next),
+      armor: Math.round(equipmentScalar(next, "armor")) + coverBonus(next, heroPosition) * 3,
+      flatAbsorb: 0,
+      stance: next.hero.stance,
+      maxStance: heroStanceMax,
+      rank: "common",
+      staggered: next.hero.staggeredUntilMs > next.worldTimeMs,
+    },
+    {
+      roll: spread.roll / 99,
+      blocking: holding,
+      perfectBlock: perfect,
+      blockAbsorb: talentBonus(next, "block"),
+    },
+  );
+  const damage = enemy.rank === "boss" ? capBossHitOnHero(strike.damage, next.hero.hp) : strike.damage;
+  const heroStagger = strike.targetStance <= 0 && next.hero.stance > 0
+    && next.hero.staggerImmuneUntilMs <= next.worldTimeMs;
   next = {
     ...next,
     hero: {
       ...next.hero,
       hp: Math.max(0, next.hero.hp - damage),
-      stress: Math.min(100, next.hero.stress + 5 + damage),
+      stance: heroStagger ? Math.round(heroStanceMax * 0.35) : strike.targetStance,
+      stanceIdleMs: 0,
+      staggeredUntilMs: heroStagger
+        ? next.worldTimeMs + staggerProfile("common").durationMs
+        : next.hero.staggeredUntilMs,
+      staggerImmuneUntilMs: heroStagger
+        ? next.worldTimeMs + staggerProfile("common").durationMs + staggerProfile("common").immunityMs
+        : next.hero.staggerImmuneUntilMs,
+      breath: Math.max(0, Math.min(maxHeroBreath(next), next.hero.breath - strike.breathCost)),
+      breathIdleMs: 0,
+      stress: Math.min(100, next.hero.stress + 5 + Math.round(damage / 6)),
     },
   };
-  next = addEffect(next, enemy.position, heroPosition, "enemy-hit", damage);
+  if (perfect) {
+    // Идеальный блок возвращает урон по стойке атакующему и открывает контратаку.
+    next = updateEnemy(next, enemy.id, (current) => ({
+      ...current,
+      stance: Math.max(0, (current.stance ?? 0) - strike.attackerStanceDamage),
+      stanceIdleMs: 0,
+    }));
+    next = { ...next, hero: { ...next.hero, riposteUntilMs: next.worldTimeMs + BLOCK.perfectRiposteMs } };
+  }
+  next = addEffect(next, enemy.position, heroPosition, perfect ? "control" : "enemy-hit", damage);
   next = appendLog(
     next,
-    `${enemy.name}: d20 ${rolled.roll} + ${enemy.accuracy} = ${total}; ${damage} урона${blocked ? " после блока" : ""}.`,
+    perfect
+      ? `${enemy.name}: идеальный блок — удар погашен, открыта контратака.`
+      : `${enemy.name}: ${damage} урона${strike.blocked ? " после блока" : ""}${heroStagger ? "; стойка сломана" : ""}.`,
   );
   if (next.hero.hp <= Math.max(1, Math.floor(maxHeroHp(next) * 0.25)) && hasTalent(next, "legendary:second-beat") && next.hero.secondBeatReady) {
     next = {
@@ -4115,7 +4693,14 @@ function tickSamosborExposure(state: GameState, deltaMs: number): GameState {
 
   const exposureMs = state.samosbor.exposureMs + deltaMs;
   const hits = samosborExposureHits(exposureMs, severity);
-  const damage = Math.max(0, hits - state.samosbor.exposureHits);
+  // Один «удар» среды снимает долю максимума и усиливается с каждой секундой
+  // снаружи: чем дольше герой в открытом пространстве, тем быстрее он рассыпается.
+  const newHits = Math.max(0, hits - state.samosbor.exposureHits);
+  let damage = 0;
+  for (let index = 0; index < newHits; index += 1) {
+    const order = state.samosbor.exposureHits + index;
+    damage += Math.max(1, Math.round(maxHeroHp(state) * 0.06 * (1 + order * 0.12)));
+  }
   const contaminationFactor = Math.max(0.3, 1 - talentBonus(state, "contaminationResist"));
   let next: GameState = {
     ...state,
@@ -4162,7 +4747,23 @@ export function createInitialState(): GameState {
       repathCooldownMs: 0,
       stepNoiseCooldownMs: 0,
       droneCooldownMs: 0,
-      hp: 8,
+      hp: 120,
+      stance: 76,
+      stanceIdleMs: 0,
+      staggeredUntilMs: 0,
+      staggerImmuneUntilMs: 0,
+      breath: 111,
+      breathIdleMs: 0,
+      blockingSinceMs: 0,
+      blockBrokenUntilMs: 0,
+      dodgeInvulnerableUntilMs: 0,
+      dodgeReadyAtMs: 0,
+      perfectDodgeUntilMs: 0,
+      riposteUntilMs: 0,
+      archetype: "power",
+      surgeMs: 0,
+      aimMs: 0,
+      scoutUntilMs: 0,
       level: 1,
       xp: 0,
       totalXp: 0,
@@ -4277,6 +4878,12 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
       ? samosborZones[zone]
       : { ...samosborZones[zone], ...saved, severity: profile.severity };
   }
+  // Сохранение до боевой модели v2 не знает о стойке: его полосы пересчитываются
+  // долей, иначе герой с 5 ОЗ из 8 очнётся почти трупом на шкале в 120.
+  const legacyBars = rawHero !== undefined && rawHero.stance === undefined;
+  const legacyEnemies =
+    Array.isArray(raw.enemies) && raw.enemies.some((enemy) => enemy?.maxStance === undefined);
+
   const migrated: GameState = {
     ...fresh,
     ...raw,
@@ -4287,6 +4894,7 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
       pendingInteraction: null,
       evadeMode: rawHero?.evadeMode ?? false,
     },
+    enemies: legacyEnemies ? fresh.enemies : (raw.enemies ?? fresh.enemies),
     visited: { ...fresh.visited, ...(raw.visited ?? {}) },
     populations,
     npcs: Array.isArray(raw.npcs) && raw.npcs.length === 34 ? raw.npcs : fresh.npcs,
@@ -4297,7 +4905,36 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
       zones: samosborZones,
     },
   };
-  return reveal(reconcilePopulationEnemies(migrated, migrated.populationCycle));
+  const rescaled: GameState = legacyBars
+    ? {
+        ...migrated,
+        hero: {
+          ...migrated.hero,
+          hp: migrateHpShare(rawHero?.hp ?? 8, 8, maxHeroHp(migrated)),
+          stance: maxHeroStance(migrated),
+          breath: maxHeroBreath(migrated),
+          stanceIdleMs: 0,
+          breathIdleMs: 0,
+          staggeredUntilMs: 0,
+          staggerImmuneUntilMs: 0,
+          blockingSinceMs: 0,
+          blockBrokenUntilMs: 0,
+          dodgeInvulnerableUntilMs: 0,
+          dodgeReadyAtMs: 0,
+          perfectDodgeUntilMs: 0,
+          riposteUntilMs: 0,
+        },
+      }
+    : {
+        ...migrated,
+        hero: {
+          ...migrated.hero,
+          hp: Math.min(migrated.hero.hp, maxHeroHp(migrated)),
+          stance: Math.min(migrated.hero.stance, maxHeroStance(migrated)),
+          breath: Math.min(migrated.hero.breath, maxHeroBreath(migrated)),
+        },
+      };
+  return reveal(reconcilePopulationEnemies(rescaled, rescaled.populationCycle));
 }
 
 function ejectHermeticIntrusions(state: GameState): GameState {
@@ -4352,7 +4989,9 @@ function applySafeAreaRecovery(state: GameState, previousWorldTimeMs: number): G
     ...state,
     hero: {
       ...state.hero,
-      hp: crossedRecoveryTick ? Math.min(maxHeroHp(state), state.hero.hp + 1) : state.hero.hp,
+      hp: crossedRecoveryTick
+        ? Math.min(maxHeroHp(state), state.hero.hp + Math.max(1, Math.round(maxHeroHp(state) * 0.04)))
+        : state.hero.hp,
       stress: Math.max(0, state.hero.stress - (state.worldTimeMs - previousWorldTimeMs) * 0.003),
       contamination: Math.max(0, state.hero.contamination - (state.worldTimeMs - previousWorldTimeMs) * 0.0002),
       attackTargetId: null,
@@ -4395,6 +5034,20 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
     })),
   };
   next = ejectHermeticIntrusions(next);
+  // Разгон копится движением к любому видимому противнику, а не только к
+  // выбранной цели: силач заряжается самим сближением.
+  const heroBefore = state.hero.positions[state.zone];
+  const locked = enemyById(state, state.hero.attackTargetId);
+  // Сближение хотя бы с одним видимым противником: ближайший может оказаться за спиной.
+  const surgeCandidates = state.enemies.filter(
+    (enemy) =>
+      enemy.zone === state.zone &&
+      enemy.hp > 0 &&
+      (enemy.id === locked?.id || enemyVisibleToHero(state, enemy)),
+  );
+  const wasMoving = state.hero.path.length > 0;
+  next = tickHeroBars(next, deltaMs);
+  next = tickEnemyStance(next, deltaMs);
 
   if (!next.mutated && next.worldTimeMs >= MUTATION_AT_MS) {
     next = appendLog(
@@ -4469,6 +5122,15 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
       next = { ...next, hero: { ...next.hero, stepNoiseCooldownMs: 520 } };
     }
   }
+
+  const movedTowardTarget =
+    wasMoving &&
+    surgeCandidates.some(
+      (enemy) =>
+        distance(next.hero.positions[next.zone], enemy.position) <
+        distance(heroBefore, enemy.position) - 0.0001,
+    );
+  next = tickArchetypeResource(next, deltaMs, movedTowardTarget);
 
   next = resolvePendingInteraction(next);
   next = tickCityNpcs(next, deltaMs);
