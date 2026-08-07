@@ -9,6 +9,13 @@ import {
   type StarterApproach,
 } from "./game-campaign.ts";
 import {
+  ensureMainStoryState,
+  mainStoryObjective,
+  migrateMainStoryContent,
+  recordMainStoryEvidence,
+  tickMainStory,
+} from "./game-main-story.ts";
+import {
   choosePrimaryProfession,
   ensureProfessionState,
   grantTrialProfession,
@@ -62,6 +69,7 @@ import {
 
 export * from "./game-engine-base.ts";
 export * from "./game-campaign.ts";
+export * from "./game-main-story.ts";
 export * from "./game-professions.ts";
 export * from "./game-settlement-arcs.ts";
 export * from "./game-world-systems.ts";
@@ -79,7 +87,8 @@ function normalizeCityState(state: any): any {
   });
   const professions = ensureProfessionState(world);
   const campaign = tickStarterCampaign(ensureStarterCampaign(professions));
-  return ensureSettlementStoryState(campaign);
+  const settlement = ensureSettlementStoryState(campaign);
+  return migrateMainStoryContent(ensureMainStoryState(settlement));
 }
 
 export function mapForZone(zone: base.ZoneId | typeof FLOOR_544): base.MapDefinition {
@@ -178,8 +187,12 @@ export function commandTalkToNpc(state: any, npcId: string): any {
   if (ensured.zone === "floor554") {
     const service = starterCityServiceForRole(actor?.role);
     if (service) next = recordCityServiceVisit(next, service);
+    if (actor?.role === "archivist") next = recordMainStoryEvidence(next, "city550_archive");
+    if (actor?.role?.startsWith("liquidator-")) next = recordMainStoryEvidence(next, "liquidators");
   }
-  return tickStarterCampaign(next);
+  next = tickStarterCampaign(next);
+  next = tickSettlementArcs(next);
+  return tickMainStory(next);
 }
 
 function finalizeInteraction(stateBefore: any, tile: string, stateAfter: any): any {
@@ -187,7 +200,12 @@ function finalizeInteraction(stateBefore: any, tile: string, stateAfter: any): a
   if (stateBefore.zone === "floor556" && tile === "N") {
     next = recordDispatcherBriefing(next);
   }
-  return tickStarterCampaign(next);
+  if (stateBefore.zone === "floor554" && tile === "L") {
+    next = recordMainStoryEvidence(next, "lift_dispatch");
+  }
+  next = tickStarterCampaign(next);
+  next = tickSettlementArcs(next);
+  return tickMainStory(next);
 }
 
 export function commandInteractAt(state: any, point: base.Point): any {
@@ -238,7 +256,7 @@ export function commandInteractAt(state: any, point: base.Point): any {
         tile,
         withRegionalLog(
           ensured,
-          "Мастер Яшин: «Верхний и нижний док спорят постоянно, но сирену слышат как один город»." ,
+          "Мастер Яшин: «Верхний и нижний док спорят постоянно, но сирену слышат как один город».",
         ),
       );
     }
@@ -376,13 +394,16 @@ export function tickGame(state: any, rawDeltaMs: number): any {
   }
   next = tickWorldSystems(next);
   next = tickStarterCampaign(next);
-  return tickSettlementArcs(next);
+  next = tickSettlementArcs(next);
+  return tickMainStory(next);
 }
 
 export function objectiveFor(state: any): string {
   const ensured = normalizeCityState(state);
   const starter = starterObjective(ensured);
   if (starter) return starter;
+  const story = mainStoryObjective(ensured);
+  if (story) return story;
   const progress = ensured.regionProgress ?? createRegionalProgress();
   if (progress.questStage === "complete" && [FLOOR_544, FLOOR_545].includes(ensured.zone)) {
     return "Пользоваться службами Города 545, восстанавливать связь и готовить оборону";
