@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  EMPTY_RESISTANCES,
+  describeDefence,
+  resolveDefence,
+} from "../app/game-defence.ts";
+
+import {
   ARCHETYPES,
   IMPLEMENTED_ARCHETYPES,
   archetypeFor,
@@ -22,7 +28,6 @@ import {
   heroBreathRegen,
   heroChargeSteps,
   heroChargeTuning,
-  heroDefenceTuning,
   heroStanceState,
   isDefending,
   maxHeroBreath,
@@ -149,78 +154,80 @@ test("неуязвимость уклонения отменяет удар пр
   assert.equal(after.hero.hp, dodging.hero.hp, "в кадрах неуязвимости урон не проходит");
 });
 
-test("короткий блок гасит урон, но парирование без пассива недоступно", () => {
-  let state = heroAt(createInitialState(), { x: 9, y: 4 });
-  state = { ...state, worldTimeMs: 20000 };
-  state = withEnemy(state, "guard-kl4", {
-    position: { x: 10, y: 4 },
-    damage: 40,
-    attackCooldownMs: 0,
-    castUntilMs: 1,
-    thinkCooldownMs: 0,
-  });
+test("защита строится билдом: слои гасят удар без единого нажатия", () => {
+  // Ручного блока и парирования больше нет. Проверяется, что защита работает
+  // сама, из свойств персонажа.
+  const bare = {
+    evasion: 0, blockChance: 0, blockEffectiveness: 0.5, parryChance: 0,
+    armour: 0, resistances: EMPTY_RESISTANCES, posture: 0,
+  };
+  const miss = { evasion: 0.99, parry: 0.99, block: 0.99 };
+  assert.equal(resolveDefence(100, "kinetic", bare, miss).damage, 100, "без защиты удар проходит целиком");
 
-  const open = tickGame(state, 100);
-  const openLoss = state.hero.hp - open.hero.hp;
-  assert.ok(openLoss > 0, "без блока урон проходит");
+  const armoured = { ...bare, armour: 60 };
+  assert.ok(resolveDefence(100, "kinetic", armoured, miss).damage < 100, "броня гасит без нажатия");
 
-  // Базовое защитное действие: урон снижается, но удар не отменяется.
-  const guarded = tickGame(commandBlock(state, true), 100);
-  const guardedLoss = state.hero.hp - guarded.hero.hp;
-  assert.ok(guardedLoss > 0, "без пассива парирования удар всё равно проходит");
-  assert.ok(guardedLoss < openLoss, "но блок его гасит");
-  assert.doesNotMatch(guarded.log.join("\n"), /идеальный блок|парирован/i);
+  const blocking = { ...bare, blockChance: 1 };
+  assert.equal(resolveDefence(100, "kinetic", blocking, { evasion: 0.99, parry: 0.99, block: 0 }).damage, 50);
+
+  const evasive = { ...bare, evasion: 1 };
+  const dodged = resolveDefence(100, "kinetic", evasive, { evasion: 0, parry: 0.99, block: 0.99 });
+  assert.equal(dodged.damage, 0);
+  assert.equal(dodged.avoided, true);
 });
 
-test("пассив ловкого направления открывает парирование, защитного — удержание", () => {
-  const base = heroAt(createInitialState(), { x: 9, y: 4 });
-  assert.equal(heroDefenceTuning(base).parryWindowMs, 0, "парирования нет по умолчанию");
-  assert.equal(heroDefenceTuning(base).canHold, false, "удержания нет по умолчанию");
-
-  // Ловкое направление: третий узел открывает окно парирования.
-  const agile = investDirection(base, "agility", 3);
-  const agileTuning = heroDefenceTuning(agile);
-  assert.ok(agileTuning.parryWindowMs > 0, "пассив открыл окно парирования");
-  assert.equal(agileTuning.canHold, false, "но не удержание стойки");
-
-  // Защитное направление: третий узел открывает удержание стойки.
-  const guardian = investDirection(base, "guard", 3);
-  const guardTuning = heroDefenceTuning(guardian);
-  assert.equal(guardTuning.canHold, true, "пассив открыл защитную стойку");
-  assert.equal(guardTuning.parryWindowMs, 0, "но не парирование");
-
-  // Дальнейшие пассивы удешевляют удержание и расширяют окно.
-  const deepGuard = investDirection(base, "guard", 12);
-  assert.ok(deepGuard && heroDefenceTuning(deepGuard).holdCostPerSecond < guardTuning.holdCostPerSecond);
-  const deepAgile = investDirection(base, "agility", 11);
-  assert.ok(heroDefenceTuning(deepAgile).parryWindowMs > agileTuning.parryWindowMs);
-  assert.ok(heroDefenceTuning(deepAgile).parryReflect > 0, "пассив добавил отражение");
+test("парирование пассивно и обращает защиту в атаку", () => {
+  const parrying = {
+    evasion: 0, blockChance: 0, blockEffectiveness: 0.5, parryChance: 1,
+    armour: 0, resistances: EMPTY_RESISTANCES, posture: 0,
+  };
+  const outcome = resolveDefence(100, "kinetic", parrying, { evasion: 0.99, parry: 0, block: 0.99 });
+  assert.equal(outcome.damage, 0);
+  assert.equal(outcome.parried, true, "парирование — результат сборки, а не нажатия в окно");
 });
 
-test("парирование в окне отменяет удар и открывает контратаку", () => {
-  let state = heroAt(investDirection(createInitialState(), "agility", 3), { x: 9, y: 4 });
-  state = { ...state, worldTimeMs: 20000 };
-  state = withEnemy(state, "guard-kl4", {
-    position: { x: 10, y: 4 },
-    damage: 40,
-    attackCooldownMs: 0,
-    castUntilMs: 1,
-    thinkCooldownMs: 0,
-  });
+test("слои защиты имеют разные профили, а не одно «+X% эффективных ОЗ»", () => {
+  const base = {
+    evasion: 0, blockChance: 0, blockEffectiveness: 0.5, parryChance: 0,
+    armour: 80, resistances: EMPTY_RESISTANCES, posture: 0,
+  };
+  const miss = { evasion: 0.99, parry: 0.99, block: 0.99 };
+  // Броня сильнее против частых мелких ударов и слабее против одного тяжёлого.
+  const smallShare = resolveDefence(20, "kinetic", base, miss).damage / 20;
+  const bigShare = resolveDefence(200, "kinetic", base, miss).damage / 200;
+  assert.ok(smallShare < bigShare, "броня выгоднее против мелких ударов");
 
-  const parried = tickGame(commandBlock(state, true), 100);
-  assert.equal(parried.hero.hp, state.hero.hp, "парирование отменяет урон");
-  assert.ok(parried.hero.riposteUntilMs > parried.worldTimeMs, "открыто окно контратаки");
-  assert.equal(enemyById(parried, "guard-kl4").castUntilMs, 0, "атака противника сорвана");
-
-  // Вне окна парирования тот же билд получает обычный блок.
-  const late = commandBlock(state, true);
-  const lateBlock = tickGame(
-    { ...late, hero: { ...late.hero, blockingSinceMs: state.worldTimeMs - 5000 } },
-    100,
-  );
-  assert.ok(lateBlock.hero.hp < state.hero.hp, "промах по окну — обычный блок");
+  // Сопротивление, наоборот, снимает одну и ту же долю независимо от размера.
+  const resistant = { ...base, armour: 0, resistances: { ...EMPTY_RESISTANCES, kinetic: 0.5 } };
+  const smallRes = resolveDefence(20, "kinetic", resistant, miss).damage / 20;
+  const bigRes = resolveDefence(200, "kinetic", resistant, miss).damage / 200;
+  assert.ok(Math.abs(smallRes - bigRes) < 0.02, "сопротивление одинаково на любом размере удара");
 });
+
+test("сопротивление работает по своей категории угрозы", () => {
+  const thermalProof = {
+    evasion: 0, blockChance: 0, blockEffectiveness: 0.5, parryChance: 0,
+    armour: 0, resistances: { ...EMPTY_RESISTANCES, thermal: 0.6 }, posture: 0,
+  };
+  const miss = { evasion: 0.99, parry: 0.99, block: 0.99 };
+  const shock = resolveDefence(100, "electric", thermalProof, miss);
+  const hit = resolveDefence(100, "kinetic", thermalProof, miss);
+  assert.equal(shock.category, "thermal");
+  assert.ok(shock.damage < hit.damage, "профиль защищает от своей категории, а не от всего");
+});
+
+test("разбор удара объясним: каждый слой отчитывается отдельно", () => {
+  const mixed = {
+    evasion: 0, blockChance: 1, blockEffectiveness: 0.4, parryChance: 0,
+    armour: 50, resistances: { ...EMPTY_RESISTANCES, kinetic: 0.25 }, posture: 0,
+  };
+  const outcome = resolveDefence(120, "kinetic", mixed, { evasion: 0.99, parry: 0.99, block: 0 });
+  const ids = outcome.steps.map((step) => step.id);
+  assert.deepEqual(ids, ["evasion", "parry", "block", "armour", "resistance"], "порядок слоёв фиксирован");
+  assert.ok(describeDefence(outcome).length > 0, "результат объясним словами");
+  assert.ok(outcome.steps.filter((step) => step.applied).length >= 3);
+});
+
 
 test("удержание защитной стойки живёт только с пассивом", () => {
   const base = heroAt(createInitialState(), { x: 9, y: 4 });

@@ -74,12 +74,10 @@ import {
   branchPointsByDirection,
   heroChargeSteps,
   heroChargeTuning,
-  heroDefenceTuning,
-  isDefending,
+  heroDefenceProfile,
   releaseCharge,
   canSpendBreath,
   commandBackstab,
-  commandBlock,
   commandDesync,
   commandDodge,
   commandFinisher,
@@ -474,8 +472,7 @@ export default function GamePrototype() {
   const heroMaxStance = maxHeroStance(state);
   const heroMaxBreath = maxHeroBreath(state);
   const stanceState = heroStanceState(state);
-  const blocking = isDefending(state);
-  const defence = heroDefenceTuning(state);
+  const defenceProfile = heroDefenceProfile(state);
   const chargeTuningNow = heroChargeTuning(state);
   const chargeSteps = heroChargeSteps(state);
   const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
@@ -688,10 +685,6 @@ export default function GamePrototype() {
     setState((current) => commandDodge(current, direction));
   }, []);
 
-  const setBlocking = useCallback((holding: boolean) => {
-    setState((current) => commandBlock(current, holding));
-  }, []);
-
   const cycleControlMode = useCallback(() => {
     setState((current) => {
       const order: ControlMode[] = ["manual", "autopilot"];
@@ -850,9 +843,6 @@ export default function GamePrototype() {
       } else if (key === "shift") {
         event.preventDefault();
         if (!event.repeat) dodgeNow();
-      } else if (key === "v") {
-        event.preventDefault();
-        if (!event.repeat) setBlocking(true);
       } else {
         const current = gridPoint(stateRef.current.hero.positions[stateRef.current.zone]);
         const direction =
@@ -879,11 +869,6 @@ export default function GamePrototype() {
         finishCharge();
         return;
       }
-      if (key === "v") {
-        event.preventDefault();
-        setBlocking(false);
-        return;
-      }
       if (key !== "enter" && key !== " ") return;
       event.preventDefault();
       const usedChord = okChordRef.current;
@@ -900,7 +885,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, finishCharge, startCharge, boosterNow, cancelAction, cycleControlMode, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow, setBlocking]);
+  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, finishCharge, startCharge, boosterNow, cancelAction, cycleControlMode, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1496,7 +1481,7 @@ export default function GamePrototype() {
               <i style={{ width: `${(state.hero.stance / heroMaxStance) * 100}%` }} />
             </div>
             <div className="stat-row compact"><span>Дыхание</span><strong>{Math.round(state.hero.breath)} / {heroMaxBreath}</strong></div>
-            <div className={`meter breath-meter ${blocking ? "draining" : ""}`}>
+            <div className={`meter breath-meter `}>
               <i style={{ width: `${(state.hero.breath / heroMaxBreath) * 100}%` }} />
             </div>
             <div className="stat-row compact"><span>Квалификация</span><strong>{state.hero.level} / 50</strong></div>
@@ -1603,23 +1588,20 @@ export default function GamePrototype() {
             <span className="ability-key">Z</span><strong>Тяжёлый удар</strong>
             <small>ломает стойку · 25 дых.</small>
           </button>
-          <button
-            type="button"
-            className={`ability block-ability ${blocking ? "active" : ""}`}
-            onPointerDown={() => setBlocking(true)}
-            onPointerUp={() => setBlocking(false)}
-            onPointerLeave={() => blocking && setBlocking(false)}
-            disabled={staggered}
-          >
-            <span className="ability-key">V</span>
-            <strong>{blocking ? (defence.canHold ? "Стойка держит" : "Блок") : "Блок"}</strong>
+          {/*
+            Блока-кнопки больше нет: блок, парирование и уклонение — свойства
+            сборки, а не нажатия. Вместо кнопки показывается защитный профиль,
+            собранный деревом и экипировкой.
+          */}
+          <div className="ability defence-readout" aria-label="Защитный профиль">
+            <strong>Защита</strong>
             <small>
-              {defence.canHold
-                ? `удержание · ${defence.holdCostPerSecond.toFixed(0)} дых./с`
-                : "короткий блок"}
-              {defence.parryWindowMs > 0 ? ` · парирование ${defence.parryWindowMs} мс` : ""}
+              {`броня ${defenceProfile.armour}`}
+              {defenceProfile.blockChance > 0 ? ` · блок ${Math.round(defenceProfile.blockChance * 100)}%` : ""}
+              {defenceProfile.parryChance > 0 ? ` · парир. ${Math.round(defenceProfile.parryChance * 100)}%` : ""}
+              {defenceProfile.evasion > 0 ? ` · уклон. ${Math.round(defenceProfile.evasion * 100)}%` : ""}
             </small>
-          </button>
+          </div>
           <button
             type="button"
             className="ability dodge-ability"

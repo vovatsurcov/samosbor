@@ -9,6 +9,21 @@ import {
   WEAPONS,
 } from "./game-items.ts";
 import {
+  type DefenceProfile,
+  describeDefence,
+  resolveDefence,
+} from "./game-defence.ts";
+export {
+  RESISTANCE_CAP,
+  THREAT_LABELS,
+  THREAT_SOURCES,
+  armourMitigation,
+  describeDefence,
+  resolveDefence,
+  threatOf,
+} from "./game-defence.ts";
+export type { DefenceOutcome, DefenceProfile, DefenceStep, ThreatCategory } from "./game-defence.ts";
+import {
   TELEGRAPHS,
   type TelegraphTier,
   telegraphDamage,
@@ -98,7 +113,6 @@ import {
   UNDEPLOYED_DAMAGE_PENALTY,
   chainDamageAt,
   desyncReady,
-  footingAbsorbBonus,
   footingStepsFor,
   spinUpFactor,
   tempoDamageBonus,
@@ -132,7 +146,6 @@ import {
   chargeStepsFor,
   chargeTuning,
   defenceTuning,
-  isParry,
   tunedChargeMultipliers,
   BLOCK,
   BREATH_COSTS,
@@ -157,7 +170,6 @@ export {
   RESONANCE_MAX_STACKS,
   chainDamageAt,
   desyncReady,
-  footingAbsorbBonus,
   footingStepsFor,
   spinUpFactor,
   tempoDamageBonus,
@@ -3944,6 +3956,35 @@ export function heroDefenceTuning(state: GameState) {
   });
 }
 
+/**
+ * Защитный профиль персонажа: собирается из дерева, экипировки и укрытия.
+ *
+ * Ни одно слагаемое не зависит от того, что игрок сейчас нажал: блок,
+ * парирование и уклонение — свойства сборки. Руками игрок двигается, выбирает
+ * позицию и бьёт.
+ */
+export function heroDefenceProfile(state: GameState): DefenceProfile {
+  const heroPosition = state.hero.positions[state.zone];
+  const inCover = coverBonus(state, heroPosition) > 0;
+  return {
+    // Уклонение — разброс: чаще спасает от череды мелких ударов, но на один
+    // тяжёлый на него полагаться нельзя.
+    evasion: Math.min(0.6, talentBonus(state, "evasion") + (inCover ? 0.05 : 0)),
+    blockChance: Math.min(0.75, talentBonus(state, "block")),
+    blockEffectiveness: Math.min(0.8, 0.35 + talentBonus(state, "blockPower")),
+    // Парирование реже блока: оно не просто гасит удар, а обращает его.
+    parryChance: Math.min(0.4, talentBonus(state, "parry")),
+    armour: Math.round(equipmentScalar(state, "armor")) + (inCover ? 6 : 0),
+    resistances: {
+      kinetic: talentBonus(state, "resistKinetic"),
+      thermal: talentBonus(state, "resistThermal"),
+      chemical: talentBonus(state, "resistChemical"),
+      anomalous: talentBonus(state, "resistAnomalous"),
+    },
+    posture: Math.min(0.75, talentBonus(state, "staggerResist")),
+  };
+}
+
 /** Параметры заряжаемого удара текущего билда. */
 export function heroChargeTuning(state: GameState) {
   return chargeTuning({
@@ -4688,11 +4729,6 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
     next = addEffect(next, enemy.position, heroPosition, "miss", 0);
     return appendLog(next, `${enemy.name}: удар прошёл мимо — уклонение.`);
   }
-  const defence = heroDefenceTuning(next);
-  const holding = isDefending(next);
-  // Парирование открывается только пассивом ловкого направления.
-  const heldMs = next.worldTimeMs - next.hero.blockingSinceMs;
-  const perfect = holding && isParry(heldMs, defence);
   const spread = rollPercent(next);
   next = spread.state;
   const heroStanceMax = maxHeroStance(next);
@@ -4706,26 +4742,57 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
     {
       hp: next.hero.hp,
       maxHp: maxHeroHp(next),
-      armor: Math.round(equipmentScalar(next, "armor")) + coverBonus(next, heroPosition) * 3,
+      // Броню считает защитный конвейер ниже: здесь она обнулена, иначе удар
+      // гасился бы дважды.
+      armor: 0,
       flatAbsorb: 0,
       stance: next.hero.stance,
       maxStance: heroStanceMax,
       rank: "common",
       staggered: next.hero.staggeredUntilMs > next.worldTimeMs,
     },
-    {
-      roll: spread.roll / 99,
-      blocking: holding,
-      perfectBlock: perfect,
-      blockAbsorb:
-        defence.absorb -
-        BLOCK.baseAbsorb +
-        (archetypeFor(next) === "bulwark" ? footingAbsorbBonus(footingStepsFor(next.hero.footingMs)) : 0),
-    },
+    { roll: spread.roll / 99 },
   );
-  const damage = enemy.rank === "boss" ? capBossHitOnHero(strike.damage, next.hero.hp) : strike.damage;
+  // Защитный конвейер: уклонение и парирование отменяют удар целиком, блок,
+  // броня и сопротивление гасят его долю. Ни один слой не требует нажатия —
+  // всё это свойства сборки (game-defence.ts).
+  const damageType: DamageType = enemy.kind === "sentry" ? "electric" : "kinetic";
+  const rawDamage = enemy.rank === "boss" ? capBossHitOnHero(strike.damage, next.hero.hp) : strike.damage;
+  const evasionRoll = rollPercent(next);
+  next = evasionRoll.state;
+  const parryRoll = rollPercent(next);
+  next = parryRoll.state;
+  const blockRoll = rollPercent(next);
+  next = blockRoll.state;
   const staggerResist = Math.min(0.75, talentBonus(next, "staggerResist"));
-  const incomingStance = Math.round((next.hero.stance - strike.targetStance) * (1 - staggerResist));
+  const rawStance = Math.round((next.hero.stance - strike.targetStance) * (1 - staggerResist));
+  const outcome = resolveDefence(
+    rawDamage,
+    damageType,
+    heroDefenceProfile(next),
+    {
+      evasion: evasionRoll.roll / 100,
+      parry: parryRoll.roll / 100,
+      block: blockRoll.roll / 100,
+    },
+    rawStance,
+  );
+  if (outcome.avoided) {
+    next = addEffect(next, enemy.position, heroPosition, "miss", 0);
+    if (outcome.parried) {
+      // Парирование обращает защиту в атаку: атакующий теряет замах и стойку.
+      next = updateEnemy(next, enemy.id, (current) => ({
+        ...current,
+        castUntilMs: 0,
+        castStartedMs: 0,
+        stance: Math.max(0, current.stance - 12),
+        attackCooldownMs: Math.max(current.attackCooldownMs, 900),
+      }));
+    }
+    return appendLog(next, `${enemy.name}: ${describeDefence(outcome)}.`);
+  }
+  const damage = outcome.damage;
+  const incomingStance = outcome.postureDamage;
   const heroStanceAfter = Math.max(0, next.hero.stance - incomingStance);
   const heroStagger = heroStanceAfter <= 0 && next.hero.stance > 0
     && next.hero.staggerImmuneUntilMs <= next.worldTimeMs;
@@ -4747,25 +4814,15 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
       stress: Math.min(100, next.hero.stress + 5 + Math.round(damage / 6)),
     },
   };
-  if (perfect) {
-    // Парирование отражает урон по стойке атакующему и открывает контратаку.
-    const reflected = Math.round(
-      strike.attackerStanceDamage * (1 + defence.parryReflect),
-    );
-    next = updateEnemy(next, enemy.id, (current) => ({
-      ...current,
-      stance: Math.max(0, (current.stance ?? 0) - reflected),
-      stanceIdleMs: 0,
-      castUntilMs: 0,
-    }));
-    next = { ...next, hero: { ...next.hero, riposteUntilMs: next.worldTimeMs + defence.riposteMs } };
-  }
-  next = addEffect(next, enemy.position, heroPosition, perfect ? "control" : "enemy-hit", damage);
+  next = addEffect(next, enemy.position, heroPosition, "enemy-hit", damage);
+  // Разбор удара по слоям: игрок должен понимать, что именно сработало, а не
+  // видеть одно итоговое число.
+  const mitigated = outcome.steps.filter((step) => step.applied);
   next = appendLog(
     next,
-    perfect
-      ? `${enemy.name}: идеальный блок — удар погашен, открыта контратака.`
-      : `${enemy.name}: ${damage} урона${strike.blocked ? " после блока" : ""}${heroStagger ? "; стойка сломана" : ""}.`,
+    `${enemy.name}: ${damage} урона` +
+      `${mitigated.length ? ` (${describeDefence(outcome)})` : ""}` +
+      `${heroStagger ? "; стойка сломана" : ""}.`,
   );
   if (next.hero.hp <= Math.max(1, Math.floor(maxHeroHp(next) * 0.25)) && hasTalent(next, "legendary:second-beat") && next.hero.secondBeatReady) {
     next = {

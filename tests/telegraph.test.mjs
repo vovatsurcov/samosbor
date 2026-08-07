@@ -105,3 +105,41 @@ test("слом стойки во время замаха отменяет уда
     "прерывание — отдельное сообщение, а не молчаливый побочный эффект",
   );
 });
+
+test("один и тот же тяжёлый замах воспринимается разными сборками по-разному", async () => {
+  const { EMPTY_RESISTANCES, resolveDefence } = await import("../app/game-defence.ts");
+  const base = {
+    evasion: 0, blockChance: 0, blockEffectiveness: 0.55, parryChance: 0,
+    armour: 0, resistances: EMPTY_RESISTANCES, posture: 0,
+  };
+  // Одинаковый удар и одинаковые броски: разница целиком из сборки.
+  const incoming = telegraphDamage(60, "heavy");
+  const rolls = { evasion: 0.5, parry: 0.5, block: 0.5 };
+
+  const profiles = {
+    glass: base,
+    armour: { ...base, armour: 90 },
+    block: { ...base, blockChance: 0.9 },
+    parry: { ...base, parryChance: 0.9 },
+    evasion: { ...base, evasion: 0.9 },
+    resistant: { ...base, resistances: { ...EMPTY_RESISTANCES, kinetic: 0.5 } },
+  };
+  const taken = Object.fromEntries(
+    Object.entries(profiles).map(([name, profile]) => [
+      name,
+      resolveDefence(incoming, "kinetic", profile, rolls),
+    ]),
+  );
+
+  assert.equal(taken.glass.damage, incoming, "без вложений удар проходит целиком");
+  for (const name of ["armour", "block", "resistant"]) {
+    assert.ok(taken[name].damage < taken.glass.damage, `${name}: сборка обязана менять исход`);
+    assert.ok(taken[name].damage > 0, `${name}: гашение — не неуязвимость`);
+  }
+  assert.equal(taken.evasion.damage, 0, "уклонение отменяет удар целиком");
+  assert.equal(taken.parry.parried, true, "парирование обращает удар против атакующего");
+
+  // Слои не взаимозаменяемы: они дают разный исход на одном и том же ударе.
+  const distinct = new Set([taken.armour.damage, taken.block.damage, taken.resistant.damage]);
+  assert.equal(distinct.size, 3, "броня, блок и сопротивление — не три названия одного эффекта");
+});
