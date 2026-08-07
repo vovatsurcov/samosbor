@@ -2924,6 +2924,20 @@ kbd {
 }
 
 /* Combat model v2: stance, breath, archetype resource and new actions */
+.ability.attack-ability.charging {
+  border-color: rgba(224, 176, 96, 0.85);
+  box-shadow: 0 0 20px rgba(224, 176, 96, 0.3);
+}
+
+.ability .charge-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #c98b3f, #f0cd76);
+  transition: width 90ms linear;
+}
+
 .action-dock-v2 > .health-orb { grid-column: 1; grid-row: 1; }
 .action-dock-v2 > .combat-cluster:not(.combat-v2) { grid-column: 2; grid-row: 1; }
 .action-dock-v2 > .combat-v2 { grid-column: 3; grid-row: 1; }

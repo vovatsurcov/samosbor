@@ -8,6 +8,7 @@ import {
   archetypeResourceSteps,
   canSpendBreath,
   commandAttack,
+  beginCharge,
   commandBlock,
   commandDodge,
   commandFinisher,
@@ -19,11 +20,16 @@ import {
   enemyById,
   floorTier,
   heroBreathRegen,
+  heroChargeSteps,
+  heroChargeTuning,
+  heroDefenceTuning,
   heroStanceState,
+  isDefending,
   maxHeroBreath,
   maxHeroHp,
   maxHeroStance,
   migrateGameState,
+  releaseCharge,
   investDirection,
   tickGame,
   zoneFloorNumber,
@@ -143,7 +149,7 @@ test("неуязвимость уклонения отменяет удар пр
   assert.equal(after.hero.hp, dodging.hero.hp, "в кадрах неуязвимости урон не проходит");
 });
 
-test("блок гасит урон, а идеальный блок отменяет его и возвращает стойку атакующему", () => {
+test("короткий блок гасит урон, но парирование без пассива недоступно", () => {
   let state = heroAt(createInitialState(), { x: 9, y: 4 });
   state = { ...state, worldTimeMs: 20000 };
   state = withEnemy(state, "guard-kl4", {
@@ -158,20 +164,74 @@ test("блок гасит урон, а идеальный блок отменя�
   const openLoss = state.hero.hp - open.hero.hp;
   assert.ok(openLoss > 0, "без блока урон проходит");
 
-  // Блок, поднятый заранее: идеальное окно уже истекло.
-  const raised = commandBlock(state, true);
-  const holding = {
-    ...raised,
-    hero: { ...raised.hero, blockingSinceMs: state.worldTimeMs - 5000 },
-  };
-  const blocked = tickGame(holding, 100);
-  assert.ok(state.hero.hp - blocked.hero.hp < openLoss, "блок снижает урон");
+  // Базовое защитное действие: урон снижается, но удар не отменяется.
+  const guarded = tickGame(commandBlock(state, true), 100);
+  const guardedLoss = state.hero.hp - guarded.hero.hp;
+  assert.ok(guardedLoss > 0, "без пассива парирования удар всё равно проходит");
+  assert.ok(guardedLoss < openLoss, "но блок его гасит");
+  assert.doesNotMatch(guarded.log.join("\n"), /идеальный блок|парирован/i);
+});
 
-  // Блок, поднятый только что: идеальное окно.
-  const perfect = tickGame(commandBlock(state, true), 100);
-  assert.equal(perfect.hero.hp, state.hero.hp, "идеальный блок отменяет урон");
-  assert.match(perfect.log.join("\n"), /идеальный блок/i);
-  assert.ok(perfect.hero.riposteUntilMs > perfect.worldTimeMs, "открыто окно контратаки");
+test("пассив ловкого направления открывает парирование, защитного — удержание", () => {
+  const base = heroAt(createInitialState(), { x: 9, y: 4 });
+  assert.equal(heroDefenceTuning(base).parryWindowMs, 0, "парирования нет по умолчанию");
+  assert.equal(heroDefenceTuning(base).canHold, false, "удержания нет по умолчанию");
+
+  // Ловкое направление: третий узел открывает окно парирования.
+  const agile = investDirection(base, "agility", 3);
+  const agileTuning = heroDefenceTuning(agile);
+  assert.ok(agileTuning.parryWindowMs > 0, "пассив открыл окно парирования");
+  assert.equal(agileTuning.canHold, false, "но не удержание стойки");
+
+  // Защитное направление: третий узел открывает удержание стойки.
+  const guardian = investDirection(base, "guard", 3);
+  const guardTuning = heroDefenceTuning(guardian);
+  assert.equal(guardTuning.canHold, true, "пассив открыл защитную стойку");
+  assert.equal(guardTuning.parryWindowMs, 0, "но не парирование");
+
+  // Дальнейшие пассивы удешевляют удержание и расширяют окно.
+  const deepGuard = investDirection(base, "guard", 12);
+  assert.ok(deepGuard && heroDefenceTuning(deepGuard).holdCostPerSecond < guardTuning.holdCostPerSecond);
+  const deepAgile = investDirection(base, "agility", 11);
+  assert.ok(heroDefenceTuning(deepAgile).parryWindowMs > agileTuning.parryWindowMs);
+  assert.ok(heroDefenceTuning(deepAgile).parryReflect > 0, "пассив добавил отражение");
+});
+
+test("парирование в окне отменяет удар и открывает контратаку", () => {
+  let state = heroAt(investDirection(createInitialState(), "agility", 3), { x: 9, y: 4 });
+  state = { ...state, worldTimeMs: 20000 };
+  state = withEnemy(state, "guard-kl4", {
+    position: { x: 10, y: 4 },
+    damage: 40,
+    attackCooldownMs: 0,
+    castUntilMs: 1,
+    thinkCooldownMs: 0,
+  });
+
+  const parried = tickGame(commandBlock(state, true), 100);
+  assert.equal(parried.hero.hp, state.hero.hp, "парирование отменяет урон");
+  assert.ok(parried.hero.riposteUntilMs > parried.worldTimeMs, "открыто окно контратаки");
+  assert.equal(enemyById(parried, "guard-kl4").castUntilMs, 0, "атака противника сорвана");
+
+  // Вне окна парирования тот же билд получает обычный блок.
+  const late = commandBlock(state, true);
+  const lateBlock = tickGame(
+    { ...late, hero: { ...late.hero, blockingSinceMs: state.worldTimeMs - 5000 } },
+    100,
+  );
+  assert.ok(lateBlock.hero.hp < state.hero.hp, "промах по окну — обычный блок");
+});
+
+test("удержание защитной стойки живёт только с пассивом", () => {
+  const base = heroAt(createInitialState(), { x: 9, y: 4 });
+  const held = { ...commandBlock({ ...base, worldTimeMs: 20000 }, true) };
+  // Без пассива короткий блок опадает сам.
+  const lapsed = { ...held, worldTimeMs: held.worldTimeMs + 2000 };
+  assert.equal(isDefending(lapsed), false, "короткий блок не держится вечно");
+
+  const guardian = heroAt(investDirection(createInitialState(), "guard", 3), { x: 9, y: 4 });
+  const guardHeld = commandBlock({ ...guardian, worldTimeMs: 20000 }, true);
+  assert.equal(isDefending({ ...guardHeld, worldTimeMs: guardHeld.worldTimeMs + 5000 }), true);
 });
 
 test("дыхание тратится, восстанавливается и падает от заражения и стресса", () => {
@@ -293,4 +353,56 @@ test("старое сохранение переносится на новую �
 
   const fresh = migrateGameState({});
   assert.equal(fresh.hero.hp, 120);
+});
+
+test("удержание команды атаки заряжает удар, отпускание его выполняет", () => {
+  let state = heroAt(createInitialState(), { x: 9, y: 4 });
+  state = { ...state, worldTimeMs: 20000 };
+  state = withEnemy(state, "guard-kl4", {
+    position: { x: 10, y: 4 },
+    hp: 900,
+    maxHp: 900,
+    attackCooldownMs: 99999,
+  });
+  state = commandAttack(state, "guard-kl4");
+
+  const charging = beginCharge(state);
+  assert.ok(charging.hero.chargingSinceMs > 0, "заряд начат");
+  assert.equal(heroChargeSteps(charging), 0, "мгновенное нажатие ступеней не даёт");
+
+  // Держим команду: ступени копятся по данным настройки.
+  const tuning = heroChargeTuning(charging);
+  const held = { ...charging, worldTimeMs: charging.worldTimeMs + tuning.stepMs * 2 + 10 };
+  assert.equal(heroChargeSteps(held), 2, "две ступени за два интервала");
+
+  const released = releaseCharge(held);
+  const guard = enemyById(released, "guard-kl4");
+  assert.ok(guard.hp < 900, "заряженный удар нанесён");
+  assert.equal(released.hero.chargingSinceMs, 0, "заряд сброшен после удара");
+  assert.ok(released.hero.breath < held.hero.breath, "заряд стоит дыхания");
+  assert.match(released.log.join("\n"), /Заряженный удар \(2\)/);
+
+  // Короткое нажатие остаётся обычной атакой, а не заряженным ударом.
+  const tapped = releaseCharge(beginCharge(state));
+  assert.doesNotMatch(tapped.log.join("\n"), /Заряженный удар/);
+});
+
+test("пассивы силового направления настраивают заряд без правки боевой системы", () => {
+  const base = createInitialState();
+  const baseTuning = heroChargeTuning(base);
+
+  const powered = investDirection(base, "power", 7);
+  const fastTuning = heroChargeTuning(powered);
+  assert.ok(fastTuning.stepMs < baseTuning.stepMs, "пассив ускоряет накопление заряда");
+
+  const deep = investDirection(base, "power", 14);
+  const deepTuning = heroChargeTuning(deep);
+  assert.ok(deepTuning.maxSteps > baseTuning.maxSteps, "пассив добавляет ступень");
+  assert.ok(deepTuning.damagePerStep > baseTuning.damagePerStep, "пассив усиливает ступень");
+
+  // Заряд сильнее ровно настолько, насколько сказали данные.
+  const steps = 3;
+  const baseDamage = 1 + baseTuning.damagePerStep * steps;
+  const deepDamage = 1 + deepTuning.damagePerStep * steps;
+  assert.ok(deepDamage > baseDamage);
 });

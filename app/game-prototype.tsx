@@ -67,7 +67,13 @@ import {
   RESONANCE_MAX_STACKS,
   archetypeFor,
   archetypeResourceSteps,
+  beginCharge,
   branchPointsByDirection,
+  heroChargeSteps,
+  heroChargeTuning,
+  heroDefenceTuning,
+  isDefending,
+  releaseCharge,
   canSpendBreath,
   commandBackstab,
   commandBlock,
@@ -404,7 +410,10 @@ export default function GamePrototype() {
   const heroMaxStance = maxHeroStance(state);
   const heroMaxBreath = maxHeroBreath(state);
   const stanceState = heroStanceState(state);
-  const blocking = state.hero.blockingSinceMs > 0;
+  const blocking = isDefending(state);
+  const defence = heroDefenceTuning(state);
+  const chargeTuningNow = heroChargeTuning(state);
+  const chargeSteps = heroChargeSteps(state);
   const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
   const dodgeReady = state.hero.dodgeReadyAtMs <= state.worldTimeMs && canSpendBreath(state, 22);
   const archetype = archetypeFor(state);
@@ -614,6 +623,14 @@ export default function GamePrototype() {
     setState((current) => cancelHeroAction(current));
   }, []);
 
+  const startCharge = useCallback(() => {
+    setState((current) => beginCharge(current));
+  }, []);
+
+  const finishCharge = useCallback(() => {
+    setState((current) => releaseCharge(current));
+  }, []);
+
   const heavyAttackNow = useCallback(() => {
     setState((current) => commandHeavyAttack(current));
   }, []);
@@ -756,7 +773,8 @@ export default function GamePrototype() {
         boosterNow();
       } else if (key === "1" || key === "f") {
         event.preventDefault();
-        attackNearest();
+        // Удержание команды атаки заряжает удар, отпускание его выполняет.
+        if (!event.repeat) startCharge();
       } else if (key === "x") {
         event.preventDefault();
         cancelAction();
@@ -811,6 +829,11 @@ export default function GamePrototype() {
     };
     const onKeyUp = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (key === "1" || key === "f") {
+        event.preventDefault();
+        finishCharge();
+        return;
+      }
       if (key === "v") {
         event.preventDefault();
         setBlocking(false);
@@ -832,7 +855,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, boosterNow, cancelAction, cycleControlMode, diagnosticsOpen, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow, setBlocking]);
+  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, finishCharge, startCharge, boosterNow, cancelAction, cycleControlMode, diagnosticsOpen, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow, setBlocking]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1402,9 +1425,23 @@ export default function GamePrototype() {
         </div>
 
         <div className="combat-cluster" aria-label="Боевые действия">
-          <button type="button" className="ability attack-ability" onClick={attackNearest}>
-            <span className="ability-key">1</span><strong>{weapon.shortName}</strong><small>{heroAttackDamage(state)} урон · {weapon.range.toFixed(1)} кл.</small>
+          <button
+            type="button"
+            className={`ability attack-ability ${chargeSteps > 0 ? "charging" : ""}`}
+            onPointerDown={startCharge}
+            onPointerUp={finishCharge}
+            onPointerLeave={() => state.hero.chargingSinceMs > 0 && finishCharge()}
+          >
+            <span className="ability-key">1</span><strong>{weapon.shortName}</strong>
+            <small>
+              {chargeSteps > 0
+                ? `заряд ${chargeSteps}/${chargeTuningNow.maxSteps}`
+                : `${heroAttackDamage(state)} урон · удержать для заряда`}
+            </small>
             <i className="cooldown-mask" style={{ height: `${cooldownPercent}%` }} />
+            {chargeSteps > 0 ? (
+              <i className="charge-fill" style={{ width: `${(chargeSteps / chargeTuningNow.maxSteps) * 100}%` }} />
+            ) : null}
           </button>
           <button type="button" className={`ability retreat-ability ${state.hero.evadeMode ? "active" : ""}`} onClick={cancelAction}>
             <span className="ability-key">X</span><strong>{state.hero.evadeMode ? "Отступление" : "Убежать"}</strong><small>{state.hero.evadeMode ? "автоатака отключена" : "разорвать бой"}</small>
@@ -1436,8 +1473,14 @@ export default function GamePrototype() {
             onPointerLeave={() => blocking && setBlocking(false)}
             disabled={staggered}
           >
-            <span className="ability-key">V</span><strong>{blocking ? "Блок держит" : "Блок"}</strong>
-            <small>{blocking ? "идеальное окно 180 мс" : "удерживать · 6 дых./с"}</small>
+            <span className="ability-key">V</span>
+            <strong>{blocking ? (defence.canHold ? "Стойка держит" : "Блок") : "Блок"}</strong>
+            <small>
+              {defence.canHold
+                ? `удержание · ${defence.holdCostPerSecond.toFixed(0)} дых./с`
+                : "короткий блок"}
+              {defence.parryWindowMs > 0 ? ` · парирование ${defence.parryWindowMs} мс` : ""}
+            </small>
           </button>
           <button
             type="button"

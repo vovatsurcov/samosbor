@@ -431,3 +431,111 @@ export function migrateHpShare(oldHp: number, oldMax: number, newMax: number): n
   if (oldMax <= 0) return newMax;
   return clamp(Math.round(newMax * (oldHp / oldMax)), 1, newMax);
 }
+
+// --- Настраиваемые пассивами параметры боя -------------------------------
+//
+// Базовая боевая система читает только эту структуру. Любой новый пассивный
+// талант меняет бой, дописывая бонус, а не переписывая механику.
+
+export type DefenceTuning = {
+  /** Можно ли удерживать защитную стойку, а не ставить блок на миг. */
+  canHold: boolean;
+  /** Длительность короткого блока без таланта удержания. */
+  briefMs: number;
+  absorb: number;
+  /** Расход дыхания в секунду при удержании. */
+  holdCostPerSecond: number;
+  /** Доля входящего урона по стойке, которую блок пропускает. */
+  stanceShare: number;
+  /** Окно парирования: ноль означает, что парирования нет. */
+  parryWindowMs: number;
+  /** Доля урона по стойке, возвращаемая атакующему при парировании. */
+  parryReflect: number;
+  riposteMs: number;
+};
+
+export type ChargeTuning = {
+  /** Мс на одну ступень заряда. */
+  stepMs: number;
+  maxSteps: number;
+  damagePerStep: number;
+  stancePerStep: number;
+  breathCost: number;
+};
+
+export const BASE_DEFENCE_TUNING: DefenceTuning = {
+  canHold: false,
+  briefMs: 420,
+  absorb: BLOCK.baseAbsorb,
+  holdCostPerSecond: BREATH_COSTS.blockHoldPerSecond,
+  stanceShare: BLOCK.stanceShare,
+  parryWindowMs: 0,
+  parryReflect: 0,
+  riposteMs: BLOCK.perfectRiposteMs,
+};
+
+export const BASE_CHARGE_TUNING: ChargeTuning = {
+  stepMs: 220,
+  maxSteps: CHARGE_MAX_STEPS,
+  damagePerStep: CHARGE_STEP_DAMAGE,
+  stancePerStep: CHARGE_STEP_STANCE,
+  breathCost: BREATH_COSTS.chargedAttack,
+};
+
+export type DefenceBonuses = {
+  blockHold?: number;
+  block?: number;
+  blockCostReduction?: number;
+  parryWindow?: number;
+  parryReflect?: number;
+};
+
+export type ChargeBonuses = {
+  chargeRate?: number;
+  chargeSteps?: number;
+  chargePower?: number;
+};
+
+/** Собирает параметры защитного действия из пассивных бонусов. */
+export function defenceTuning(bonuses: DefenceBonuses = {}): DefenceTuning {
+  return {
+    ...BASE_DEFENCE_TUNING,
+    canHold: (bonuses.blockHold ?? 0) > 0,
+    absorb: Math.min(BLOCK.absorbCap, BASE_DEFENCE_TUNING.absorb + (bonuses.block ?? 0)),
+    holdCostPerSecond: Math.max(
+      1,
+      BASE_DEFENCE_TUNING.holdCostPerSecond * (1 - Math.min(0.75, bonuses.blockCostReduction ?? 0)),
+    ),
+    parryWindowMs: Math.max(0, Math.round(bonuses.parryWindow ?? 0)),
+    parryReflect: Math.max(0, bonuses.parryReflect ?? 0),
+  };
+}
+
+/** Собирает параметры заряжаемого удара из пассивных бонусов. */
+export function chargeTuning(bonuses: ChargeBonuses = {}): ChargeTuning {
+  return {
+    ...BASE_CHARGE_TUNING,
+    stepMs: Math.max(80, Math.round(BASE_CHARGE_TUNING.stepMs / (1 + (bonuses.chargeRate ?? 0)))),
+    maxSteps: Math.max(1, BASE_CHARGE_TUNING.maxSteps + Math.floor(bonuses.chargeSteps ?? 0)),
+    damagePerStep: BASE_CHARGE_TUNING.damagePerStep + (bonuses.chargePower ?? 0),
+  };
+}
+
+/** Ступени заряда за время удержания команды атаки. */
+export function chargeStepsFor(heldMs: number, tuning: ChargeTuning): number {
+  return Math.min(tuning.maxSteps, Math.floor(Math.max(0, heldMs) / tuning.stepMs));
+}
+
+/** Множители заряженного удара с учётом настроенных пассивами параметров. */
+export function tunedChargeMultipliers(steps: number, tuning: ChargeTuning): { damage: number; stance: number } {
+  const capped = Math.min(tuning.maxSteps, Math.max(0, Math.floor(steps)));
+  return {
+    damage: 1 + tuning.damagePerStep * capped,
+    stance: 1 + tuning.stancePerStep * capped,
+  };
+}
+
+/** Попал ли момент отражения в окно парирования. */
+export function isParry(heldMs: number, tuning: DefenceTuning): boolean {
+  return tuning.parryWindowMs > 0 && heldMs <= tuning.parryWindowMs;
+}

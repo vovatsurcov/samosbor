@@ -101,6 +101,11 @@ import {
   scaleEnemy,
   staggerProfile,
   stanceState,
+  chargeStepsFor,
+  chargeTuning,
+  defenceTuning,
+  isParry,
+  tunedChargeMultipliers,
   BLOCK,
   BREATH_COSTS,
   CRITICAL_EFFECT_PROFILE,
@@ -357,6 +362,8 @@ export type Hero = {
   dodgeReadyAtMs: number;
   perfectDodgeUntilMs: number;
   riposteUntilMs: number;
+  /** Момент начала заряда: удержание команды атаки копит усиленный удар. */
+  chargingSinceMs: number;
   /** Разгон силача: время непрерывного движения к цели. */
   surgeMs: number;
   /** Прицел стрелка: время неподвижности. */
@@ -3357,13 +3364,13 @@ function tickEnemyStance(state: GameState, deltaMs: number): GameState {
 function tickHeroBars(state: GameState, deltaMs: number): GameState {
   const maxStance = maxHeroStance(state);
   const maxBreath = maxHeroBreath(state);
-  const blocking = state.hero.blockingSinceMs > 0;
+  const blocking = isDefending(state);
   const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
 
   const breathIdle = state.hero.breathIdleMs + deltaMs;
   const breathRegen =
     !blocking && breathIdle >= 700 ? (heroBreathRegen(state) * deltaMs) / 1000 : 0;
-  const blockDrain = blocking ? (BREATH_COSTS.blockHoldPerSecond * deltaMs) / 1000 : 0;
+  const blockDrain = blocking ? (heroDefenceTuning(state).holdCostPerSecond * deltaMs) / 1000 : 0;
   const breath = Math.max(0, Math.min(maxBreath, state.hero.breath + breathRegen - blockDrain));
 
   const stanceIdle = state.hero.stanceIdleMs + deltaMs;
@@ -3876,6 +3883,103 @@ export function commandReverseShadow(state: GameState): GameState {
   );
 }
 
+/**
+ * Параметры защитного действия текущего билда. Удержание стойки и окно
+ * парирования существуют только если их открыли пассивные таланты.
+ */
+export function heroDefenceTuning(state: GameState) {
+  return defenceTuning({
+    blockHold: talentBonus(state, "blockHold"),
+    block: talentBonus(state, "block"),
+    blockCostReduction: talentBonus(state, "blockCostReduction"),
+    parryWindow: talentBonus(state, "parryWindow"),
+    parryReflect: talentBonus(state, "parryReflect"),
+  });
+}
+
+/** Параметры заряжаемого удара текущего билда. */
+export function heroChargeTuning(state: GameState) {
+  return chargeTuning({
+    chargeRate: talentBonus(state, "chargeRate"),
+    chargeSteps: talentBonus(state, "chargeSteps"),
+    chargePower: talentBonus(state, "chargePower"),
+  });
+}
+
+/** Сколько ступеней заряда набрано удержанием команды атаки. */
+export function heroChargeSteps(state: GameState): number {
+  if (state.hero.chargingSinceMs <= 0) return 0;
+  return chargeStepsFor(state.worldTimeMs - state.hero.chargingSinceMs, heroChargeTuning(state));
+}
+
+/** Начать заряд: удержание команды атаки копит усиленный удар. */
+export function beginCharge(state: GameState): GameState {
+  if (state.hero.chargingSinceMs > 0) return state;
+  if (state.hero.staggeredUntilMs > state.worldTimeMs) return state;
+  return {
+    ...state,
+    hero: { ...state.hero, chargingSinceMs: Math.max(1, state.worldTimeMs) },
+  };
+}
+
+/**
+ * Отпустить заряд. Без набранных ступеней это обычная команда атаки, с
+ * набранными — заряженный удар по правилам, собранным из пассивов.
+ */
+export function releaseCharge(state: GameState): GameState {
+  const steps = heroChargeSteps(state);
+  const cleared: GameState = { ...state, hero: { ...state.hero, chargingSinceMs: 0 } };
+  if (steps <= 0) return commandAttackNearest(cleared);
+
+  const target = enemyById(cleared, cleared.hero.attackTargetId) ?? skillTarget(cleared);
+  if (!target) return appendLog(cleared, "Заряд сброшен: цели нет.");
+  const tuning = heroChargeTuning(cleared);
+  if (!canSpendBreath(cleared, tuning.breathCost)) {
+    return appendLog(cleared, "Не хватает дыхания на заряженный удар.");
+  }
+  const hero = cleared.hero.positions[cleared.zone];
+  if (distance(hero, target.position) > heroAttackRange(cleared)) {
+    return appendLog(cleared, "Цель слишком далеко для заряженного удара.");
+  }
+
+  const weapon = weaponFor(cleared);
+  let next = spendBreath(cleared, tuning.breathCost);
+  const spread = rollPercent(next);
+  next = spread.state;
+  const criticalRoll = rollPercent(next);
+  next = criticalRoll.state;
+  const multipliers = tunedChargeMultipliers(steps, tuning);
+  const strike = resolveStrike(
+    {
+      damage: Math.round(heroAttackDamage(next) * multipliers.damage),
+      stanceDamage: Math.round(weapon.stanceDamage * multipliers.stance),
+      damageType: weapon.damageType,
+      kind: "charged",
+      chargeSteps: 0,
+      penetration: weapon.penetration,
+      criticalChance: talentBonus(next, "critical"),
+      counterTiming: target.castUntilMs > next.worldTimeMs,
+    },
+    enemyCombatProfile(next, target),
+    {
+      roll: spread.roll / 99,
+      criticalRoll: criticalRoll.roll / 100,
+      facing: strikeFacing(next, target),
+    },
+  );
+  next = applyStrikeToEnemy(next, target.id, strike, hero, "charged");
+  next = addEffect(next, hero, target.position, "hero-hit", strike.damage);
+  next = {
+    ...next,
+    hero: { ...next.hero, attackCooldownMs: heroAttackCooldown(next) * 1.5 },
+  };
+  next = appendLog(
+    next,
+    `Заряженный удар (${steps}): ${strike.damage} урона, стойка −${strike.stanceDamage}${strike.staggered ? "; цель ошеломлена" : ""}.`,
+  );
+  return strike.targetHp <= 0 ? finishEnemy(next, target.id) : next;
+}
+
 /** Хватает ли дыхания на действие. */
 export function canSpendBreath(state: GameState, cost: number): boolean {
   return state.hero.breath >= cost && state.hero.staggeredUntilMs <= state.worldTimeMs;
@@ -3906,8 +4010,19 @@ export function commandBlock(state: GameState, holding: boolean): GameState {
   if (state.hero.staggeredUntilMs > state.worldTimeMs) return state;
   return {
     ...state,
-    hero: { ...state.hero, blockingSinceMs: state.worldTimeMs, path: [], destination: null },
+    hero: { ...state.hero, blockingSinceMs: Math.max(1, state.worldTimeMs), path: [], destination: null },
   };
+}
+
+/**
+ * Держится ли защита прямо сейчас. Без пассива удержания короткий блок сам
+ * опадает через `briefMs`: базовое действие остаётся мгновенным.
+ */
+export function isDefending(state: GameState): boolean {
+  if (state.hero.blockingSinceMs <= 0) return false;
+  const tuning = heroDefenceTuning(state);
+  if (tuning.canHold) return true;
+  return state.worldTimeMs - state.hero.blockingSinceMs <= tuning.briefMs;
 }
 
 /** Уклонение: кадры неуязвимости, смещение и запрет повтора на время восстановления. */
@@ -4462,9 +4577,11 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
     next = addEffect(next, enemy.position, heroPosition, "miss", 0);
     return appendLog(next, `${enemy.name}: удар прошёл мимо — уклонение.`);
   }
-  const holding = next.hero.blockingSinceMs > 0;
-  const perfect =
-    holding && next.worldTimeMs - next.hero.blockingSinceMs <= BLOCK.perfectWindowMs;
+  const defence = heroDefenceTuning(next);
+  const holding = isDefending(next);
+  // Парирование открывается только пассивом ловкого направления.
+  const heldMs = next.worldTimeMs - next.hero.blockingSinceMs;
+  const perfect = holding && isParry(heldMs, defence);
   const spread = rollPercent(next);
   next = spread.state;
   const heroStanceMax = maxHeroStance(next);
@@ -4490,19 +4607,23 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
       blocking: holding,
       perfectBlock: perfect,
       blockAbsorb:
-        talentBonus(next, "block") +
+        defence.absorb -
+        BLOCK.baseAbsorb +
         (archetypeFor(next) === "bulwark" ? footingAbsorbBonus(footingStepsFor(next.hero.footingMs)) : 0),
     },
   );
   const damage = enemy.rank === "boss" ? capBossHitOnHero(strike.damage, next.hero.hp) : strike.damage;
-  const heroStagger = strike.targetStance <= 0 && next.hero.stance > 0
+  const staggerResist = Math.min(0.75, talentBonus(next, "staggerResist"));
+  const incomingStance = Math.round((next.hero.stance - strike.targetStance) * (1 - staggerResist));
+  const heroStanceAfter = Math.max(0, next.hero.stance - incomingStance);
+  const heroStagger = heroStanceAfter <= 0 && next.hero.stance > 0
     && next.hero.staggerImmuneUntilMs <= next.worldTimeMs;
   next = {
     ...next,
     hero: {
       ...next.hero,
       hp: Math.max(0, next.hero.hp - damage),
-      stance: heroStagger ? Math.round(heroStanceMax * 0.35) : strike.targetStance,
+      stance: heroStagger ? Math.round(heroStanceMax * 0.35) : heroStanceAfter,
       stanceIdleMs: 0,
       staggeredUntilMs: heroStagger
         ? next.worldTimeMs + staggerProfile("common").durationMs
@@ -4516,13 +4637,17 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
     },
   };
   if (perfect) {
-    // Идеальный блок возвращает урон по стойке атакующему и открывает контратаку.
+    // Парирование отражает урон по стойке атакующему и открывает контратаку.
+    const reflected = Math.round(
+      strike.attackerStanceDamage * (1 + defence.parryReflect),
+    );
     next = updateEnemy(next, enemy.id, (current) => ({
       ...current,
-      stance: Math.max(0, (current.stance ?? 0) - strike.attackerStanceDamage),
+      stance: Math.max(0, (current.stance ?? 0) - reflected),
       stanceIdleMs: 0,
+      castUntilMs: 0,
     }));
-    next = { ...next, hero: { ...next.hero, riposteUntilMs: next.worldTimeMs + BLOCK.perfectRiposteMs } };
+    next = { ...next, hero: { ...next.hero, riposteUntilMs: next.worldTimeMs + defence.riposteMs } };
   }
   next = addEffect(next, enemy.position, heroPosition, perfect ? "control" : "enemy-hit", damage);
   next = appendLog(
@@ -5340,6 +5465,7 @@ export function createInitialState(): GameState {
       dodgeReadyAtMs: 0,
       perfectDodgeUntilMs: 0,
       riposteUntilMs: 0,
+      chargingSinceMs: 0,
       surgeMs: 0,
       aimMs: 0,
       scoutUntilMs: 0,
