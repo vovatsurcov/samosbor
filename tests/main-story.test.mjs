@@ -11,6 +11,7 @@ import {
   recordMainStoryEvidence,
   setProvisionalStoryFact,
   tickGame,
+  tickMainStory,
 } from "../app/game-engine.ts";
 
 const COMPLETE_CAMPAIGN = {
@@ -139,7 +140,7 @@ test("открытие Города 539 закрывает MAIN-005 без фи�
       positions: { ...state.hero.positions, floor539: { x: 3, y: 33 } },
     },
   };
-  state = tickGame(state, 1);
+  state = tickMainStory(state);
   assert.ok(state.mainStory.completedBeats.includes("MAIN-005"));
   assert.equal(state.mainStory.activeBeat, "MAIN-006");
   assert.deepEqual(state.mainStory.provisionalFacts, {});
