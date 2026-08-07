@@ -105,7 +105,15 @@ export function createInitialState(): any {
 }
 
 export function migrateGameState(raw: any): any {
-  return normalizeCityState(migrateRegionalState(raw));
+  const fresh = base.createInitialState();
+  const requestedZone = typeof raw?.zone === "string" ? raw.zone : null;
+  const knownZone = requestedZone === FLOOR_544 ||
+    (requestedZone != null && Object.prototype.hasOwnProperty.call(fresh.hero.positions, requestedZone));
+  const safeRaw = {
+    ...(raw ?? {}),
+    zone: knownZone ? requestedZone : fresh.zone,
+  };
+  return normalizeCityState(migrateRegionalState(safeRaw));
 }
 
 export function commandMove(state: any, target: base.Point): any {
