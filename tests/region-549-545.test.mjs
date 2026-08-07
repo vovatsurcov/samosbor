@@ -94,7 +94,7 @@ test("все переходы и специальные точки достиж�
   assert.equal(Object.keys(REGION_TRANSITIONS).length, 10);
 });
 
-test("переход с этажа 550 ведёт через всю цепочку до поселения 545", () => {
+test("переход с этажа 550 ведёт через всю цепочку до Города 545", () => {
   let state = createInitialState();
   state = interactAtTile(state, "floor550", "D");
   assert.equal(state.zone, "floor549");
@@ -116,12 +116,12 @@ test("обратный маршрут возвращает героя с 545-г�
   assert.equal(state.zone, "floor550");
 });
 
-test("Сухой док является защищённым поселением без вражеских проявлений", () => {
+test("Город 545 является защищённым многоэтажным хабом без вражеских проявлений", () => {
   const state = createInitialState();
   assert.equal(isCitySafeZone("floor545"), true);
   assert.equal(REGION_SAFE_ZONES.has("floor545"), true);
   assert.equal(state.enemies.filter((enemy) => enemy.zone === "floor545" && enemy.hp > 0).length, 0);
-  assert.match(objectiveFor({ ...state, zone: "floor545" }), /Сухого дока|поселение/i);
+  assert.match(objectiveFor({ ...state, zone: "floor545" }), /Города 545|старост|Сухого дока/i);
 });
 
 test("на четырёх опасных этажах существуют физические популяции", () => {
