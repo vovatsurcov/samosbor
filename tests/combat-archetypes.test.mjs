@@ -26,7 +26,7 @@ import {
   enemyById,
   footingStepsFor,
   heroMoveSpeed,
-  setArchetype,
+  investDirection,
   staggerThresholdFor,
   tempoGrantsBackstab,
   tickGame,
@@ -155,7 +155,7 @@ test("опора танка копится блоком и усиливает п
   assert.equal(footingStepsFor(1200), 1);
   assert.equal(footingStepsFor(99999), 3);
 
-  let state = heroAt(setArchetype(createInitialState(), "bulwark"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "guard"), { x: 9, y: 8 });
   state = { ...state, worldTimeMs: 20000 };
   state = commandBlock(state, true);
   let holding = state;
@@ -168,7 +168,7 @@ test("опора танка копится блоком и усиливает п
 });
 
 test("толчок щитом отбрасывает цель и срывает подготовку атаки", () => {
-  let state = heroAt(setArchetype(createInitialState(), "bulwark"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "guard"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", {
     position: { x: 10, y: 8 },
     castUntilMs: 99999,
@@ -185,7 +185,7 @@ test("толчок щитом отбрасывает цель и срывает 
 });
 
 test("серия ловкача бьёт трижды по нарастающей и набирает темп", () => {
-  let state = heroAt(setArchetype(createInitialState(), "skirmisher"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "agility"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", {
     position: { x: 10, y: 8 },
     hp: 900,
@@ -205,7 +205,7 @@ test("полный темп ловкача превращает любой уг�
   assert.equal(tempoGrantsBackstab(2), false);
   assert.equal(tempoGrantsBackstab(3), true);
 
-  let state = heroAt(setArchetype(createInitialState(), "skirmisher"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "agility"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", { position: { x: 10, y: 8 }, hp: 900, maxHp: 900, attackCooldownMs: 99999 });
   state = commandAttack(state, "guard-kl4");
 
@@ -220,7 +220,7 @@ test("полный темп ловкача превращает любой уг�
 });
 
 test("заход за спину переносит героя в тыл и бьёт как по не видящей цели", () => {
-  let state = heroAt(setArchetype(createInitialState(), "skirmisher"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "agility"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", { position: { x: 10, y: 8 }, hp: 900, maxHp: 900, attackCooldownMs: 99999 });
   state = commandAttack(state, "guard-kl4");
 
@@ -232,7 +232,7 @@ test("заход за спину переносит героя в тыл и бь
 });
 
 test("позиция тяжёлого стрелка меняет размен урона и подвижности", () => {
-  let state = heroAt(setArchetype(createInitialState(), "heavy_gunner"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "suppression"), { x: 9, y: 8 });
   const mobile = heroMoveSpeed(state);
 
   const deployed = commandSetUp(state);
@@ -245,7 +245,7 @@ test("позиция тяжёлого стрелка меняет размен �
 });
 
 test("стрельба греет ствол, перегрев блокирует оружие, сброс стоит уязвимости", () => {
-  let state = heroAt(setArchetype(createInitialState(), "heavy_gunner"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "suppression"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", { position: { x: 10, y: 8 }, hp: 9000, maxHp: 9000, attackCooldownMs: 99999 });
   state = commandAttack(state, "guard-kl4");
 
@@ -265,7 +265,7 @@ test("стрельба греет ствол, перегрев блокируе�
 });
 
 test("подавление прижимает группу без урона", () => {
-  let state = heroAt(setArchetype(createInitialState(), "heavy_gunner"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "suppression"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", { position: { x: 11, y: 8 }, mode: "combat", attackCooldownMs: 0 });
   const before = enemyById(state, "guard-kl4").hp;
 
@@ -281,7 +281,7 @@ test("резонанс копит стеки, цепь бьёт по групп�
   assert.ok(chainDamageAt(100, 3) > 0);
   assert.equal(chainDamageAt(100, 4), 0, "цепь ограничена четырьмя переходами");
 
-  let state = heroAt(setArchetype(createInitialState(), "resonance"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "resonance"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", { position: { x: 10, y: 8 }, hp: 900, maxHp: 900, attackCooldownMs: 99999 });
   state = commandAttack(state, "guard-kl4");
 
@@ -305,7 +305,7 @@ test("резонанс копит стеки, цепь бьёт по групп�
 });
 
 test("обратная тень даёт неуязвимость ценой заражения и запрета атаковать", () => {
-  let state = heroAt(setArchetype(createInitialState(), "resonance"), { x: 9, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "resonance"), { x: 9, y: 8 });
   state = withEnemy(state, "guard-kl4", {
     position: { x: 10, y: 8 },
     damage: 240,

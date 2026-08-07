@@ -16,6 +16,8 @@ import {
   TALENT_BY_ID,
   TALENT_NODES,
   type TalentBonusKey,
+  DIRECTION_THRESHOLD,
+  dominantBranches,
 } from "./game-skills.ts";
 import {
   REGION_CONTAINER_CONTENTS,
@@ -355,8 +357,6 @@ export type Hero = {
   dodgeReadyAtMs: number;
   perfectDodgeUntilMs: number;
   riposteUntilMs: number;
-  /** Выбранный боевой архетип: определяет ресурс и цепочку. */
-  archetype: ArchetypeId;
   /** Разгон силача: время непрерывного движения к цели. */
   surgeMs: number;
   /** Прицел стрелка: время неподвижности. */
@@ -1787,9 +1787,9 @@ export function heroMoveSpeed(state: GameState): number {
   const overload = Math.max(0, inventoryWeight(state) - carryCapacity(state));
   const overloadFactor = Math.max(0.55, 1 - overload * 0.08);
   const surge =
-    state.hero.archetype === "power" ? surgeSpeedBonus(surgeStepsFor(state.hero.surgeMs)) : 0;
+    archetypeFor(state) === "power" ? surgeSpeedBonus(surgeStepsFor(state.hero.surgeMs)) : 0;
   const deployed =
-    state.hero.archetype === "heavy_gunner" && state.hero.deployedSinceMs > 0
+    archetypeFor(state) === "heavy_gunner" && state.hero.deployedSinceMs > 0
       ? 1 - SET_UP_SPEED_PENALTY
       : 1;
   return Math.max(
@@ -2477,7 +2477,7 @@ export function consumeInventoryItem(state: GameState, instanceId: string): Game
   }
 
   if (entry.itemId === "batteryPack") {
-    if (branchTalentPoints(state, "engineer") < 1) {
+    if (talentBonus(state, "droneDamage") <= 0) {
       return appendLog(state, "Некуда подключить аккумулятор: рембот не допущен к смене.");
     }
     let next: GameState = {
@@ -2895,7 +2895,7 @@ export function activateSkillSlot(state: GameState, slot: number): GameState {
 }
 
 function skillsFromTalents(talents: string[]): Skills {
-  const skills: Skills = { force: 0, fire: 0, stealth: 0, bulwark: 0, engineer: 0, resonance: 0 };
+  const skills: Skills = { power: 0, guard: 0, agility: 0, precision: 0, suppression: 0, resonance: 0 };
   for (const talentId of talents) {
     const branch = TALENT_BY_ID[talentId] ? branchForTalent(TALENT_BY_ID[talentId]) : null;
     if (branch) skills[branch] += TALENT_BY_ID[talentId].cost;
@@ -2905,8 +2905,8 @@ function skillsFromTalents(talents: string[]): Skills {
 
 export function applyTrainingBuild(state: GameState, build: TrainingBuild): GameState {
   const branchIds = build === "mobileFire"
-    ? ["core:01", "core:02", "core:04", ...Array.from({ length: 9 }, (_, index) => `fire:${String(index + 1).padStart(2, "0")}`), "legendary:kinetic-gyro"]
-    : ["core:01", "core:02", "core:08", ...Array.from({ length: 9 }, (_, index) => `force:${String(index + 1).padStart(2, "0")}`), ...Array.from({ length: 4 }, (_, index) => `bulwark:${String(index + 1).padStart(2, "0")}`), "legendary:section-collapse"];
+    ? ["core:01", "core:02", "core:04", ...Array.from({ length: 9 }, (_, index) => `precision:${String(index + 1).padStart(2, "0")}`), "legendary:kinetic-gyro"]
+    : ["core:01", "core:02", "core:08", ...Array.from({ length: 9 }, (_, index) => `power:${String(index + 1).padStart(2, "0")}`), ...Array.from({ length: 4 }, (_, index) => `guard:${String(index + 1).padStart(2, "0")}`), "legendary:section-collapse"];
   const legendaryTalent = build === "mobileFire" ? "legendary:kinetic-gyro" : "legendary:section-collapse";
   const weaponId: WeaponId = build === "mobileFire" ? "horizonCarbine" : "sectorMaul";
   let next: GameState = {
@@ -3400,19 +3400,58 @@ function tickHeroBars(state: GameState, deltaMs: number): GameState {
   return next;
 }
 
-export function archetypeFor(state: GameState): ArchetypeId {
-  return state.hero.archetype ?? "power";
+/** Направление дерева → боевое направление механик. Классов в игре нет. */
+const BRANCH_ARCHETYPE: Record<SkillBranch, ArchetypeId> = {
+  power: "power",
+  guard: "bulwark",
+  agility: "skirmisher",
+  precision: "marksman",
+  suppression: "heavy_gunner",
+  resonance: "resonance",
+};
+
+export function branchPointsByDirection(state: GameState): Record<SkillBranch, number> {
+  return Object.fromEntries(
+    (Object.keys(BRANCH_ARCHETYPE) as SkillBranch[]).map((branch) => [
+      branch,
+      branchTalentPoints(state, branch),
+    ]),
+  ) as Record<SkillBranch, number>;
 }
 
-export function setArchetype(state: GameState, archetype: ArchetypeId): GameState {
-  const definition = ARCHETYPES[archetype];
-  if (!definition.implemented) {
-    return appendLog(state, `${definition.name}: архетип ещё не реализован в прототипе.`);
-  }
-  return appendLog(
-    { ...state, hero: { ...state.hero, archetype, surgeMs: 0, aimMs: 0 } },
-    `Боевой архетип: ${definition.name.toLowerCase()}. Ресурс — ${definition.resourceName.toLowerCase()}.`,
-  );
+/**
+ * Ведущее направление боя выводится из набранных талантов. Игрок не выбирает
+ * класс: «танк» и «ловкач» — это следствие вложенных очков, а не кнопка.
+ */
+export function archetypeFor(state: GameState): ArchetypeId {
+  const points = branchPointsByDirection(state);
+  const leading = dominantBranches(points)[0];
+  return leading && points[leading] >= DIRECTION_THRESHOLD ? BRANCH_ARCHETYPE[leading] : "power";
+}
+
+/**
+ * Быстро вкладывает очки в направление. Это не выбор класса, а сокращение для
+ * обучающих сборок и тестов: тот же результат даёт ручная раскладка талантов.
+ */
+export function investDirection(
+  state: GameState,
+  branch: SkillBranch,
+  points: number = DIRECTION_THRESHOLD,
+): GameState {
+  let next: GameState = {
+    ...state,
+    hero: { ...state.hero, skillPoints: state.hero.skillPoints + points },
+  };
+  for (let index = 0; index < points; index += 1) next = allocateSkill(next, branch);
+  return next;
+}
+
+/** Насколько заявлено ведущее направление: доля очков в нём от всех вложенных. */
+export function directionCommitment(state: GameState): number {
+  const points = branchPointsByDirection(state);
+  const total = Object.values(points).reduce((sum, value) => sum + value, 0);
+  const leading = dominantBranches(points)[0];
+  return total > 0 && leading ? points[leading] / total : 0;
 }
 
 /** Ступени ресурса специализации: разгон силача либо прицел стрелка. */
@@ -4043,13 +4082,13 @@ function heroAttackTick(state: GameState): GameState {
       // Раскрутка ускоряет темп тяжёлого ствола, стрельба его греет.
       attackCooldownMs:
         heroAttackCooldown(state) *
-        (state.hero.archetype === "heavy_gunner" ? spinUpFactor(state.hero.firingMs) : 1),
+        (archetypeFor(state) === "heavy_gunner" ? spinUpFactor(state.hero.firingMs) : 1),
       heat:
-        state.hero.archetype === "heavy_gunner"
+        archetypeFor(state) === "heavy_gunner"
           ? Math.min(HEAT_OVERHEAT, state.hero.heat + HEAT_PER_SHOT)
           : state.hero.heat,
       firingMs:
-        state.hero.archetype === "heavy_gunner"
+        archetypeFor(state) === "heavy_gunner"
           ? Math.min(4000, state.hero.firingMs + 900)
           : state.hero.firingMs,
       path: movingFire ? state.hero.path : [],
@@ -4508,7 +4547,7 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
 }
 
 function tickDrone(state: GameState): GameState {
-  if (state.hero.evadeMode || branchTalentPoints(state, "engineer") < 1 || state.hero.droneCooldownMs > 0) return state;
+  if (state.hero.evadeMode || talentBonus(state, "droneDamage") <= 0 || state.hero.droneCooldownMs > 0) return state;
   const hero = state.hero.positions[state.zone];
   const target = state.enemies
     .filter(
@@ -5301,7 +5340,6 @@ export function createInitialState(): GameState {
       dodgeReadyAtMs: 0,
       perfectDodgeUntilMs: 0,
       riposteUntilMs: 0,
-      archetype: "power",
       surgeMs: 0,
       aimMs: 0,
       scoutUntilMs: 0,
@@ -5328,11 +5366,11 @@ export function createInitialState(): GameState {
         will: 2,
       },
       skills: {
-        force: 0,
-        fire: 0,
-        stealth: 0,
-        bulwark: 0,
-        engineer: 0,
+        power: 0,
+        guard: 0,
+        agility: 0,
+        precision: 0,
+        suppression: 0,
         resonance: 0,
       },
       talents: [],
@@ -5428,6 +5466,28 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
       ? samosborZones[zone]
       : { ...samosborZones[zone], ...saved, severity: profile.severity };
   }
+  // Дерево v2: старые классовые ветки переименованы в направления, поэтому
+  // сохранённые таланты и очки переносятся по таблице соответствия.
+  const LEGACY_BRANCHES: Record<string, SkillBranch> = {
+    force: "power",
+    fire: "precision",
+    stealth: "agility",
+    bulwark: "guard",
+    engineer: "suppression",
+    resonance: "resonance",
+  };
+  const migrateTalentId = (id: string): string => {
+    const [scope, rest] = id.split(":");
+    const mapped = LEGACY_BRANCHES[scope];
+    if (mapped && rest) return `${mapped}:${rest}`;
+    if (scope === "hybrid" && rest) {
+      const [left, right] = rest.split("-");
+      const mappedPair = [LEGACY_BRANCHES[left] ?? left, LEGACY_BRANCHES[right] ?? right].sort();
+      return `hybrid:${mappedPair[0]}-${mappedPair[1]}`;
+    }
+    return id;
+  };
+
   // Сохранение до боевой модели v2 не знает о стойке: его полосы пересчитываются
   // долей, иначе герой с 5 ОЗ из 8 очнётся почти трупом на шкале в 120.
   const legacyBars = rawHero !== undefined && rawHero.stance === undefined;
@@ -5443,6 +5503,13 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
       positions: { ...fresh.hero.positions, ...(rawHero?.positions ?? {}) },
       pendingInteraction: null,
       evadeMode: rawHero?.evadeMode ?? false,
+      talents: (rawHero?.talents ?? [])
+        .map(migrateTalentId)
+        .filter((id) => TALENT_BY_ID[id] !== undefined),
+      discoveredTalents: (rawHero?.discoveredTalents ?? [])
+        .map(migrateTalentId)
+        .filter((id) => TALENT_BY_ID[id] !== undefined),
+      skills: { ...fresh.hero.skills },
     },
     enemies: legacyEnemies ? fresh.enemies : (raw.enemies ?? fresh.enemies),
     visited: { ...fresh.visited, ...(raw.visited ?? {}) },

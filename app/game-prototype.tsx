@@ -67,6 +67,7 @@ import {
   RESONANCE_MAX_STACKS,
   archetypeFor,
   archetypeResourceSteps,
+  branchPointsByDirection,
   canSpendBreath,
   commandBackstab,
   commandBlock,
@@ -107,7 +108,6 @@ import {
   samosborPhaseHint,
   samosborPhaseIn,
   samosborPhaseLabel,
-  setArchetype,
   setControlMode,
   SKILL_DESCRIPTIONS,
   SKILL_NAMES,
@@ -302,11 +302,11 @@ function tileDescription(tile: string, zoneIsVoid: boolean): string {
 
 function branchGlyph(branch: SkillBranch): string {
   return {
-    force: "С",
-    fire: "О",
-    stealth: "Т",
-    bulwark: "Г",
-    engineer: "И",
+    power: "С",
+    guard: "Г",
+    agility: "Л",
+    precision: "Т",
+    suppression: "П",
     resonance: "А",
   }[branch];
 }
@@ -366,8 +366,8 @@ export default function GamePrototype() {
   const [state, setState] = useState<GameState>(() => createInitialState());
   const [saveLoaded, setSaveLoaded] = useState(false);
   const [activePanel, setActivePanel] = useState<MenuPanel>(null);
-  const [talentView, setTalentView] = useState<TalentView>("fire");
-  const [selectedTalentId, setSelectedTalentId] = useState<string>("fire:01");
+  const [talentView, setTalentView] = useState<TalentView>("precision");
+  const [selectedTalentId, setSelectedTalentId] = useState<string>("precision:01");
   const [tvMode, setTvMode] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [lastInput, setLastInput] = useState("—");
@@ -413,6 +413,17 @@ export default function GamePrototype() {
   const resourceShare = archetype === "heavy_gunner"
     ? Math.min(1, state.hero.heat / HEAT_OVERHEAT)
     : Math.min(1, resourceSteps / Math.max(1, archetypeDefinition.maxResource));
+  const directionPoints = (Object.entries(branchPointsByDirection(state)) as [SkillBranch, number][])
+    .filter(([, points]) => points > 0)
+    .sort((left, right) => right[1] - left[1]);
+  const BRANCH_ARCHETYPE_LABEL: Record<SkillBranch, string> = {
+    power: ARCHETYPES.power.name,
+    guard: ARCHETYPES.bulwark.name,
+    agility: ARCHETYPES.skirmisher.name,
+    precision: ARCHETYPES.marksman.name,
+    suppression: ARCHETYPES.heavy_gunner.name,
+    resonance: ARCHETYPES.resonance.name,
+  };
   const controlMode = controlModeFor(state);
   const suggestedAction = currentModeAction(state);
   const overheated = state.hero.overheatedUntilMs > state.worldTimeMs;
@@ -625,10 +636,6 @@ export default function GamePrototype() {
       const index = order.indexOf(controlModeFor(current));
       return setControlMode(current, order[(index + 1) % order.length]);
     });
-  }, []);
-
-  const chooseArchetype = useCallback((archetype: ArchetypeId) => {
-    setState((current) => setArchetype(current, archetype));
   }, []);
 
   /** Ключевое действие текущего архетипа: у каждого своё. */
@@ -1237,7 +1244,7 @@ export default function GamePrototype() {
                 );
               })}
 
-              {branchPoints.engineer >= 1 ? (
+              {branchPoints.suppression >= 1 ? (
                 <g className="drone-marker" transform={`translate(${heroIso.x + 20} ${heroIso.y - 31})`} filter="url(#actor-shadow)">
                   <path d="M -8 0 L 0 -7 L 8 0 L 0 7 Z" fill="#3d5552" stroke="#8ec7c0" strokeWidth="2" />
                   <circle cx="0" cy="0" r="2.5" fill="#d4f2ed" />
@@ -1487,18 +1494,18 @@ export default function GamePrototype() {
               <span className="ability-key">H</span><strong>{ARCHETYPE_ACTIONS[archetype].secondary}</strong>
             </button>
           </div>
-          <div className="archetype-switch" role="group" aria-label="Смена архетипа">
-            {(Object.keys(ARCHETYPES) as ArchetypeId[]).map((id) => (
-              <button
-                key={id}
-                type="button"
-                className={`archetype-chip ${id === archetype ? "active" : ""}`}
-                onClick={() => chooseArchetype(id)}
-                title={ARCHETYPES[id].chain.join(" → ")}
-              >
-                {ARCHETYPES[id].name}
-              </button>
-            ))}
+          <div className="direction-readout" aria-label="Направление билда">
+            {directionPoints.length ? (
+              <ul>
+                {directionPoints.map(([branch, points]) => (
+                  <li key={branch} className={BRANCH_ARCHETYPE_LABEL[branch] === archetypeDefinition.name ? "leading" : ""}>
+                    <span>{SKILL_NAMES[branch]}</span><strong>{points}</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Очки ещё не вложены: направление определится по дереву талантов.</p>
+            )}
           </div>
         </div>
 
@@ -1554,7 +1561,7 @@ export default function GamePrototype() {
                       </button>
                     );
                   })}
-                  <div className={`gear-slot slot-drone ${branchPoints.engineer >= 1 ? "unlocked" : ""}`}><small>Спутник</small><strong>{branchPoints.engineer >= 1 ? "Рембот Р-3" : "Не допущен"}</strong></div>
+                  <div className={`gear-slot slot-drone ${branchPoints.suppression >= 1 ? "unlocked" : ""}`}><small>Спутник</small><strong>{branchPoints.suppression >= 1 ? "Рембот Р-3" : "Не допущен"}</strong></div>
                 </div>
               </section>
 
@@ -1638,7 +1645,7 @@ export default function GamePrototype() {
         <div className="game-menu-overlay character-overlay talent-overlay" role="dialog" aria-modal="false" aria-label="Панель талантов">
           <div className="character-window talent-window-wow">
             <header className="menu-window-header">
-              <div><p className="eyebrow">КВАЛИФИКАЦИОННАЯ СЕТКА</p><h2>Таланты и специализация</h2><p>Отдельное дерево в духе классовой панели: ветки слева, ранги по центру, подробности справа.</p></div>
+              <div><p className="eyebrow">КВАЛИФИКАЦИОННАЯ СЕТКА</p><h2>Таланты и направления</h2><p>Общее дерево без классов: направления слева, ранги по центру, подробности справа. Специализация проявляется из вложенных очков.</p></div>
               <nav className="menu-window-tabs"><button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button><button type="button" onClick={() => setActivePanel("inventory")}>Инвентарь <kbd>I</kbd></button><button type="button" className="active">Таланты <kbd>T</kbd></button></nav>
               <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть таланты">×</button>
             </header>

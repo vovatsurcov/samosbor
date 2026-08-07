@@ -24,7 +24,7 @@ import {
   maxHeroHp,
   maxHeroStance,
   migrateGameState,
-  setArchetype,
+  investDirection,
   tickGame,
   zoneFloorNumber,
 } from "../app/game-engine.ts";
@@ -211,16 +211,24 @@ test("все шесть архетипов реализованы, у каждо
   }
   assert.equal(resources.size, 6, "ресурс каждого архетипа уникален");
 
+  // Направление выводится из вложенных очков, а не выбирается кнопкой.
   const state = createInitialState();
-  assert.equal(archetypeFor(state), "power");
-  for (const id of ["bulwark", "skirmisher", "marksman", "heavy_gunner", "resonance"]) {
-    assert.equal(archetypeFor(setArchetype(state, id)), id, id);
+  assert.equal(archetypeFor(state), "power", "без очков — базовое направление");
+  const derived = [
+    ["guard", "bulwark"],
+    ["agility", "skirmisher"],
+    ["precision", "marksman"],
+    ["suppression", "heavy_gunner"],
+    ["resonance", "resonance"],
+  ];
+  for (const [branch, expected] of derived) {
+    assert.equal(archetypeFor(investDirection(state, branch)), expected, branch);
   }
 });
 
 test("разгон силача копится движением к цели и обнуляется остановкой", () => {
   // Открытый коридор восьмой строки: герой справа, противник слева в поле зрения.
-  let state = heroAt(setArchetype(createInitialState(), "power"), { x: 16, y: 8 });
+  let state = heroAt(investDirection(createInitialState(), "power"), { x: 16, y: 8 });
   state = withEnemy(state, "guard-kl4", { position: { x: 2, y: 8 }, attackCooldownMs: 99999 });
   state = commandMove(state, { x: 3, y: 8 });
   // Цель фиксируется на весь путь: иначе разгон честно обнулится, когда герой
@@ -241,7 +249,7 @@ test("разгон силача копится движением к цели и
 });
 
 test("прицел стрелка копится неподвижностью и обнуляется движением", () => {
-  let state = heroAt(setArchetype(createInitialState(), "marksman"), { x: 9, y: 4 });
+  let state = heroAt(investDirection(createInitialState(), "precision"), { x: 9, y: 4 });
   assert.equal(archetypeFor(state), "marksman");
 
   let still = state;
@@ -256,7 +264,7 @@ test("прицел стрелка копится неподвижностью и
 });
 
 test("метка и разведка стрелка меняют бой, а не только цифру", () => {
-  let state = heroAt(setArchetype(createInitialState(), "marksman"), { x: 9, y: 4 });
+  let state = heroAt(investDirection(createInitialState(), "precision"), { x: 9, y: 4 });
   state = commandAttack(state, "guard-kl4");
 
   const marked = commandMarkTarget(state);
@@ -268,7 +276,7 @@ test("метка и разведка стрелка меняют бой, а не
   assert.match(scouted.log[0], /Разведка/i);
 
   // Силачу разведка не принадлежит.
-  const power = setArchetype(createInitialState(), "power");
+  const power = investDirection(createInitialState(), "power");
   assert.match(commandScout(power).log[0], /стрелку/i);
 });
 

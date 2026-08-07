@@ -309,16 +309,19 @@ test("смена экипировки немедленно меняет рабо
   assert.ok(heroAttackRange(rifle) > heroAttackRange(melee));
 });
 
-test("инженерная ветвь открывает рембота и активные протоколы по порогам", () => {
+test("подавляющее направление открывает устройства и протоколы по порогам", () => {
   const initial = createInitialState();
   const state = { ...initial, hero: { ...initial.hero, skillPoints: 18 } };
-  const firstRank = allocateSkill(state, "engineer");
-  const secondRank = allocateSkill(firstRank, "engineer");
+  const firstRank = allocateSkill(state, "suppression");
+  const secondRank = allocateSkill(firstRank, "suppression");
 
   assert.equal(secondRank.hero.skillPoints, 16);
-  assert.equal(secondRank.hero.skills.engineer, 2);
-  assert.equal(branchTalentPoints(secondRank, "engineer"), 2);
-  assert.ok(Object.values(ACTIVE_SKILLS).some((skill) => skill.branch === "engineer" && skill.unlockAt === 1));
+  assert.equal(secondRank.hero.skills.suppression, 2);
+  assert.equal(branchTalentPoints(secondRank, "suppression"), 2);
+  assert.ok(Object.values(ACTIVE_SKILLS).some((skill) => skill.branch === "suppression" && skill.unlockAt === 1));
+  // Классовых веток скрытности и инженерной службы в дереве больше нет.
+  assert.equal(Object.values(ACTIVE_SKILLS).some((skill) => skill.branch === "engineer"), false);
+  assert.equal(Object.values(ACTIVE_SKILLS).some((skill) => skill.branch === "stealth"), false);
 });
 
 
@@ -585,7 +588,7 @@ test("дерево содержит 121 базовый узел и четыре 
   assert.equal(TALENT_NODES.length, 125);
   assert.equal(TALENT_NODES.filter((node) => node.scope === "legendary").length, 4);
   assert.equal(TALENT_NODES.filter((node) => node.scope === "hybrid").length, 15);
-  for (const branch of ["force", "fire", "stealth", "bulwark", "engineer", "resonance"]) {
+  for (const branch of ["power", "guard", "agility", "precision", "suppression", "resonance"]) {
     assert.equal(TALENT_NODES.filter((node) => node.scope === branch).length, 16);
   }
 });
@@ -593,13 +596,13 @@ test("дерево содержит 121 базовый узел и четыре 
 test("совмещённый допуск требует 8+8, но не привязывается к конкретным навыкам", () => {
   const initial = createInitialState();
   let state = { ...initial, hero: { ...initial.hero, skillPoints: 20 } };
-  for (let index = 0; index < 8; index += 1) state = allocateSkill(state, "fire");
-  for (let index = 0; index < 8; index += 1) state = allocateSkill(state, "engineer");
-  assert.equal(branchTalentPoints(state, "fire"), 8);
-  assert.equal(branchTalentPoints(state, "engineer"), 8);
-  assert.equal(canAllocateTalent(state, "hybrid:fire-engineer"), true);
-  const hybrid = allocateTalent(state, "hybrid:fire-engineer");
-  assert.ok(hybrid.hero.talents.includes("hybrid:fire-engineer"));
+  for (let index = 0; index < 8; index += 1) state = allocateSkill(state, "precision");
+  for (let index = 0; index < 8; index += 1) state = allocateSkill(state, "suppression");
+  assert.equal(branchTalentPoints(state, "precision"), 8);
+  assert.equal(branchTalentPoints(state, "suppression"), 8);
+  assert.equal(canAllocateTalent(state, "hybrid:precision-suppression"), true);
+  const hybrid = allocateTalent(state, "hybrid:precision-suppression");
+  assert.ok(hybrid.hero.talents.includes("hybrid:precision-suppression"));
 });
 
 test("легендарный предмет добавляет внешний талант, но обычное дерево его не выдаёт", () => {
