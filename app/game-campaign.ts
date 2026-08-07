@@ -158,13 +158,25 @@ function appendCampaignLog<T extends CampaignHost>(state: T, message: string): T
   return { ...state, log: [message, ...state.log].slice(0, 18) };
 }
 
-function awardQuestXp<T extends CampaignHost>(state: T, questId: StarterQuestId): T {
+function awardQuestXp<T extends CampaignHost>(state: T, questId: StarterQuestId): T & { campaign: StarterCampaignState } {
   const campaign = createStarterCampaign(state.campaign);
   const definition = STARTER_QUESTS[questId];
-  if (campaign.rewardedQuests.includes(questId) || definition.xpRatio <= 0) return state;
+  if (campaign.rewardedQuests.includes(questId) || definition.xpRatio <= 0) {
+    return ensureStarterCampaign(state);
+  }
   const xp = Math.max(1, Math.round(base.xpRequiredForLevel(state.hero.level) * definition.xpRatio));
   const rewarded = base.awardXp(state as unknown as base.GameState, xp) as unknown as T;
-  return appendCampaignLog(rewarded, `${definition.title}: +${xp} опыта.`);
+  const next = ensureStarterCampaign(rewarded);
+  return appendCampaignLog(
+    {
+      ...next,
+      campaign: {
+        ...next.campaign,
+        rewardedQuests: [...next.campaign.rewardedQuests, questId],
+      },
+    },
+    `${definition.title}: +${xp} опыта.`,
+  );
 }
 
 function completeQuest<T extends CampaignHost>(state: T, questId: StarterQuestId): T & { campaign: StarterCampaignState } {
@@ -173,22 +185,16 @@ function completeQuest<T extends CampaignHost>(state: T, questId: StarterQuestId
   if (ensured.campaign.currentQuest !== questId) return ensured;
 
   const definition = STARTER_QUESTS[questId];
-  const completedQuests = [...ensured.campaign.completedQuests, questId];
-  const rewardedQuests = definition.xpRatio > 0
-    ? [...ensured.campaign.rewardedQuests, questId]
-    : ensured.campaign.rewardedQuests;
   ensured = {
     ...ensured,
     campaign: {
       ...ensured.campaign,
       currentQuest: definition.next,
-      completedQuests,
-      rewardedQuests,
+      completedQuests: [...ensured.campaign.completedQuests, questId],
       completedAtMs: definition.next === "complete" ? ensured.worldTimeMs : ensured.campaign.completedAtMs,
     },
   };
   let next = awardQuestXp(ensured, questId) as T & { campaign: StarterCampaignState };
-  // awardQuestXp receives the updated rewarded list, so add the explicit completion log here.
   next = appendCampaignLog(next, `Задание завершено: ${questId} «${definition.title}».`);
   return next;
 }
@@ -244,7 +250,6 @@ function anyExternalCommunicationOnline(state: CampaignHost): boolean {
 
 export function tickStarterCampaign<T extends CampaignHost>(state: T): T & { campaign: StarterCampaignState } {
   let next = ensureStarterCampaign(state);
-  // Compatibility with the pre-campaign tutorial flags.
   if (next.campaign.currentQuest === "START-001" && next.campaign.dispatcherBriefed) {
     next = completeQuest(next, "START-001");
   }
