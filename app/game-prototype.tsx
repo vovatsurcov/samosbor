@@ -1081,6 +1081,12 @@ export default function GamePrototype() {
             <svg
               className="iso-map realtime-map"
               viewBox={`${cameraX} ${cameraY} ${cameraWidth} ${cameraHeight}`}
+              // Камера заполняет игровую область и обрезает лишнее, а не
+              // вписывается в неё целиком. При "meet" широкая и невысокая
+              // область давала поля по бокам и уменьшала мир до нечитаемого
+              // масштаба. Камера следует за героем, поэтому обрезка краёв —
+              // ожидаемое поведение, а не потеря информации.
+              preserveAspectRatio="xMidYMid slice"
               role="img"
               aria-label={`Карта: ${map.name}`}
             >
@@ -1314,7 +1320,7 @@ export default function GamePrototype() {
               </div>
             ) : null}
 
-            <div className="map-instruction"><strong>КЛИК · КАСАНИЕ · D-PAD</strong><span>клик по предмету или NPC: подойти и взаимодействовать</span><i />Движение в бою включает отступление</div>
+            <div className="map-instruction"><strong>МЫШЬ · КЛАВИАТУРА</strong><span>клик по предмету или NPC: подойти и взаимодействовать</span><i />Движение в бою включает отступление</div>
 
             {state.missionComplete ? (
               <div className="mission-complete" role="status">
@@ -1336,7 +1342,7 @@ export default function GamePrototype() {
           <section className="panel-card objective-card">
             <p className="panel-label">ТЕКУЩАЯ ДИРЕКТИВА</p>
             <h2>{objectiveFor(state)}</h2>
-            <p>Перемещайтесь кликом, касанием, D-pad или стиком. Текущий автоконтур: <strong>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "силовой периметр" : "адаптивная ротация"}</strong>.</p>
+            <p>Перемещайтесь кликом мыши, WASD или стрелками. Текущий автоконтур: <strong>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "силовой периметр" : "адаптивная ротация"}</strong>.</p>
           </section>
 
           <section className="panel-card population-card">

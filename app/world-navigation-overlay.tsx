@@ -108,22 +108,7 @@ export default function WorldNavigationOverlay() {
 
   return (
     <>
-      <aside
-        aria-label="Мини-карта локации"
-        style={{
-          position: "fixed",
-          right: 18,
-          top: 132,
-          zIndex: 30,
-          width: 188,
-          padding: 10,
-          border: "1px solid rgba(173,188,170,.35)",
-          background: "rgba(14,17,15,.9)",
-          boxShadow: "0 12px 32px rgba(0,0,0,.45)",
-          color: "#d7ddd3",
-          fontFamily: "inherit",
-        }}
-      >
+      <aside className="world-minimap" aria-label="Мини-карта локации">
         <button
           type="button"
           onClick={() => setGlobalOpen(true)}
