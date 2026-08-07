@@ -57,6 +57,35 @@ import {
   interactionHint,
   inventoryWeight,
   InventoryEntry,
+  ARCHETYPES,
+  type ArchetypeId,
+  CONTROL_MODE_HINTS,
+  CONTROL_MODE_LABELS,
+  DIRECTIVE_ACTION_LABELS,
+  type ControlMode,
+  HEAT_OVERHEAT,
+  RESONANCE_MAX_STACKS,
+  archetypeFor,
+  archetypeResourceSteps,
+  canSpendBreath,
+  commandBackstab,
+  commandBlock,
+  commandDesync,
+  commandDodge,
+  commandFinisher,
+  commandFlurry,
+  commandHeavyAttack,
+  commandMarkTarget,
+  commandResonanceChain,
+  commandReverseShadow,
+  commandScout,
+  commandSetUp,
+  commandShieldPush,
+  commandSuppress,
+  commandVentHeat,
+  controlModeFor,
+  currentModeAction,
+  heroStanceState,
   isKnown,
   isSamosborLethalPhase,
   isSamosborProtectedAt,
@@ -64,7 +93,9 @@ import {
   isVisible,
   ITEMS,
   mapForZone,
+  maxHeroBreath,
   maxHeroHp,
+  maxHeroStance,
   migrateGameState,
   Npc,
   npcRoleLabel,
@@ -76,6 +107,8 @@ import {
   samosborPhaseHint,
   samosborPhaseIn,
   samosborPhaseLabel,
+  setArchetype,
+  setControlMode,
   SKILL_DESCRIPTIONS,
   SKILL_NAMES,
   SkillBranch,
@@ -368,6 +401,32 @@ export default function GamePrototype() {
   const samosborAlarm = samosborLethal || samosborWarning;
   const shelterHighlight = samosborHighlightsShelters(state, state.zone);
   const samosborExposed = samosborLethal && !hermeticSafe;
+  const heroMaxStance = maxHeroStance(state);
+  const heroMaxBreath = maxHeroBreath(state);
+  const stanceState = heroStanceState(state);
+  const blocking = state.hero.blockingSinceMs > 0;
+  const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
+  const dodgeReady = state.hero.dodgeReadyAtMs <= state.worldTimeMs && canSpendBreath(state, 22);
+  const archetype = archetypeFor(state);
+  const archetypeDefinition = ARCHETYPES[archetype];
+  const resourceSteps = archetypeResourceSteps(state);
+  const resourceShare = archetype === "heavy_gunner"
+    ? Math.min(1, state.hero.heat / HEAT_OVERHEAT)
+    : Math.min(1, resourceSteps / Math.max(1, archetypeDefinition.maxResource));
+  const controlMode = controlModeFor(state);
+  const suggestedAction = currentModeAction(state);
+  const overheated = state.hero.overheatedUntilMs > state.worldTimeMs;
+  const ARCHETYPE_ACTIONS: Record<ArchetypeId, { primary: string; secondary: string }> = {
+    power: { primary: "Тяжёлый удар", secondary: "Добивание" },
+    bulwark: { primary: "Толчок щитом", secondary: "Блок" },
+    skirmisher: { primary: "Серия", secondary: "Заход за спину" },
+    marksman: { primary: "Метка", secondary: "Разведка" },
+    heavy_gunner: { primary: "Подавление", secondary: state.hero.heat > 40 ? "Сброс тепла" : "Позиция" },
+    resonance: {
+      primary: "Цепь",
+      secondary: target && target.resonanceStacks >= RESONANCE_MAX_STACKS ? "Разрыв" : "Обратная тень",
+    },
+  };
   const localPopulations = populationsForZone(state);
   const localPopulationPressure = populationPressureForZone(state);
   const bandageEntry = quickConsumableEntry(state, "bandage");
@@ -544,6 +603,66 @@ export default function GamePrototype() {
     setState((current) => cancelHeroAction(current));
   }, []);
 
+  const heavyAttackNow = useCallback(() => {
+    setState((current) => commandHeavyAttack(current));
+  }, []);
+
+  const finisherNow = useCallback(() => {
+    setState((current) => commandFinisher(current));
+  }, []);
+
+  const dodgeNow = useCallback((direction?: { x: number; y: number }) => {
+    setState((current) => commandDodge(current, direction));
+  }, []);
+
+  const setBlocking = useCallback((holding: boolean) => {
+    setState((current) => commandBlock(current, holding));
+  }, []);
+
+  const cycleControlMode = useCallback(() => {
+    setState((current) => {
+      const order: ControlMode[] = ["manual", "directive", "autopilot"];
+      const index = order.indexOf(controlModeFor(current));
+      return setControlMode(current, order[(index + 1) % order.length]);
+    });
+  }, []);
+
+  const chooseArchetype = useCallback((archetype: ArchetypeId) => {
+    setState((current) => setArchetype(current, archetype));
+  }, []);
+
+  /** Ключевое действие текущего архетипа: у каждого своё. */
+  const archetypeActionNow = useCallback(() => {
+    setState((current) => {
+      const archetype = archetypeFor(current);
+      if (archetype === "power") return commandHeavyAttack(current);
+      if (archetype === "marksman") return commandMarkTarget(current);
+      if (archetype === "bulwark") return commandShieldPush(current);
+      if (archetype === "skirmisher") return commandFlurry(current);
+      if (archetype === "heavy_gunner") return commandSuppress(current);
+      return commandResonanceChain(current);
+    });
+  }, []);
+
+  /** Второе действие архетипа: разведка, заход за спину, позиция, разрыв. */
+  const archetypeSecondaryNow = useCallback(() => {
+    setState((current) => {
+      const archetype = archetypeFor(current);
+      if (archetype === "power") return commandFinisher(current);
+      if (archetype === "marksman") return commandScout(current);
+      if (archetype === "bulwark") return commandBlock(current, current.hero.blockingSinceMs === 0);
+      if (archetype === "skirmisher") return commandBackstab(current);
+      if (archetype === "heavy_gunner") {
+        return current.hero.heat > 40 ? commandVentHeat(current) : commandSetUp(current);
+      }
+      // Резонанс: набранная цель — разрыв, иначе уход в обратную тень.
+      const marked = current.enemies.find((enemy) => enemy.id === current.hero.attackTargetId);
+      return marked && marked.resonanceStacks >= RESONANCE_MAX_STACKS
+        ? commandDesync(current)
+        : commandReverseShadow(current);
+    });
+  }, []);
+
   useEffect(() => {
     const moveFocus = (key: string) => {
       const focusRoot: ParentNode = diagnosticsOpen
@@ -643,6 +762,27 @@ export default function GamePrototype() {
       } else if (key === "r") {
         event.preventDefault();
         artifactNow();
+      } else if (key === "z") {
+        event.preventDefault();
+        heavyAttackNow();
+      } else if (key === "b") {
+        event.preventDefault();
+        finisherNow();
+      } else if (key === "g") {
+        event.preventDefault();
+        archetypeActionNow();
+      } else if (key === "h") {
+        event.preventDefault();
+        archetypeSecondaryNow();
+      } else if (key === "m") {
+        event.preventDefault();
+        cycleControlMode();
+      } else if (key === "shift") {
+        event.preventDefault();
+        if (!event.repeat) dodgeNow();
+      } else if (key === "v") {
+        event.preventDefault();
+        if (!event.repeat) setBlocking(true);
       } else {
         const current = gridPoint(stateRef.current.hero.positions[stateRef.current.zone]);
         const direction =
@@ -664,6 +804,11 @@ export default function GamePrototype() {
     };
     const onKeyUp = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (key === "v") {
+        event.preventDefault();
+        setBlocking(false);
+        return;
+      }
       if (key !== "enter" && key !== " ") return;
       event.preventDefault();
       const usedChord = okChordRef.current;
@@ -680,7 +825,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [artifactNow, attackNearest, boosterNow, cancelAction, diagnosticsOpen, firstAidNow, healingNow, interactNow, menuOpen, moveTo, pillsNow]);
+  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, boosterNow, cancelAction, cycleControlMode, diagnosticsOpen, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow, setBlocking]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1172,6 +1317,20 @@ export default function GamePrototype() {
             </div>
             <div className="stat-row"><span>Здоровье</span><strong>{state.hero.hp} / {heroMaxHp}</strong></div>
             <div className="meter health-meter"><i style={{ width: `${(state.hero.hp / heroMaxHp) * 100}%` }} /></div>
+            <div className="stat-row compact">
+              <span>Стойка</span>
+              <strong className={`stance-value stance-${stanceState}`}>
+                {Math.round(state.hero.stance)} / {heroMaxStance}
+                {staggered ? " · ОШЕЛОМЛЕНИЕ" : stanceState === "shaken" ? " · пошатнулся" : ""}
+              </strong>
+            </div>
+            <div className={`meter stance-meter ${stanceState}`}>
+              <i style={{ width: `${(state.hero.stance / heroMaxStance) * 100}%` }} />
+            </div>
+            <div className="stat-row compact"><span>Дыхание</span><strong>{Math.round(state.hero.breath)} / {heroMaxBreath}</strong></div>
+            <div className={`meter breath-meter ${blocking ? "draining" : ""}`}>
+              <i style={{ width: `${(state.hero.breath / heroMaxBreath) * 100}%` }} />
+            </div>
             <div className="stat-row compact"><span>Квалификация</span><strong>{state.hero.level} / 50</strong></div>
             <div className="meter xp-meter"><i style={{ width: `${experienceProgress}%` }} /></div>
             <div className="xp-caption"><span>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} опыта` : "Основной предел достигнут"}</span><strong>{state.hero.generalPoints} общ. · {state.hero.skillPoints} проф.</strong></div>
@@ -1250,6 +1409,97 @@ export default function GamePrototype() {
             <span className="ability-key">R</span><strong>{artifact ? ITEMS[artifact.itemId].shortName : "Артефакт"}</strong><small>{artifact ? ITEMS[artifact.itemId].useLabel : "Не экипирован"}</small>
             <i className="cooldown-mask artifact-cooldown" style={{ height: `${Math.min(100, (state.hero.artifactCooldownMs / 30000) * 100)}%` }} />
           </button>
+        </div>
+
+        <div className="combat-cluster combat-v2" aria-label="Стойка, дыхание и приёмы">
+          <button
+            type="button"
+            className="ability heavy-ability"
+            onClick={heavyAttackNow}
+            disabled={staggered || overheated || !canSpendBreath(state, 25)}
+          >
+            <span className="ability-key">Z</span><strong>Тяжёлый удар</strong>
+            <small>ломает стойку · 25 дых.</small>
+          </button>
+          <button
+            type="button"
+            className={`ability block-ability ${blocking ? "active" : ""}`}
+            onPointerDown={() => setBlocking(true)}
+            onPointerUp={() => setBlocking(false)}
+            onPointerLeave={() => blocking && setBlocking(false)}
+            disabled={staggered}
+          >
+            <span className="ability-key">V</span><strong>{blocking ? "Блок держит" : "Блок"}</strong>
+            <small>{blocking ? "идеальное окно 180 мс" : "удерживать · 6 дых./с"}</small>
+          </button>
+          <button
+            type="button"
+            className="ability dodge-ability"
+            onClick={() => dodgeNow()}
+            disabled={!dodgeReady}
+          >
+            <span className="ability-key">⇧</span><strong>Уклонение</strong>
+            <small>{dodgeReady ? "300 мс неуязвимости" : "восстановление"}</small>
+          </button>
+          <button
+            type="button"
+            className="ability finisher-ability"
+            onClick={finisherNow}
+            disabled={!target || target.stunnedUntilMs <= state.worldTimeMs}
+          >
+            <span className="ability-key">B</span><strong>Добивание</strong>
+            <small>{target && target.stunnedUntilMs > state.worldTimeMs ? "цель ошеломлена" : "нужна ошеломлённая цель"}</small>
+          </button>
+        </div>
+
+        <div className="archetype-cluster" aria-label="Архетип и режим управления">
+          <div className="archetype-head">
+            <div>
+              <p className="panel-label">{archetypeDefinition.name.toUpperCase()}</p>
+              <small>{archetypeDefinition.resourceName}</small>
+            </div>
+            <button type="button" className={`control-mode-chip mode-${controlMode}`} onClick={cycleControlMode} title={CONTROL_MODE_HINTS[controlMode]}>
+              <kbd>M</kbd>{CONTROL_MODE_LABELS[controlMode]}
+            </button>
+          </div>
+          <div className={`meter resource-meter resource-${archetypeDefinition.resourceId} ${overheated ? "overheated" : ""}`}>
+            <i style={{ width: `${resourceShare * 100}%` }} />
+          </div>
+          <div className="resource-caption">
+            <span>
+              {archetype === "heavy_gunner"
+                ? `${Math.round(state.hero.heat)} / ${HEAT_OVERHEAT}${overheated ? " · ПЕРЕГРЕВ" : ""}`
+                : `${resourceSteps} / ${archetypeDefinition.maxResource}`}
+            </span>
+            <small>
+              {controlMode === "manual"
+                ? "ручное управление"
+                : suggestedAction
+                  ? `режим ведёт: ${DIRECTIVE_ACTION_LABELS[suggestedAction]}`
+                  : "режим ждёт условия"}
+            </small>
+          </div>
+          <div className="archetype-abilities">
+            <button type="button" className="ability archetype-ability" onClick={archetypeActionNow} disabled={staggered}>
+              <span className="ability-key">G</span><strong>{ARCHETYPE_ACTIONS[archetype].primary}</strong>
+            </button>
+            <button type="button" className="ability archetype-ability" onClick={archetypeSecondaryNow} disabled={staggered}>
+              <span className="ability-key">H</span><strong>{ARCHETYPE_ACTIONS[archetype].secondary}</strong>
+            </button>
+          </div>
+          <div className="archetype-switch" role="group" aria-label="Смена архетипа">
+            {(Object.keys(ARCHETYPES) as ArchetypeId[]).map((id) => (
+              <button
+                key={id}
+                type="button"
+                className={`archetype-chip ${id === archetype ? "active" : ""}`}
+                onClick={() => chooseArchetype(id)}
+                title={ARCHETYPES[id].chain.join(" → ")}
+              >
+                {ARCHETYPES[id].name}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="consumable-belt" aria-label="Пояс активных расходников">

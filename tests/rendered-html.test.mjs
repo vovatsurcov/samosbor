@@ -34,4 +34,17 @@ test("renders development preview metadata", async () => {
   assert.match(html, /Action RPG прототип · этап 4B/);
   assert.match(html, /ПРОТОКОЛ СМЕНЫ · СБ\/556-04/);
   assert.match(html, /Экран \/ пульт/);
+
+  // Боевая модель v2 должна быть видна игроку, а не только движку.
+  assert.match(html, /Стойка/, "полоса стойки");
+  assert.match(html, /Дыхание/, "полоса дыхания");
+  assert.match(html, /Тяжёлый удар/, "кнопка тяжёлого удара");
+  assert.match(html, /Уклонение/, "кнопка уклонения");
+  assert.match(html, /Добивание/, "кнопка добивания");
+  assert.match(html, />Блок</, "кнопка блока");
+  for (const archetype of ["Силач", "Танк", "Ловкач", "Стрелок", "Тяжёлый стрелок", "Резонанс"]) {
+    assert.ok(html.includes(archetype), `переключатель архетипа: ${archetype}`);
+  }
+  assert.match(html, /Разгон/, "ресурс архетипа по умолчанию");
+  assert.match(html, /Директива/, "режим управления");
 });
