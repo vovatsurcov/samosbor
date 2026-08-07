@@ -1,4 +1,23 @@
-export type RegionZoneId = "floor545" | "floor546" | "floor547" | "floor548" | "floor549";
+import {
+  LOWER_REGION_CONTAINER_CONTENTS,
+  LOWER_REGION_ENEMIES,
+  LOWER_REGION_MAPS,
+  LOWER_REGION_NPC_MESSAGES,
+  LOWER_REGION_OBJECTIVES,
+  LOWER_REGION_POPULATIONS,
+  LOWER_REGION_SAFE_ZONES,
+  LOWER_REGION_STARTS,
+  LOWER_REGION_TERMINAL_MESSAGES,
+  type LowerRegionZoneId,
+} from "./game-region-543-534.ts";
+
+export type RegionZoneId =
+  | "floor545"
+  | "floor546"
+  | "floor547"
+  | "floor548"
+  | "floor549"
+  | LowerRegionZoneId;
 
 export type RegionPoint = { x: number; y: number };
 
@@ -193,8 +212,8 @@ export const FLOOR_546_MAP = buildMap({
 
 export const FLOOR_545_MAP = buildMap({
   id: "floor545",
-  name: "Поселение 545 · Сухой док",
-  subtitle: "Защищённый перевалочный посёлок · жильё, мастерские и караванный двор промышленного пояса",
+  name: "Город 545 · Сухой док · верхний ярус",
+  subtitle: "Защищённый верхний ярус многоэтажного города · администрация, мастерские и караванный двор",
   up: { x: 2, y: 33 },
   terminal: { x: 46, y: 31 },
   npc: { x: 9, y: 31 },
@@ -214,6 +233,7 @@ export const REGION_MAPS: Record<RegionZoneId, RegionMapDefinition> = {
   floor547: FLOOR_547_MAP,
   floor546: FLOOR_546_MAP,
   floor545: FLOOR_545_MAP,
+  ...LOWER_REGION_MAPS,
 };
 
 export const REGION_STARTS: Record<RegionZoneId, RegionPoint> = {
@@ -222,6 +242,7 @@ export const REGION_STARTS: Record<RegionZoneId, RegionPoint> = {
   floor547: { x: 3, y: 33 },
   floor546: { x: 3, y: 33 },
   floor545: { x: 3, y: 33 },
+  ...LOWER_REGION_STARTS,
 };
 
 export const REGION_TRANSITIONS: Record<string, RegionTransitionSpec> = {
@@ -233,8 +254,27 @@ export const REGION_TRANSITIONS: Record<string, RegionTransitionSpec> = {
   "floor547:U": { zone: "floor548", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 548, насосный каскад." },
   "floor547:D": { zone: "floor546", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 546, грузовой узел ГУ-46." },
   "floor546:U": { zone: "floor547", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 547, архив НИИ-547." },
-  "floor546:D": { zone: "floor545", position: { x: 3, y: 33 }, message: "Спуск выполнен: поселение 545, Сухой док." },
+  "floor546:D": { zone: "floor545", position: { x: 3, y: 33 }, message: "Спуск выполнен: Город 545, верхний ярус Сухого дока." },
   "floor545:U": { zone: "floor546", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 546, грузовой узел ГУ-46." },
+
+  "floor543:D": { zone: "floor542", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 542, теплообменный пояс." },
+  "floor542:U": { zone: "floor543", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 543, межгородской транзит." },
+  "floor542:D": { zone: "floor541", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 541, ведомственный архив." },
+  "floor541:U": { zone: "floor542", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 542, теплообменный пояс." },
+  "floor541:D": { zone: "floor540", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 540, безымянный промышленный пояс." },
+  "floor540:U": { zone: "floor541", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 541, ведомственный архив." },
+  "floor540:D": { zone: "floor539", position: { x: 3, y: 33 }, message: "Спуск выполнен: Город 539, Город без номера." },
+  "floor539:U": { zone: "floor540", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 540, безымянный промышленный пояс." },
+  "floor539:D": { zone: "floor538", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 538, карантинный пояс." },
+  "floor538:U": { zone: "floor539", position: { x: 52, y: 3 }, message: "Подъём выполнен: Город 539." },
+  "floor538:D": { zone: "floor537", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 537, силовая магистраль." },
+  "floor537:U": { zone: "floor538", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 538, карантинный пояс." },
+  "floor537:D": { zone: "floor536", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 536, машинный лабиринт." },
+  "floor536:U": { zone: "floor537", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 537, силовая магистраль." },
+  "floor536:D": { zone: "floor535", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 535, глубокий грузовой узел." },
+  "floor535:U": { zone: "floor536", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 536, машинный лабиринт." },
+  "floor535:D": { zone: "floor534", position: { x: 3, y: 33 }, message: "Спуск выполнен: этаж 534, нижний разведывательный фронтир." },
+  "floor534:U": { zone: "floor535", position: { x: 52, y: 3 }, message: "Подъём выполнен: этаж 535, глубокий грузовой узел." },
 };
 
 export const REGION_POPULATIONS: RegionPopulationSpec[] = [
@@ -242,7 +282,8 @@ export const REGION_POPULATIONS: RegionPopulationSpec[] = [
   { id: "pump-servitors", name: "Насосные исполнители", genome: "maintenance", zone: "floor548", count: 16, agitation: 63, goal: "поддерживать давление в давно отключённой системе" },
   { id: "archive-imprints", name: "Архивные слепки", genome: "anomalous", zone: "floor547", count: 12, agitation: 72, goal: "восстановить отсутствующие фрагменты сотрудников НИИ" },
   { id: "cargo-controllers", name: "Контролёры грузового допуска", genome: "bureaucratic", zone: "floor546", count: 18, agitation: 76, goal: "вернуть весь проходящий груз в ведомственный учёт" },
-  { id: "dry-dock-settlers", name: "Поселенцы Сухого дока", genome: "maintenance", zone: "floor545", count: 23, agitation: 12, goal: "удерживать караванный путь между 545-м и Городом 550" },
+  { id: "dry-dock-settlers", name: "Жители Города 545", genome: "maintenance", zone: "floor545", count: 23, agitation: 12, goal: "удерживать караванный путь между Городом 545 и Городом 550" },
+  ...LOWER_REGION_POPULATIONS,
 ];
 
 export const REGION_ENEMIES: RegionEnemySpec[] = [
@@ -261,6 +302,7 @@ export const REGION_ENEMIES: RegionEnemySpec[] = [
   { id: "546-loader-1", name: "Одичавший грузчик ГУ-46", kind: "stalker", zone: "floor546", position: { x: 18, y: 14 }, patrol: [{ x: 18, y: 14 }, { x: 25, y: 14 }], rank: "veteran" },
   { id: "546-checkpoint", name: "Контролёр накладных КН-46", kind: "sentry", zone: "floor546", position: { x: 42, y: 14 }, patrol: [{ x: 42, y: 14 }, { x: 49, y: 15 }], rank: "veteran" },
   { id: "546-overseer", name: "Смотритель грузового узла ГУ-46", kind: "collector", zone: "floor546", position: { x: 31, y: 28 }, patrol: [{ x: 31, y: 28 }, { x: 44, y: 28 }, { x: 31, y: 14 }], rank: "boss", scale: 2.8 },
+  ...LOWER_REGION_ENEMIES,
 ];
 
 export const REGION_CONTAINER_CONTENTS: Record<string, RegionContainerEntry[]> = {
@@ -274,6 +316,7 @@ export const REGION_CONTAINER_CONTENTS: Record<string, RegionContainerEntry[]> =
   "floor546:30:17": [{ itemId: "platedVestBn3", condition: 88 }, { itemId: "repairKit" }],
   "floor545:18:31": [{ itemId: "fieldRation", quantity: 2 }, { itemId: "bandage", quantity: 2 }],
   "floor545:38:31": [{ itemId: "filterCartridge", quantity: 2 }, { itemId: "repairKit" }],
+  ...LOWER_REGION_CONTAINER_CONTENTS,
 };
 
 export const REGION_TERMINAL_MESSAGES: Partial<Record<RegionZoneId, string>> = {
@@ -281,19 +324,25 @@ export const REGION_TERMINAL_MESSAGES: Partial<Record<RegionZoneId, string>> = {
   floor548: "Насосный журнал: уровень воды стабилен только в центральном проходе. Резервная помпа отвечает на команды через раз.",
   floor547: "Архив НИИ-547: сектор закрыт решением комиссии, которой не существует в реестре. Разрыв ВЖ зарегистрирован как канцелярская ошибка.",
   floor546: "ГУ-46: Смотритель продолжает принимать несуществующие составы и удерживает проход к Сухому доку.",
-  floor545: "Диспетчерская Сухого дока: караван в Город 550 задержан. Поселение принимает обходчиков и раненых ликвидаторов.",
+  floor545: "Диспетчерская Города 545: верхний и нижний ярусы работают как единый городской контур.",
+  ...LOWER_REGION_TERMINAL_MESSAGES,
 };
 
 export const REGION_NPC_MESSAGES: Partial<Record<RegionZoneId, string>> = {
-  floor545: "Староста Веденеева: «Сухой док держится на караванах. Пока ГУ-46 не очищен, мы живём на запасах и старых обещаниях».",
+  floor545: "Староста Веденеева: «Сухой док город небольшой только на чужой карте. У нас два яруса, свои мастерские и свои мёртвые».",
+  ...LOWER_REGION_NPC_MESSAGES,
 };
 
 export const REGION_OBJECTIVES: Record<RegionZoneId, string> = {
   floor549: "Пройти кабельный пролёт и восстановить маршрут к насосному каскаду",
   floor548: "Пересечь затопленные насосные залы и найти вход в НИИ-547",
   floor547: "Исследовать архив НИИ-547 или воспользоваться нестабильным разрывом",
-  floor546: "Отключить Смотрителя ГУ-46 и открыть путь к поселению 545",
-  floor545: "Добраться до Сухого дока, осмотреть поселение и закрепить безопасный маршрут",
+  floor546: "Отключить Смотрителя ГУ-46 и открыть путь к Городу 545",
+  floor545: "Войти в Город 545 и закрепить маршрут между промышленным поясом и городскими ярусами",
+  ...LOWER_REGION_OBJECTIVES,
 };
 
-export const REGION_SAFE_ZONES = new Set<RegionZoneId>(["floor545"]);
+export const REGION_SAFE_ZONES = new Set<RegionZoneId>([
+  "floor545",
+  ...LOWER_REGION_SAFE_ZONES,
+]);
