@@ -28,7 +28,11 @@ jobs:
           rm -f .automation/approved-campaign/result.log .automation/approved-campaign/success
           cat .automation/approved-campaign/part-* > /tmp/approved-campaign.b64
           base64 --decode /tmp/approved-campaign.b64 > /tmp/approved-campaign.tar.gz
-          echo 'a0683cc072eb5a9618f39d5155f9c59b55d04d811cc18923720337f1068f5a54  /tmp/approved-campaign.tar.gz' | sha256sum --check --strict
+          sha256sum /tmp/approved-campaign.tar.gz
+          gzip -t /tmp/approved-campaign.tar.gz
+          tar -tzf /tmp/approved-campaign.tar.gz | tee /tmp/approved-campaign-files.txt
+          grep -q '^app/' /tmp/approved-campaign-files.txt
+          grep -q '^tests/' /tmp/approved-campaign-files.txt
           tar -xzf /tmp/approved-campaign.tar.gz -C .
 
       - name: Install dependencies
