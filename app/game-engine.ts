@@ -30,8 +30,37 @@ import {
   REGION_TRANSITIONS,
   type RegionZoneId,
 } from "./game-region-549-545.ts";
+import {
+  isSamosborLethalPhase,
+  isSamosborWarningPhase,
+  nextSamosborPhase,
+  SAMOSBOR_AGITATION_GAIN,
+  SAMOSBOR_CATCH_MESSAGE,
+  SAMOSBOR_CONTAMINATION_PER_MS,
+  SAMOSBOR_EXPOSURE_MESSAGE,
+  SAMOSBOR_SCRIPTED_PHASE_MS,
+  SAMOSBOR_SHELTER_MESSAGE,
+  SAMOSBOR_STRESS_PER_MS,
+  type SamosborPhase,
+  samosborExposureHits,
+  samosborPhaseDurationMs,
+  samosborPhaseMessage,
+  samosborProfileFor,
+  samosborQuietDurationMs,
+} from "./game-samosbor.ts";
 
 export { ITEMS, SLOT_NAMES, WEAPONS } from "./game-items.ts";
+export {
+  SAMOSBOR_GRACE_MS,
+  SAMOSBOR_PHASE_PROFILES,
+  SAMOSBOR_ZONE_PROFILES,
+  isSamosborLethalPhase,
+  isSamosborWarningPhase,
+  samosborPhaseHint,
+  samosborPhaseLabel,
+  samosborProfileFor,
+} from "./game-samosbor.ts";
+export type { SamosborPhase, SamosborZoneProfile } from "./game-samosbor.ts";
 export {
   ACTIVE_SKILLS,
   BASE_TALENT_COUNT,
@@ -272,6 +301,25 @@ export type CombatEffect = {
   ttlMs: number;
 };
 
+export type SamosborZoneEvent = {
+  phase: SamosborPhase;
+  /** Момент мира, когда текущая фаза сменится. Ноль в фазе `calm` означает «событие не запланировано». */
+  phaseEndsAtMs: number;
+  severity: number;
+  scripted: boolean;
+  completed: number;
+};
+
+export type SamosborState = {
+  zones: Record<ZoneId, SamosborZoneEvent>;
+  /** Время, проведённое героем в активной фазе вне защищённого контура. */
+  exposureMs: number;
+  exposureHits: number;
+  caughtCount: number;
+  lastCompletedZone: ZoneId | null;
+  lastCompletedAtMs: number;
+};
+
 export type GameState = {
   zone: ZoneId;
   hero: Hero;
@@ -297,6 +345,7 @@ export type GameState = {
   lootCounter: number;
   populations: WorldPopulation[];
   populationCycle: number;
+  samosbor: SamosborState;
   log: string[];
 };
 
@@ -801,7 +850,10 @@ function reconcilePopulationEnemies(state: GameState, cycle = state.populationCy
   const spawned: Enemy[] = [];
 
   for (const population of state.populations) {
-    const target = manifestedPopulationTarget(population);
+    // В активной фазе Самосбора физические проявления уходят с этажа: событие переживают только укрытия.
+    const target = isSamosborLethalPhase(samosborPhaseIn(state, population.zone))
+      ? 0
+      : manifestedPopulationTarget(population);
     const existing = livingPopulationEnemies
       .filter((enemy) => enemy.populationId === population.id)
       .slice(0, target)
@@ -2572,11 +2624,26 @@ function injuryLabel(key: keyof Injuries): string {
   }[key];
 }
 
+type RescueOptions = {
+  /** Куда выводит аварийная группа. По умолчанию — учебный этаж 556. */
+  zone?: ZoneId;
+  equipmentDamage?: number;
+  stressGain?: number;
+  contaminationGain?: number;
+};
+
 function applyRescue(
   state: GameState,
   reason: string,
   forcedInjury?: keyof Injuries,
+  options: RescueOptions = {},
 ): GameState {
+  const {
+    zone = "floor556",
+    equipmentDamage = 12,
+    stressGain = 18,
+    contaminationGain = 0,
+  } = options;
   const cycle: (keyof Injuries)[] = ["leg", "arm", "torso", "head", "eye"];
   const injury = forcedInjury ?? cycle[state.rescueCount % cycle.length];
   const injuries = {
@@ -2586,7 +2653,7 @@ function applyRescue(
   const equippedIds = new Set(Object.values(state.hero.equipment).filter(Boolean));
   let rescued: GameState = {
     ...state,
-    zone: "floor556",
+    zone,
     injuries,
     rescueCount: state.rescueCount + 1,
     artifactRecovered: state.artifactRecovered,
@@ -2615,14 +2682,15 @@ function applyRescue(
       evadeMode: false,
       attackCooldownMs: 600,
       hp: 1,
-      stress: Math.min(100, state.hero.stress + 18),
+      stress: Math.min(100, state.hero.stress + stressGain),
+      contamination: Math.min(100, state.hero.contamination + contaminationGain),
       braceUntilMs: 0,
       silentUntilMs: 0,
       overclockUntilMs: 0,
       secondBeatReady: true,
       inventory: state.hero.inventory.map((entry) =>
         equippedIds.has(entry.instanceId)
-          ? { ...entry, condition: Math.max(0, entry.condition - 12) }
+          ? { ...entry, condition: Math.max(0, entry.condition - equipmentDamage) }
           : entry,
       ),
     },
@@ -2950,6 +3018,7 @@ function heroAttackTick(state: GameState): GameState {
 
 function canEnemySeeHero(state: GameState, enemy: Enemy): boolean {
   if (enemy.zone !== state.zone || enemy.hp <= 0) return false;
+  if (isSamosborActiveIn(state, enemy.zone)) return false;
   const hero = state.hero.positions[state.zone];
   if (isSamosborProtectedAt(state, state.zone, hero)) return false;
   const stealthPenalty =
@@ -2986,6 +3055,29 @@ function thinkForEnemy(state: GameState, enemy: Enemy): Enemy {
   if (enemy.zone !== state.zone) return enemy;
   if (enemy.stunnedUntilMs > state.worldTimeMs) {
     return { ...enemy, path: [], thinkCooldownMs: 120 };
+  }
+  if (isSamosborActiveIn(state, enemy.zone)) {
+    // Существо не охотится во время активной фазы: оно уходит в собственное логово так же, как герой ищет контур.
+    const atHome = distance(enemy.position, enemy.home) <= 1.2;
+    const retreat = enemy.path.length || atHome
+      ? enemy.path
+      : findPath(
+          state,
+          enemy.zone,
+          enemy.position,
+          enemy.home,
+          livingEnemyKeys(state, enemy.zone, enemy.id),
+          "enemy",
+        )?.slice(1) ?? [];
+    return {
+      ...enemy,
+      mode: "retreat",
+      path: retreat,
+      lastKnownHero: null,
+      memoryMs: 0,
+      castUntilMs: 0,
+      thinkCooldownMs: 620,
+    };
   }
   const hero = state.hero.positions[state.zone];
   const heroDistance = distance(enemy.position, hero);
@@ -3118,6 +3210,7 @@ function alertGroup(state: GameState): GameState {
 function enemyAttackTick(state: GameState, enemyId: string): GameState {
   const enemy = enemyById(state, enemyId);
   if (isSamosborProtectedAt(state, state.zone, state.hero.positions[state.zone])) return state;
+  if (isSamosborActiveIn(state, state.zone)) return state;
   if (!enemy || enemy.zone !== state.zone || enemy.mode !== "combat" || enemy.attackCooldownMs > 0) {
     return state;
   }
@@ -3480,7 +3573,8 @@ function interactWithTarget(state: GameState, target: { point: Point; tile: stri
     } else {
       const reward = questXpReward(state, 0.08);
       next = awardXp({ ...state, sensorFixed: true }, reward);
-      next = appendLog(next, `Датчик СБ-04 восстановлен. Полевая задача: +${reward} опыта. Диспетчерская требует пройти в гермосектор.`);
+      next = armScriptedSamosbor(next, "floor556");
+      next = appendLog(next, `Датчик СБ-04 восстановлен. Полевая задача: +${reward} опыта. Первое же измерение показало подготовку среды: диспетчерская требует немедленно пройти в гермосектор.`);
     }
   } else if (state.zone === "floor556" && target.tile === "H") {
     if (state.missionComplete) {
@@ -3667,6 +3761,268 @@ function resolvePendingInteraction(state: GameState): GameState {
   return state;
 }
 
+const SAMOSBOR_ZONES = Object.keys(ZONE_STARTS) as ZoneId[];
+
+function samosborScheduleRoll(seed: number, salt: number): number {
+  const mixed = Math.imul(seed ^ Math.imul(salt + 1, 0x9e3779b1), 1664525) + 1013904223;
+  return (mixed >>> 0) % 100;
+}
+
+function createSamosborState(seed: number): SamosborState {
+  const zones = {} as Record<ZoneId, SamosborZoneEvent>;
+  SAMOSBOR_ZONES.forEach((zone, index) => {
+    const profile = samosborProfileFor(zone);
+    const scheduled = !profile.sheltered && !profile.scripted;
+    zones[zone] = {
+      phase: "calm",
+      phaseEndsAtMs: scheduled
+        ? samosborQuietDurationMs(profile, samosborScheduleRoll(seed, index))
+        : 0,
+      severity: profile.severity,
+      scripted: profile.scripted,
+      completed: 0,
+    };
+  });
+  return {
+    zones,
+    exposureMs: 0,
+    exposureHits: 0,
+    caughtCount: 0,
+    lastCompletedZone: null,
+    lastCompletedAtMs: 0,
+  };
+}
+
+export function samosborEventIn(state: GameState, zone: ZoneId = state.zone): SamosborZoneEvent {
+  return state.samosbor.zones[zone] ?? {
+    phase: "calm",
+    phaseEndsAtMs: 0,
+    severity: samosborProfileFor(zone).severity,
+    scripted: false,
+    completed: 0,
+  };
+}
+
+export function samosborPhaseIn(state: GameState, zone: ZoneId = state.zone): SamosborPhase {
+  return samosborEventIn(state, zone).phase;
+}
+
+/** Активная фаза на этаже: открытое пространство наносит урон, существа прячутся. */
+export function isSamosborActiveIn(state: GameState, zone: ZoneId = state.zone): boolean {
+  return isSamosborLethalPhase(samosborPhaseIn(state, zone));
+}
+
+/** Сирена и активная фаза подсвечивают известные гермоукрытия на схеме. */
+export function samosborHighlightsShelters(state: GameState, zone: ZoneId = state.zone): boolean {
+  const phase = samosborPhaseIn(state, zone);
+  return phase === "siren" || phase === "active";
+}
+
+export function samosborExposureSeconds(state: GameState): number {
+  return Math.floor(state.samosbor.exposureMs / 1000);
+}
+
+function withSamosborZone(
+  state: GameState,
+  zone: ZoneId,
+  update: (event: SamosborZoneEvent) => SamosborZoneEvent,
+): GameState {
+  return {
+    ...state,
+    samosbor: {
+      ...state.samosbor,
+      zones: { ...state.samosbor.zones, [zone]: update(samosborEventIn(state, zone)) },
+    },
+  };
+}
+
+/** Сценарный первый Самосбор этажа 556 запускается восстановленным датчиком, а не таймером. */
+function armScriptedSamosbor(state: GameState, zone: ZoneId): GameState {
+  const event = samosborEventIn(state, zone);
+  if (!event.scripted || event.phase !== "calm" || event.phaseEndsAtMs > 0) return state;
+  return withSamosborZone(state, zone, (current) => ({
+    ...current,
+    phaseEndsAtMs: state.worldTimeMs + 4000,
+  }));
+}
+
+function applySamosborAftermath(state: GameState, zone: ZoneId): GameState {
+  const affected = state.populations.filter((population) => population.zone === zone);
+  const next: GameState = {
+    ...state,
+    populations: state.populations.map((population) =>
+      population.zone === zone
+        ? {
+            ...population,
+            agitation: clampPopulation(population.agitation + SAMOSBOR_AGITATION_GAIN, 0, 100),
+          }
+        : population,
+    ),
+    samosbor: {
+      ...state.samosbor,
+      lastCompletedZone: zone,
+      lastCompletedAtMs: state.worldTimeMs,
+    },
+  };
+  return zone === state.zone && affected.length
+    ? appendLog(next, `Популяции этажа пережили событие в укрытиях и вышли встревоженными: ${affected.map((population) => population.name).join(", ")}.`)
+    : next;
+}
+
+function advanceSamosborZone(state: GameState, zone: ZoneId): GameState {
+  const event = samosborEventIn(state, zone);
+  const profile = samosborProfileFor(zone);
+  const phase = nextSamosborPhase(event.phase);
+  const rolled = rollPercent(state);
+  const scripted = event.scripted && phase !== "calm";
+  const durationMs = phase === "calm"
+    ? samosborQuietDurationMs(profile, rolled.roll)
+    : scripted
+      ? SAMOSBOR_SCRIPTED_PHASE_MS[phase]
+      : samosborPhaseDurationMs(phase, profile, rolled.roll);
+
+  let next = withSamosborZone(rolled.state, zone, (current) => ({
+    ...current,
+    phase,
+    phaseEndsAtMs: rolled.state.worldTimeMs + durationMs,
+    severity: profile.severity,
+    scripted,
+    completed: phase === "calm" ? current.completed + 1 : current.completed,
+  }));
+
+  if (phase === "active") {
+    next = {
+      ...next,
+      enemies: next.enemies.map((enemy) =>
+        enemy.zone === zone && enemy.hp > 0
+          ? {
+              ...enemy,
+              mode: "retreat" as const,
+              path: [],
+              lastKnownHero: null,
+              memoryMs: 0,
+              castUntilMs: 0,
+            }
+          : enemy,
+      ),
+    };
+    next = reconcilePopulationEnemies(next);
+  }
+  if (phase === "calm") {
+    next = applySamosborAftermath(next, zone);
+    next = reconcilePopulationEnemies(next);
+  }
+  if (zone === next.zone) {
+    next = appendLog(next, samosborPhaseMessage(phase, mapForZone(zone).name));
+    if (phase === "active") {
+      next = appendLog(
+        next,
+        isSamosborProtectedAt(next, zone, next.hero.positions[zone])
+          ? SAMOSBOR_SHELTER_MESSAGE
+          : SAMOSBOR_EXPOSURE_MESSAGE,
+      );
+    }
+  }
+  return next;
+}
+
+function tickSamosborSchedule(state: GameState): GameState {
+  let next = state;
+  for (const zone of SAMOSBOR_ZONES) {
+    const profile = samosborProfileFor(zone);
+    if (profile.sheltered) continue;
+    const event = samosborEventIn(next, zone);
+    if (event.phaseEndsAtMs <= 0) continue;
+    if (next.worldTimeMs < event.phaseEndsAtMs) continue;
+    next = advanceSamosborZone(next, zone);
+  }
+  return next;
+}
+
+function firstHermeticPoint(zone: ZoneId): Point | null {
+  const map = mapForZone(zone);
+  for (let y = 0; y < map.rows.length; y += 1) {
+    const x = map.rows[y].indexOf("g");
+    if (x >= 0) return { x, y };
+  }
+  return null;
+}
+
+function applySamosborCatch(state: GameState): GameState {
+  const shelter: ZoneId = state.visited.floor554.length > 0 ? "floor554" : "floor556";
+  const caught = applyRescue(state, SAMOSBOR_CATCH_MESSAGE, "head", {
+    zone: shelter,
+    equipmentDamage: 26,
+    stressGain: 45,
+    contaminationGain: 30,
+  });
+  // Аварийная группа не может высадить героя обратно под активную фазу: выход только в защищённый контур.
+  const refuge = isSamosborActiveIn(caught, shelter) ? firstHermeticPoint(shelter) : null;
+  return {
+    ...caught,
+    hero: refuge
+      ? {
+          ...caught.hero,
+          positions: { ...caught.hero.positions, [shelter]: copyPoint(refuge) },
+        }
+      : caught.hero,
+    samosbor: {
+      ...caught.samosbor,
+      exposureMs: 0,
+      exposureHits: 0,
+      caughtCount: caught.samosbor.caughtCount + 1,
+    },
+  };
+}
+
+function tickSamosborExposure(state: GameState, deltaMs: number): GameState {
+  const event = samosborEventIn(state, state.zone);
+  if (!isSamosborLethalPhase(event.phase)) {
+    return state.samosbor.exposureMs === 0 && state.samosbor.exposureHits === 0
+      ? state
+      : { ...state, samosbor: { ...state.samosbor, exposureMs: 0, exposureHits: 0 } };
+  }
+
+  const severity = event.severity;
+  if (isSamosborProtectedAt(state, state.zone, state.hero.positions[state.zone])) {
+    // Внутри контура экспозиция рассасывается вдвое быстрее, чем накапливается.
+    const exposureMs = Math.max(0, state.samosbor.exposureMs - deltaMs * 2);
+    return {
+      ...state,
+      samosbor: {
+        ...state.samosbor,
+        exposureMs,
+        exposureHits: Math.min(
+          state.samosbor.exposureHits,
+          samosborExposureHits(exposureMs, severity),
+        ),
+      },
+    };
+  }
+
+  const exposureMs = state.samosbor.exposureMs + deltaMs;
+  const hits = samosborExposureHits(exposureMs, severity);
+  const damage = Math.max(0, hits - state.samosbor.exposureHits);
+  const contaminationFactor = Math.max(0.3, 1 - talentBonus(state, "contaminationResist"));
+  let next: GameState = {
+    ...state,
+    samosbor: { ...state.samosbor, exposureMs, exposureHits: hits },
+    hero: {
+      ...state.hero,
+      hp: Math.max(0, state.hero.hp - damage),
+      contamination: Math.min(
+        100,
+        state.hero.contamination + deltaMs * SAMOSBOR_CONTAMINATION_PER_MS * severity * contaminationFactor,
+      ),
+      stress: Math.min(100, state.hero.stress + deltaMs * SAMOSBOR_STRESS_PER_MS * severity),
+    },
+  };
+  if (damage > 0 && next.hero.hp > 0 && state.samosbor.exposureHits === 0) {
+    next = appendLog(next, "Среда начала разбирать снаряжение и ткани героя. Гермодверь ещё можно успеть закрыть.");
+  }
+  return next.hero.hp <= 0 ? applySamosborCatch(next) : next;
+}
+
 export function createInitialState(): GameState {
   const state: GameState = {
     zone: "floor556",
@@ -3776,6 +4132,7 @@ export function createInitialState(): GameState {
     lootCounter: 0,
     populations: createPopulations(),
     populationCycle: 0,
+    samosbor: createSamosborState(5560401),
     log: [
       "Управление переведено в непрерывный режим. Мир не ждёт действий героя.",
       "Квалификация: уровень 1. Доступно по одному очку общего и профессионального контуров.",
@@ -3793,6 +4150,17 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
     const saved = raw.populations?.find((entry) => entry.id === population.id);
     return saved ? { ...population, ...saved } : population;
   });
+  const rawSamosbor = raw.samosbor as Partial<SamosborState> | undefined;
+  const samosborZones = { ...fresh.samosbor.zones };
+  for (const zone of SAMOSBOR_ZONES) {
+    const saved = rawSamosbor?.zones?.[zone];
+    if (!saved || typeof saved.phase !== "string") continue;
+    const profile = samosborProfileFor(zone);
+    // Защищённый этаж не наследует событие из старого сохранения.
+    samosborZones[zone] = profile.sheltered
+      ? samosborZones[zone]
+      : { ...samosborZones[zone], ...saved, severity: profile.severity };
+  }
   const migrated: GameState = {
     ...fresh,
     ...raw,
@@ -3807,6 +4175,11 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
     populations,
     npcs: Array.isArray(raw.npcs) && raw.npcs.length === 34 ? raw.npcs : fresh.npcs,
     npcConversationCooldownMs: raw.npcConversationCooldownMs ?? fresh.npcConversationCooldownMs,
+    samosbor: {
+      ...fresh.samosbor,
+      ...(rawSamosbor ?? {}),
+      zones: samosborZones,
+    },
   };
   return reveal(reconcilePopulationEnemies(migrated, migrated.populationCycle));
 }
@@ -3919,6 +4292,8 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
     next = evolvePopulations(next, populationCycle);
   }
 
+  next = tickSamosborSchedule(next);
+
   const heroPosition = next.hero.positions[next.zone];
   const combatDirective = combatDirectiveFor(next);
   if (
@@ -3989,13 +4364,19 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
   );
   next = reveal(next);
   next = applySafeAreaRecovery(next, state.worldTimeMs);
+  next = tickSamosborExposure(next, deltaMs);
   const nowProtected = isSamosborProtectedAt(
     next,
     next.zone,
     next.hero.positions[next.zone],
   );
   if (!wasProtected && nowProtected && next.zone === state.zone) {
-    next = appendLog(next, "Гермодверь закрылась за спиной. Контур изолирован: можно перевести дух и восстановиться.");
+    next = appendLog(
+      next,
+      isSamosborActiveIn(next, next.zone)
+        ? SAMOSBOR_SHELTER_MESSAGE
+        : "Гермодверь закрылась за спиной. Контур изолирован: можно перевести дух и восстановиться.",
+    );
   }
 
   if (!next.hero.evadeMode && !next.hero.attackTargetId) {
@@ -4083,6 +4464,15 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
 }
 
 export function objectiveFor(state: GameState): string {
+  const samosborPhase = samosborPhaseIn(state, state.zone);
+  if (isSamosborLethalPhase(samosborPhase)) {
+    return isSamosborProtectedAt(state, state.zone, state.hero.positions[state.zone])
+      ? "Переждать активную фазу Самосбора внутри контура"
+      : "Немедленно уйти за гермодверь: активная фаза Самосбора";
+  }
+  if (isSamosborWarningPhase(samosborPhase)) {
+    return "Дойти до ближайшей гермодвери до начала активной фазы Самосбора";
+  }
   if (state.zone === "voidLab") {
     return state.artifactRecovered
       ? "Вернуться к межэтажному переходу"

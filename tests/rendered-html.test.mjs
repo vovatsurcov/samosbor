@@ -31,7 +31,7 @@ test("renders development preview metadata", async () => {
   );
   const html = await response.text();
   assert.match(html, developmentPreviewMeta);
-  assert.match(html, /Action RPG прототип · этап 3C/);
-  assert.match(html, /дерево, ротации и легендарные допуски/);
+  assert.match(html, /Action RPG прототип · этап 4B/);
+  assert.match(html, /ПРОТОКОЛ СМЕНЫ · СБ\/556-04/);
   assert.match(html, /Экран \/ пульт/);
 });

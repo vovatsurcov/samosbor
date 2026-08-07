@@ -1,0 +1,48 @@
+# Нормализация текста
+* text=auto eol=lf
+
+# --- Git LFS: тяжёлые бинарные исходники и игровые модели ---
+# Требуется однократная локальная установка: git lfs install
+# Правила добавлены вручную и эквивалентны `git lfs track`.
+
+# 3D: исходники и игровые экспорты
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.blend1 filter=lfs diff=lfs merge=lfs -text
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.glb filter=lfs diff=lfs merge=lfs -text
+*.gltf filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+*.ply filter=lfs diff=lfs merge=lfs -text
+*.abc filter=lfs diff=lfs merge=lfs -text
+*.usd filter=lfs diff=lfs merge=lfs -text
+*.usdz filter=lfs diff=lfs merge=lfs -text
+
+# Растровые исходники и тяжёлые карты
+*.psd filter=lfs diff=lfs merge=lfs -text
+*.psb filter=lfs diff=lfs merge=lfs -text
+*.kra filter=lfs diff=lfs merge=lfs -text
+*.xcf filter=lfs diff=lfs merge=lfs -text
+*.exr filter=lfs diff=lfs merge=lfs -text
+*.hdr filter=lfs diff=lfs merge=lfs -text
+*.tif filter=lfs diff=lfs merge=lfs -text
+*.tiff filter=lfs diff=lfs merge=lfs -text
+*.tga filter=lfs diff=lfs merge=lfs -text
+
+# Звук и видео
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.flac filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+
+# PNG и JPG намеренно НЕ переведены в LFS: концепты и превью остаются
+# обычными файлами, чтобы их можно было смотреть прямо в интерфейсе GitHub.
+# Если отдельная текстура превысит ~10 МБ, переводите её точечным правилом,
+# например: art/shared/textures/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# Бинарные форматы без LFS: помечены как бинарные ради корректных diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
