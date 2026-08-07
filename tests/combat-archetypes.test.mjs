@@ -6,13 +6,11 @@ import {
   BOSS,
   HEAT_OVERHEAT,
   RESONANCE_MAX_STACKS,
-  archetypeResourceSteps,
   bossPhaseFor,
   breaksBossStance,
   chainDamageAt,
   commandAttack,
   commandBackstab,
-  commandBlock,
   commandDesync,
   commandFlurry,
   commandHeavyAttack,
@@ -150,22 +148,12 @@ test("урон боссу зажат потолком и полом за уда�
   assert.ok(boss.hp - afterHuge.hp > 0);
 });
 
-test("опора танка копится блоком и усиливает поглощение", () => {
+test("ступени опоры считаются по накопленному времени", () => {
   assert.equal(footingStepsFor(0), 0);
   assert.equal(footingStepsFor(1200), 1);
   assert.equal(footingStepsFor(99999), 3);
-
-  let state = heroAt(investDirection(createInitialState(), "guard"), { x: 9, y: 9 });
-  state = { ...state, worldTimeMs: 20000 };
-  state = commandBlock(state, true);
-  let holding = state;
-  for (let frame = 0; frame < 20; frame += 1) holding = tickGame(holding, 100);
-  assert.ok(holding.hero.footingMs > 0, "удержание блока копит опору");
-  assert.ok(archetypeResourceSteps(holding) >= 1);
-
-  const released = tickGame(commandBlock(holding, false), 100);
-  assert.equal(released.hero.footingMs, 0, "опущенный блок рассыпает опору");
 });
+
 
 test("толчок щитом отбрасывает цель и срывает подготовку атаки", () => {
   let state = heroAt(investDirection(createInitialState(), "guard"), { x: 9, y: 9 });

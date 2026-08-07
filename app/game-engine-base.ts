@@ -145,7 +145,6 @@ import {
   stanceState,
   chargeStepsFor,
   chargeTuning,
-  defenceTuning,
   tunedChargeMultipliers,
   BLOCK,
   BREATH_COSTS,
@@ -3943,20 +3942,6 @@ export function commandReverseShadow(state: GameState): GameState {
 }
 
 /**
- * Параметры защитного действия текущего билда. Удержание стойки и окно
- * парирования существуют только если их открыли пассивные таланты.
- */
-export function heroDefenceTuning(state: GameState) {
-  return defenceTuning({
-    blockHold: talentBonus(state, "blockHold"),
-    block: talentBonus(state, "block"),
-    blockCostReduction: talentBonus(state, "blockCostReduction"),
-    parryWindow: talentBonus(state, "parryWindow"),
-    parryReflect: talentBonus(state, "parryReflect"),
-  });
-}
-
-/**
  * Защитный профиль персонажа: собирается из дерева, экипировки и укрытия.
  *
  * Ни одно слагаемое не зависит от того, что игрок сейчас нажал: блок,
@@ -3974,7 +3959,9 @@ export function heroDefenceProfile(state: GameState): DefenceProfile {
     blockEffectiveness: Math.min(0.8, 0.35 + talentBonus(state, "blockPower")),
     // Парирование реже блока: оно не просто гасит удар, а обращает его.
     parryChance: Math.min(0.4, talentBonus(state, "parry")),
-    armour: Math.round(equipmentScalar(state, "armor")) + (inCover ? 6 : 0),
+    // Броня складывается из снаряжения, дерева и укрытия: узлы «+N брони»
+    // обязаны доходить до профиля, иначе защитная ветка ничего не даёт.
+    armour: Math.round(equipmentScalar(state, "armor") + talentBonus(state, "armor")) + (inCover ? 6 : 0),
     resistances: {
       kinetic: talentBonus(state, "resistKinetic"),
       thermal: talentBonus(state, "resistThermal"),

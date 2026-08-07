@@ -15,7 +15,6 @@ import {
   canSpendBreath,
   commandAttack,
   beginCharge,
-  commandBlock,
   commandDodge,
   commandFinisher,
   commandHeavyAttack,
@@ -29,7 +28,6 @@ import {
   heroChargeSteps,
   heroChargeTuning,
   heroStanceState,
-  isDefending,
   maxHeroBreath,
   maxHeroHp,
   maxHeroStance,
@@ -229,17 +227,24 @@ test("разбор удара объясним: каждый слой отчит
 });
 
 
-test("удержание защитной стойки живёт только с пассивом", () => {
-  const base = heroAt(createInitialState(), { x: 9, y: 4 });
-  const held = { ...commandBlock({ ...base, worldTimeMs: 20000 }, true) };
-  // Без пассива короткий блок опадает сам.
-  const lapsed = { ...held, worldTimeMs: held.worldTimeMs + 2000 };
-  assert.equal(isDefending(lapsed), false, "короткий блок не держится вечно");
+test("защитный профиль собирается вложениями, а не нажатиями", async () => {
+  const { heroDefenceProfile } = await import("../app/game-engine.ts");
+  const bare = heroDefenceProfile(createInitialState());
+  assert.equal(bare.blockChance, 0, "без вложений блока нет");
+  assert.equal(bare.parryChance, 0);
+  assert.equal(bare.evasion, 0);
 
-  const guardian = heroAt(investDirection(createInitialState(), "guard", 3), { x: 9, y: 4 });
-  const guardHeld = commandBlock({ ...guardian, worldTimeMs: 20000 }, true);
-  assert.equal(isDefending({ ...guardHeld, worldTimeMs: guardHeld.worldTimeMs + 5000 }), true);
+  const guardian = heroDefenceProfile(investDirection(createInitialState(), "guard", 8));
+  assert.ok(guardian.blockChance > 0, "Опора даёт блок пассивно");
+  assert.ok(guardian.armour >= bare.armour);
+  assert.ok(guardian.resistances.kinetic > 0, "Опора даёт сопротивление своей категории");
+
+  const agile = heroDefenceProfile(investDirection(createInitialState(), "agility", 8));
+  assert.ok(agile.evasion > 0, "Ловкое направление даёт уклонение");
+  assert.ok(agile.evasion > guardian.evasion, "уклонение — не профиль Опоры");
+  assert.ok(guardian.blockChance > agile.blockChance, "блок — не профиль ловкой сборки");
 });
+
 
 test("дыхание тратится, восстанавливается и падает от заражения и стресса", () => {
   const state = createInitialState();
