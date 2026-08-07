@@ -1,12 +1,6 @@
 name: Apply approved campaign
 
 on:
-  push:
-    branches:
-      - architect/approved-campaign-floors-534
-    paths:
-      - '.automation/approved-campaign/**'
-      - '.github/workflows/apply-approved-campaign.yml'
   pull_request:
     branches:
       - main
@@ -20,7 +14,7 @@ permissions:
 
 jobs:
   apply-and-verify:
-    if: github.head_ref == 'architect/approved-campaign-floors-534' && hashFiles('.automation/approved-campaign/part-*') != '' && hashFiles('.automation/approved-campaign/result.log') == ''
+    if: github.head_ref == 'architect/approved-campaign-floors-534'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -29,7 +23,18 @@ jobs:
           ref: architect/approved-campaign-floors-534
           fetch-depth: 0
 
+      - name: Check payload state
+        id: payload
+        shell: bash
+        run: |
+          if compgen -G '.automation/approved-campaign/part-*' > /dev/null && [ ! -f .automation/approved-campaign/result.log ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Assemble approved payload
+        if: steps.payload.outputs.ready == 'true'
         run: |
           cat .automation/approved-campaign/part-* > /tmp/approved-campaign.b64
           base64 --decode /tmp/approved-campaign.b64 > /tmp/approved-campaign.tar.gz
@@ -37,6 +42,7 @@ jobs:
           tar -xzf /tmp/approved-campaign.tar.gz -C .
 
       - name: Verify engine lint and build
+        if: steps.payload.outputs.ready == 'true'
         shell: bash
         run: |
           set +e
@@ -71,13 +77,14 @@ jobs:
           fi
           exit 0
 
-      - name: Commit verified result
+      - name: Commit verification result
+        if: steps.payload.outputs.ready == 'true'
         run: |
           git config user.name 'OpenAI Codex'
           git config user.email 'noreply@openai.com'
           if [ -f .automation/approved-campaign/success ]; then
             git rm -r .automation/approved-campaign
-            git rm .github/workflows/apply-approved-campaign.yml
+            git rm -f .github/workflows/apply-approved-campaign.yml
             git add README.md package.json app docs tests
             git commit -m 'Implement approved campaign through floor 534'
           else
