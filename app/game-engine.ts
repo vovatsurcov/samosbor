@@ -17,6 +17,10 @@ import {
   type ProfessionSpecializationId,
 } from "./game-professions.ts";
 import {
+  ensureSettlementStoryState,
+  tickSettlementArcs,
+} from "./game-settlement-arcs.ts";
+import {
   createRegionalProgress,
   REGION_SETTLEMENT_NPCS,
   regionalObjective,
@@ -59,6 +63,7 @@ import {
 export * from "./game-engine-base.ts";
 export * from "./game-campaign.ts";
 export * from "./game-professions.ts";
+export * from "./game-settlement-arcs.ts";
 export * from "./game-world-systems.ts";
 export { FLOOR_544_MAP } from "./game-region-map-544.ts";
 export const REGION_MAPS = REGION_MAPS_544;
@@ -73,7 +78,8 @@ function normalizeCityState(state: any): any {
     },
   });
   const professions = ensureProfessionState(world);
-  return tickStarterCampaign(ensureStarterCampaign(professions));
+  const campaign = tickStarterCampaign(ensureStarterCampaign(professions));
+  return ensureSettlementStoryState(campaign);
 }
 
 export function mapForZone(zone: base.ZoneId | typeof FLOOR_544): base.MapDefinition {
@@ -232,7 +238,7 @@ export function commandInteractAt(state: any, point: base.Point): any {
         tile,
         withRegionalLog(
           ensured,
-          "Мастер Яшин: «Верхний и нижний док спорят постоянно, но сирену слышат как один город».",
+          "Мастер Яшин: «Верхний и нижний док спорят постоянно, но сирену слышат как один город»." ,
         ),
       );
     }
@@ -369,7 +375,8 @@ export function tickGame(state: any, rawDeltaMs: number): any {
     next = tickRegionalBoss(next);
   }
   next = tickWorldSystems(next);
-  return tickStarterCampaign(next);
+  next = tickStarterCampaign(next);
+  return tickSettlementArcs(next);
 }
 
 export function objectiveFor(state: any): string {
