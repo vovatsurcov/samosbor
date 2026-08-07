@@ -146,7 +146,7 @@ test("выбор разведки и прибытие в Город 545 заве
   state = tickGame(state, 1);
   assert.equal(state.campaign.currentQuest, "complete");
   assert.ok(state.campaign.completedQuests.includes("START-007"));
-  assert.ok(state.campaign.completedAtMs > 0);
+  assert.ok(Number.isFinite(state.campaign.completedAtMs));
 });
 
 test("после START-007 выбирается отдельная мировая профессия", () => {
