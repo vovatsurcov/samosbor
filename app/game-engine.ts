@@ -49,7 +49,42 @@ import {
   samosborQuietDurationMs,
 } from "./game-samosbor.ts";
 
+import {
+  type AutopilotTemper,
+  CONTROL_MODE_COST,
+  CONTROL_MODE_LABELS,
+  type CombatSnapshot,
+  type ControlMode,
+  DEFAULT_DIRECTIVES,
+  type DirectiveAction,
+  type DirectiveRule,
+  MAX_DIRECTIVE_RULES,
+  decideAction,
+} from "./game-combat-modes.ts";
+
 export { ITEMS, SLOT_NAMES, WEAPONS } from "./game-items.ts";
+export {
+  AUTOPILOT_TEMPER_LABELS,
+  CONTROL_MODE_COST,
+  CONTROL_MODE_HINTS,
+  CONTROL_MODE_LABELS,
+  DEFAULT_DIRECTIVES,
+  DIRECTIVE_ACTION_LABELS,
+  DIRECTIVE_CONDITION_LABELS,
+  MAX_DIRECTIVE_RULES,
+  autopilotAction,
+  describeRule,
+  directiveNeedsThreshold,
+  evaluateDirectives,
+} from "./game-combat-modes.ts";
+export type {
+  AutopilotTemper,
+  CombatSnapshot,
+  ControlMode,
+  DirectiveAction,
+  DirectiveCondition,
+  DirectiveRule,
+} from "./game-combat-modes.ts";
 export {
   SAMOSBOR_GRACE_MS,
   SAMOSBOR_PHASE_PROFILES,
@@ -231,6 +266,9 @@ export type Hero = {
   activeSkillCooldowns: Partial<Record<ActiveSkillId, number>>;
   autocastDecisionCooldownMs: number;
   combatDirective: CombatDirective;
+  controlMode: ControlMode;
+  autopilotTemper: AutopilotTemper;
+  directives: DirectiveRule[];
   braceUntilMs: number;
   silentUntilMs: number;
   overclockUntilMs: number;
@@ -1362,6 +1400,77 @@ export function setCombatDirective(
   );
 }
 
+/** Снимок боя для системы режимов: всё, что нужно для решения, и ничего лишнего. */
+export function combatSnapshot(state: GameState): CombatSnapshot {
+  const hero = state.hero.positions[state.zone];
+  const target = enemyById(state, state.hero.attackTargetId);
+  const enemiesWithin = state.enemies.filter(
+    (enemy) => enemy.zone === state.zone && enemy.hp > 0 && distance(enemy.position, hero) <= 4,
+  ).length;
+  const incomingHeavy = state.enemies.some(
+    (enemy) =>
+      enemy.zone === state.zone &&
+      enemy.hp > 0 &&
+      enemy.castUntilMs > state.worldTimeMs &&
+      distance(enemy.position, hero) <= enemy.attackRange + 0.5,
+  );
+  return {
+    hpShare: state.hero.hp / Math.max(1, maxHeroHp(state)),
+    // Дыхание появится вместе с переводом боя на модель v2; до этого его долю
+    // заменяет запас стресса: пока это единственный ресурс давления в игре.
+    breathShare: 1 - Math.min(1, state.hero.stress / 100),
+    resourceShare: target ? Math.min(1, target.resonanceStacks / 4) : 0,
+    hasTarget: Boolean(target),
+    targetHpShare: target ? target.hp / Math.max(1, target.maxHp) : 1,
+    targetStaggered: Boolean(target && target.stunnedUntilMs > state.worldTimeMs),
+    targetShaken: Boolean(target && target.hp <= Math.ceil(target.maxHp * 0.3)),
+    targetMarked: Boolean(target && target.markedUntilMs > state.worldTimeMs),
+    targetDistance: target ? distance(hero, target.position) : Number.POSITIVE_INFINITY,
+    enemiesWithin,
+    incomingHeavy,
+    inPosition: state.hero.path.length === 0 && !state.hero.evadeMode,
+  };
+}
+
+export function controlModeFor(state: GameState): ControlMode {
+  return state.hero.controlMode ?? "directive";
+}
+
+export function setControlMode(state: GameState, mode: ControlMode): GameState {
+  if (controlModeFor(state) === mode) return state;
+  return appendLog(
+    { ...state, hero: { ...state.hero, controlMode: mode } },
+    `Режим управления: ${CONTROL_MODE_LABELS[mode].toLowerCase()}.`,
+  );
+}
+
+export function setAutopilotTemper(state: GameState, temper: AutopilotTemper): GameState {
+  return { ...state, hero: { ...state.hero, autopilotTemper: temper } };
+}
+
+export function setDirectives(state: GameState, rules: DirectiveRule[]): GameState {
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      directives: rules.slice(0, MAX_DIRECTIVE_RULES).map((rule) => ({ ...rule })),
+    },
+  };
+}
+
+/** Что режим предлагает делать прямо сейчас. Ручной режим не предлагает ничего. */
+export function currentModeAction(state: GameState): DirectiveAction | null {
+  return decideAction(controlModeFor(state), combatSnapshot(state), {
+    rules: state.hero.directives ?? DEFAULT_DIRECTIVES,
+    temper: state.hero.autopilotTemper ?? "aggressive",
+  });
+}
+
+/** Автоконтур тратит расходники и ресурс экипировки быстрее ручного боя. */
+export function modeWearCost(state: GameState, base: number): number {
+  return Math.round(base * CONTROL_MODE_COST[controlModeFor(state)].wearRate);
+}
+
 export function inventoryEntryById(
   state: GameState,
   instanceId: string | null,
@@ -2406,6 +2515,10 @@ function canAutocastSkill(state: GameState, skillId: ActiveSkillId): boolean {
 
 function tickAutocast(state: GameState): GameState {
   if (state.hero.autocastDecisionCooldownMs > 0) return state;
+  // Ручной режим не разыгрывает способности за игрока: это его верхняя планка.
+  if (controlModeFor(state) === "manual") {
+    return { ...state, hero: { ...state.hero, autocastDecisionCooldownMs: 180 } };
+  }
   const unlocked = new Set(unlockedActiveSkills(state));
   const priority = state.hero.evadeMode ? EVADE_AUTOCAST_PRIORITY : AUTOCAST_PRIORITY;
   const skillId = priority.find((candidate) => unlocked.has(candidate) && canAutocastSkill(state, candidate));
@@ -2690,7 +2803,7 @@ function applyRescue(
       secondBeatReady: true,
       inventory: state.hero.inventory.map((entry) =>
         equippedIds.has(entry.instanceId)
-          ? { ...entry, condition: Math.max(0, entry.condition - equipmentDamage) }
+          ? { ...entry, condition: Math.max(0, entry.condition - modeWearCost(state, equipmentDamage)) }
           : entry,
       ),
     },
@@ -4077,6 +4190,9 @@ export function createInitialState(): GameState {
       activeSkillCooldowns: {},
       autocastDecisionCooldownMs: 0,
       combatDirective: "adaptive",
+      controlMode: "directive",
+      autopilotTemper: "aggressive",
+      directives: DEFAULT_DIRECTIVES.map((rule) => ({ ...rule })),
       braceUntilMs: 0,
       silentUntilMs: 0,
       overclockUntilMs: 0,
