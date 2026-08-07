@@ -64,6 +64,7 @@ import {
   CONTROL_MODE_LABELS,
   type ControlMode,
   HEAT_OVERHEAT,
+  COMBAT_STATES,
   RESONANCE_MAX_STACKS,
   archetypeFor,
   archetypeResourceSteps,
@@ -317,6 +318,24 @@ function injuryItems(state: GameState): string[] {
   if (state.injuries.head) result.push(`Голова: защита −${effectiveInjury(state, "head")}${suffix("head")}`);
   if (state.injuries.torso) result.push(`Корпус: максимум ОЗ −${effectiveInjury(state, "torso") * 2}${suffix("torso")}`);
   return result;
+}
+
+/**
+ * Что сейчас наведено на цель и что с этим делать. Игрок не должен уходить за
+ * объяснением механики во внешнюю энциклопедию: связка обязана читаться с
+ * самой цели.
+ */
+function enemyStateNotes(enemy: Enemy, worldTimeMs: number): string[] {
+  const notes: string[] = [];
+  if (enemy.resonanceStacks > 0) {
+    notes.push(
+      `${COMBAT_STATES.resonance.name} ×${enemy.resonanceStacks}: ${COMBAT_STATES.resonance.consumedBy} сорвёт накопленное импульсом по площади.`,
+    );
+  }
+  if ((enemy.exposedUntilMs ?? 0) > worldTimeMs) {
+    notes.push(`${COMBAT_STATES.exposure.name}: броня почти не работает ещё ${((enemy.exposedUntilMs - worldTimeMs) / 1000).toFixed(1)} с.`);
+  }
+  return notes;
 }
 
 function enemyDescription(enemy: Enemy): string {
@@ -1274,7 +1293,11 @@ export default function GamePrototype() {
                       event.stopPropagation();
                       attackEnemy(enemy.id);
                     }}
-                    onPointerEnter={() => setHoverInfo({ title: enemy.name, description: enemyDescription(enemy), meta: `${MODE_LABELS[enemy.mode]} · ОЗ ${enemy.hp}/${enemy.maxHp} · агро ${enemy.aggroRadius.toFixed(1)}` })}
+                    onPointerEnter={() => setHoverInfo({
+                      title: enemy.name,
+                      description: [enemyDescription(enemy), ...enemyStateNotes(enemy, state.worldTimeMs)].join(" "),
+                      meta: `${MODE_LABELS[enemy.mode]} · ОЗ ${enemy.hp}/${enemy.maxHp} · агро ${enemy.aggroRadius.toFixed(1)}`,
+                    })}
                     onPointerLeave={() => setHoverInfo(null)}
                     role="button"
                     aria-label={`${enemy.name}, ${MODE_LABELS[enemy.mode]}`}
@@ -1294,6 +1317,29 @@ export default function GamePrototype() {
                     </g>
                     <rect x={iso.x - 18} y={iso.y + 13} width="36" height="4" rx="2" fill="#171412" />
                     <rect x={iso.x - 18} y={iso.y + 13} width={36 * (enemy.hp / enemy.maxHp)} height="4" rx="2" fill={color} />
+                    {/*
+                      Наведённые состояния видно на цели: связка «подготовил →
+                      сорвал» существует, только если игрок видит, что цель
+                      подготовлена. Резонанс — по делению на стек, вскрытие —
+                      разошедшейся скобой.
+                    */}
+                    {enemy.resonanceStacks > 0 ? (
+                      <g className="state-resonance">
+                        {Array.from({ length: Math.min(enemy.resonanceStacks, RESONANCE_MAX_STACKS) }).map((_, index) => (
+                          <rect key={index} x={iso.x - 17 + index * 9} y={iso.y + 19} width="7" height="3" rx="1.5" fill="#c9a9e8" />
+                        ))}
+                      </g>
+                    ) : null}
+                    {(enemy.exposedUntilMs ?? 0) > state.worldTimeMs ? (
+                      <path
+                        className="state-exposure"
+                        d={`M ${iso.x - 9} ${iso.y - 30} L ${iso.x - 4} ${iso.y - 34} M ${iso.x + 9} ${iso.y - 30} L ${iso.x + 4} ${iso.y - 34}`}
+                        fill="none"
+                        stroke="#f0b45c"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                      />
+                    ) : null}
                   </g>
                 );
               })}

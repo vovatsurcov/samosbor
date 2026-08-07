@@ -9,6 +9,20 @@ import {
   WEAPONS,
 } from "./game-items.ts";
 import {
+  EXPOSURE_MS,
+  armorUnderExposure,
+  resonanceImpulse,
+} from "./game-combat-states.ts";
+export {
+  BLOCKED_REASON_LABELS,
+  COMBAT_STATES,
+  EXPOSURE_ARMOR_SHARE,
+  EXPOSURE_MS,
+  armorUnderExposure,
+  resonanceImpulse,
+} from "./game-combat-states.ts";
+export type { BlockedReason, CombatStateId, CombatStateInfo } from "./game-combat-states.ts";
+import {
   ACTIVE_SKILLS,
   type ActiveSkillId,
   branchForTalent,
@@ -444,6 +458,8 @@ export type Enemy = {
   memoryMs: number;
   markedUntilMs: number;
   resonanceStacks: number;
+  /** Вскрытие: слом стойки временно отключает броню (game-combat-states.ts). */
+  exposedUntilMs: number;
   dizzyStacks: number;
   dizzyUntilMs: number;
   stunnedUntilMs: number;
@@ -1021,6 +1037,7 @@ function createPopulationEnemy(
     memoryMs: 0,
     markedUntilMs: 0,
     resonanceStacks: 0,
+    exposedUntilMs: 0,
     dizzyStacks: 0,
     dizzyUntilMs: 0,
     stunnedUntilMs: 0,
@@ -1117,7 +1134,7 @@ function createStaticEnemy(
     attackCooldownBaseMs: collector ? 1650 : sentry ? 1450 : 980,
     attackCooldownMs: 700, thinkCooldownMs: 0, xpValue: collector ? 24 : sentry ? 12 : 9, rank,
     mode: "patrol", path: [], patrol, patrolIndex: patrol.length > 1 ? 1 : 0,
-    lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, dizzyStacks: 0,
+    lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, exposedUntilMs: 0, dizzyStacks: 0,
     dizzyUntilMs: 0, stunnedUntilMs: 0, castUntilMs: 0,
   };
 }
@@ -3209,7 +3226,12 @@ function enemyCombatProfile(state: GameState, enemy: Enemy) {
   return {
     hp: enemy.hp,
     maxHp: enemy.maxHp,
-    armor: enemy.armor + (tileAtZone(state, enemy.zone, enemy.position) === "c" ? 6 : 0),
+    // Вскрытие — окно, созданное сломом стойки: пока оно держится, броня
+    // почти не работает, и удар в упор наконец окупается.
+    armor: armorUnderExposure(
+      enemy.armor + (tileAtZone(state, enemy.zone, enemy.position) === "c" ? 6 : 0),
+      (enemy.exposedUntilMs ?? 0) > state.worldTimeMs,
+    ),
     flatAbsorb: enemy.flatAbsorb ?? 0,
     stance: enemy.stance ?? enemy.maxStance ?? 0,
     maxStance: enemy.maxStance ?? 1,
@@ -3296,6 +3318,11 @@ function applyStrikeToEnemy(
     staggerImmuneUntilMs: stagger
       ? state.worldTimeMs + profile.durationMs + profile.immunityMs
       : current.staggerImmuneUntilMs,
+    // Слом стойки вскрывает защиту: окно для урона создаётся действием игрока,
+    // а не выпадает случайно.
+    exposedUntilMs: stagger
+      ? state.worldTimeMs + EXPOSURE_MS
+      : current.exposedUntilMs ?? 0,
     castUntilMs: stagger || phaseChanged ? 0 : current.castUntilMs,
     mode:
       strike.targetHp <= 0
@@ -4102,7 +4129,51 @@ export function commandHeavyAttack(state: GameState): GameState {
     next,
     `Тяжёлый удар: ${strike.damage} урона, стойка −${strike.stanceDamage}${strike.staggered ? "; цель ошеломлена" : ""}.`,
   );
+  next = detonateResonance(next, target.id, hero);
   return strike.targetHp <= 0 ? finishEnemy(next, target.id) : next;
+}
+
+/**
+ * Связка «подготовил → сорвал»: тяжёлый удар по резонирующей цели срывает
+ * накопленные стеки пространственным импульсом. Ради этого метку и ставят —
+ * без детонации она была просто подсветкой цели.
+ */
+function detonateResonance(state: GameState, targetId: string, origin: Point): GameState {
+  const target = enemyById(state, targetId);
+  if (!target) return state;
+  const impulse = resonanceImpulse(target.resonanceStacks, heroAttackDamage(state));
+  if (!impulse) return state;
+
+  let next = updateEnemy(state, targetId, (enemy) => ({ ...enemy, resonanceStacks: 0 }));
+  const centre = target.position;
+  const caught = next.enemies.filter(
+    (enemy) =>
+      enemy.hp > 0 &&
+      enemy.zone === next.zone &&
+      distance(enemy.position, centre) <= impulse.radius,
+  );
+
+  for (const enemy of caught) {
+    // Цель детонации получает полный импульс, соседи — половину: импульс
+    // расходится от неё, а не возникает у каждого одинаково.
+    const share = enemy.id === targetId ? 1 : 0.5;
+    next = updateEnemy(next, enemy.id, (current) => ({
+      ...current,
+      hp: current.hp - Math.round(impulse.damage * share),
+      stance: Math.max(0, current.stance - Math.round(impulse.stanceDamage * share)),
+    }));
+  }
+  next = addEffect(next, origin, centre, "hero-hit", impulse.damage);
+  next = appendLog(
+    next,
+    `Резонанс сорван: пространственный импульс ${impulse.damage} урона, стеков ${impulse.stacksSpent}` +
+      `${caught.length > 1 ? `, задето целей ${caught.length}` : ""}.`,
+  );
+  for (const enemy of caught) {
+    const after = enemyById(next, enemy.id);
+    if (after && after.hp <= 0) next = finishEnemy(next, enemy.id);
+  }
+  return next;
 }
 
 /** Добивание ошеломлённой цели: дорого, долго, но решает бой. */
