@@ -76,6 +76,11 @@ export * from "./game-world-systems.ts";
 export { FLOOR_544_MAP } from "./game-region-map-544.ts";
 export const REGION_MAPS = REGION_MAPS_544;
 
+const FLOOR_544_LOWER_EXIT: base.Point = { x: 52, y: 2 };
+const FLOOR_544_FROM_543: base.Point = { x: 52, y: 3 };
+const FLOOR_543_FROM_CITY: base.Point = { x: 3, y: 33 };
+const FLOOR_543_UP: base.Point = { x: 2, y: 33 };
+
 function normalizeCityState(state: any): any {
   const regional = ensureRegionalState(state);
   const world = ensureWorldSystemsState({
@@ -91,6 +96,17 @@ function normalizeCityState(state: any): any {
   return migrateMainStoryContent(ensureMainStoryState(settlement));
 }
 
+function lowerCityMapWithExit(): base.MapDefinition {
+  const rows = FLOOR_544_MAP.rows.map((row) => [...row]);
+  rows[FLOOR_544_LOWER_EXIT.y][FLOOR_544_LOWER_EXIT.x] = "D";
+  return {
+    ...FLOOR_544_MAP,
+    name: "Город 545 · Сухой док · нижний ярус",
+    subtitle: "Производство, бронные мастерские, гермоконтур и нижний внешний выход",
+    rows: rows.map((row) => row.join("")),
+  };
+}
+
 export function mapForZone(zone: base.ZoneId | typeof FLOOR_544): base.MapDefinition {
   const map = mapForRegionalZone(String(zone)) ?? base.mapForZone(zone as base.ZoneId);
   if (zone === FLOOR_545) {
@@ -100,13 +116,7 @@ export function mapForZone(zone: base.ZoneId | typeof FLOOR_544): base.MapDefini
       subtitle: "Администрация, караванный двор, медицина и Управление межэтажных сообщений",
     };
   }
-  if (zone === FLOOR_544) {
-    return {
-      ...map,
-      name: "Город 545 · Сухой док · нижний ярус",
-      subtitle: "Производство, бронные мастерские, гермоконтур и оборонительный периметр",
-    };
-  }
+  if (zone === FLOOR_544) return lowerCityMapWithExit();
   return map;
 }
 
@@ -240,6 +250,18 @@ export function commandInteractAt(state: any, point: base.Point): any {
         ),
       );
     }
+    if (tile === "D") {
+      return finalizeInteraction(
+        ensured,
+        tile,
+        transitionRegionalState(
+          ensured,
+          "floor543",
+          FLOOR_543_FROM_CITY,
+          "Выход из Города 545 выполнен: этаж 543, межгородской технический транзит.",
+        ),
+      );
+    }
     if (tile === "T") {
       return finalizeInteraction(
         ensured,
@@ -261,6 +283,19 @@ export function commandInteractAt(state: any, point: base.Point): any {
       );
     }
     if (tile === "B") return finalizeInteraction(ensured, tile, openLowerContainer(ensured, point));
+  }
+
+  if (ensured.zone === "floor543" && tile === "U") {
+    return finalizeInteraction(
+      ensured,
+      tile,
+      transitionRegionalState(
+        ensured,
+        FLOOR_544,
+        FLOOR_544_FROM_543,
+        "Возвращение в Город 545: нижний ярус Сухого дока.",
+      ),
+    );
   }
 
   if (tile === "L") {
@@ -347,6 +382,7 @@ function nearestRegionalTarget(state: any): RegionalTarget | null {
   if (state.zone === FLOOR_544) {
     const labels: Record<string, string> = {
       U: "Подняться на верхний ярус Города 545",
+      D: "Выйти из Города 545 на нижний транзит 543",
       T: "Прочитать городской терминал",
       N: "Поговорить с мастером",
       L: "Проверить сеть межэтажных сообщений",
@@ -354,14 +390,25 @@ function nearestRegionalTarget(state: any): RegionalTarget | null {
     };
     for (let y = 0; y < map.rows.length; y += 1) {
       for (let x = 0; x < map.rows[y].length; x += 1) {
-        const tile = map.rows[y][x];
-        if (!labels[tile]) continue;
+        const currentTile = map.rows[y][x];
+        if (!labels[currentTile]) continue;
         const point = { x, y };
         const currentDistance = distance(hero, point);
         if (currentDistance <= 1.35) {
-          targets.push({ kind: "tile", point, label: labels[tile], distance: currentDistance });
+          targets.push({ kind: "tile", point, label: labels[currentTile], distance: currentDistance });
         }
       }
+    }
+  }
+  if (state.zone === "floor543") {
+    const currentDistance = distance(hero, FLOOR_543_UP);
+    if (currentDistance <= 1.35) {
+      targets.push({
+        kind: "tile",
+        point: FLOOR_543_UP,
+        label: "Вернуться в Город 545",
+        distance: currentDistance,
+      });
     }
   }
   targets.sort((left, right) => left.distance - right.distance);
