@@ -26,9 +26,28 @@ jobs:
           test -d .automation/approved-campaign
           compgen -G '.automation/approved-campaign/part-*' > /dev/null
           rm -f .automation/approved-campaign/result.log .automation/approved-campaign/success
+
+          if [ ! -f .automation/approved-campaign/part-02 ]; then
+            recovered=''
+            while read -r commit; do
+              if git cat-file -e "$commit:.automation/approved-campaign/part-02" 2>/dev/null; then
+                git show "$commit:.automation/approved-campaign/part-02" > .automation/approved-campaign/part-02
+                recovered="$commit"
+                break
+              fi
+            done < <(git rev-list --all)
+            if [ -z "$recovered" ]; then
+              echo 'part-02 was not found in git history'
+              git log --all --oneline --name-status -- .automation/approved-campaign || true
+              exit 1
+            fi
+            echo "Recovered part-02 from $recovered"
+          fi
+
           cat .automation/approved-campaign/part-* > /tmp/approved-campaign.b64
           base64 --decode /tmp/approved-campaign.b64 > /tmp/approved-campaign.tar.gz
           sha256sum /tmp/approved-campaign.tar.gz
+          echo 'a0683cc072eb5a9618f39d5155f9c59b55d04d811cc18923720337f1068f5a54  /tmp/approved-campaign.tar.gz' | sha256sum --check --strict
           gzip -t /tmp/approved-campaign.tar.gz
           tar -tzf /tmp/approved-campaign.tar.gz | tee /tmp/approved-campaign-files.txt
           grep -q '^app/' /tmp/approved-campaign-files.txt
