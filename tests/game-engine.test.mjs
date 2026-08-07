@@ -42,6 +42,7 @@ import {
   MAX_HERO_LEVEL,
   populationPressureForZone,
   populationsForZone,
+  setControlMode,
   tickGame,
   tileAt,
   TALENT_NODES,
@@ -654,7 +655,9 @@ test("силовой сплэшер поражает соседнюю цель �
 });
 
 test("все открытые навыки участвуют в автокасте без назначения на панель", () => {
+  // Автокаст — работа автоконтура: в ручном режиме герой ничего не делает сам.
   let state = heroAt(applyTrainingBuild(createInitialState(), "mobileFire"), { x: 9, y: 4 });
+  state = setControlMode(state, "autopilot");
   state = {
     ...state,
     hero: {

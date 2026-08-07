@@ -60,19 +60,8 @@ import {
   ARCHETYPES,
   type ArchetypeId,
   CONTROL_MODE_HINTS,
+  COMBAT_ACTION_LABELS,
   CONTROL_MODE_LABELS,
-  DEFAULT_DIRECTIVES,
-  DIRECTIVE_ACTION_LABELS,
-  DIRECTIVE_CONDITION_LABELS,
-  type DirectiveAction,
-  type DirectiveCondition,
-  type DirectiveRule,
-  MAX_DIRECTIVE_RULES,
-  combatSnapshot,
-  describeRule,
-  directiveNeedsThreshold,
-  evaluateDirectives,
-  setDirectives,
   type ControlMode,
   HEAT_OVERHEAT,
   RESONANCE_MAX_STACKS,
@@ -247,7 +236,7 @@ const GENOME_LABELS = {
 
 const SKILL_BRANCHES = Object.keys(SKILL_NAMES) as SkillBranch[];
 type TalentView = "core" | SkillBranch | "hybrid" | "legendary";
-type MenuPanel = "character" | "inventory" | "talents" | "directives" | null;
+type MenuPanel = "character" | "inventory" | "talents" | null;
 type QuickConsumableCategory = "bandage" | "healing" | "pills" | "booster";
 const PAPERDOLL_SLOTS: GearSlot[] = ["head", "body", "hands", "feet", "back", "weapon", "artifact"];
 
@@ -444,7 +433,6 @@ export default function GamePrototype() {
   const characterOpen = activePanel === "character";
   const inventoryOpen = activePanel === "inventory";
   const talentsOpen = activePanel === "talents";
-  const directivesOpen = activePanel === "directives";
   const menuOpen = activePanel !== null;
   const map = mapForZone(state.zone);
   const hero = state.hero.positions[state.zone];
@@ -489,10 +477,6 @@ export default function GamePrototype() {
     resonance: ARCHETYPES.resonance.name,
   };
   const controlMode = controlModeFor(state);
-  const directiveRules = state.hero.directives ?? DEFAULT_DIRECTIVES;
-  const suggestedRuleId = controlMode === "directive"
-    ? evaluateDirectives(directiveRules, combatSnapshot(state))?.id ?? null
-    : null;
   const suggestedAction = currentModeAction(state);
   const overheated = state.hero.overheatedUntilMs > state.worldTimeMs;
   const ARCHETYPE_ACTIONS: Record<ArchetypeId, { primary: string; secondary: string }> = {
@@ -687,13 +671,9 @@ export default function GamePrototype() {
     setState((current) => commandBlock(current, holding));
   }, []);
 
-  const updateDirectives = useCallback((next: DirectiveRule[]) => {
-    setState((current) => setDirectives(current, next));
-  }, []);
-
   const cycleControlMode = useCallback(() => {
     setState((current) => {
-      const order: ControlMode[] = ["manual", "directive", "autopilot"];
+      const order: ControlMode[] = ["manual", "autopilot"];
       const index = order.indexOf(controlModeFor(current));
       return setControlMode(current, order[(index + 1) % order.length]);
     });
@@ -783,7 +763,6 @@ export default function GamePrototype() {
       }
       if (key === "k") {
         event.preventDefault();
-        setActivePanel((panel) => panel === "directives" ? null : "directives");
         return;
       }
       if (key === "escape" || key === "browserback" || event.keyCode === 461) {
@@ -1582,9 +1561,6 @@ export default function GamePrototype() {
               <button type="button" className={`control-mode-chip mode-${controlMode}`} onClick={cycleControlMode} title={CONTROL_MODE_HINTS[controlMode]}>
                 <kbd>M</kbd>{CONTROL_MODE_LABELS[controlMode]}
               </button>
-              <button type="button" className="rules-chip" onClick={() => setActivePanel("directives")} title="Редактор правил директивы">
-                <kbd>K</kbd>Правила
-              </button>
             </div>
           </div>
           <div className={`meter resource-meter resource-${archetypeDefinition.resourceId} ${overheated ? "overheated" : ""}`}>
@@ -1600,7 +1576,7 @@ export default function GamePrototype() {
               {controlMode === "manual"
                 ? "ручное управление"
                 : suggestedAction
-                  ? `режим ведёт: ${DIRECTIVE_ACTION_LABELS[suggestedAction]}`
+                  ? `автоконтур ведёт: ${COMBAT_ACTION_LABELS[suggestedAction]}`
                   : "режим ждёт условия"}
             </small>
           </div>
@@ -1759,150 +1735,6 @@ export default function GamePrototype() {
         </div>
       ) : null}
 
-      {directivesOpen ? (
-        <div className="game-menu-overlay character-overlay directive-overlay" role="dialog" aria-modal="false" aria-label="Редактор директив">
-          <div className="character-window directive-window">
-            <header className="menu-window-header">
-              <div>
-                <p className="eyebrow">РЕЖИМ УПРАВЛЕНИЯ</p>
-                <h2>Директива</h2>
-                <p>Список проверяется сверху вниз: срабатывает первое подходящее правило. Порядок и есть приоритет.</p>
-              </div>
-              <nav className="menu-window-tabs">
-                <button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button>
-                <button type="button" onClick={() => setActivePanel("talents")}>Таланты <kbd>T</kbd></button>
-                <button type="button" className="active">Директива <kbd>K</kbd></button>
-              </nav>
-              <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть редактор">×</button>
-            </header>
-
-            <div className="directive-layout">
-              <section className="directive-mode-row">
-                {(["manual", "directive", "autopilot"] as ControlMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={`directive-mode ${controlMode === mode ? "active" : ""}`}
-                    onClick={() => setState((current) => setControlMode(current, mode))}
-                  >
-                    <strong>{CONTROL_MODE_LABELS[mode]}</strong>
-                    <small>{CONTROL_MODE_HINTS[mode]}</small>
-                  </button>
-                ))}
-              </section>
-
-              <ol className="directive-rules">
-                {directiveRules.map((rule, index) => (
-                  <li key={rule.id} className={suggestedRuleId === rule.id ? "firing" : ""}>
-                    <span className="rule-order">{index + 1}</span>
-                    <select
-                      aria-label="Условие"
-                      value={rule.condition}
-                      onChange={(event) => {
-                        const condition = event.target.value as DirectiveCondition;
-                        updateDirectives(
-                          directiveRules.map((entry, position) =>
-                            position === index
-                              ? {
-                                  ...entry,
-                                  condition,
-                                  // Счётный порог и долевой несовместимы: при смене
-                                  // вида условия берём разумное значение по умолчанию.
-                                  threshold: directiveNeedsThreshold(condition)
-                                    ? (condition === "enemies_within") === (entry.condition === "enemies_within")
-                                      ? entry.threshold ?? (condition === "enemies_within" ? 3 : 0.3)
-                                      : condition === "enemies_within" ? 3 : 0.3
-                                    : undefined,
-                                }
-                              : entry,
-                          ),
-                        );
-                      }}
-                    >
-                      {(Object.keys(DIRECTIVE_CONDITION_LABELS) as DirectiveCondition[]).map((condition) => (
-                        <option key={condition} value={condition}>{DIRECTIVE_CONDITION_LABELS[condition]}</option>
-                      ))}
-                    </select>
-                    {directiveNeedsThreshold(rule.condition) ? (
-                      <input
-                        aria-label="Порог"
-                        type="number"
-                        min={rule.condition === "enemies_within" ? 1 : 5}
-                        max={rule.condition === "enemies_within" ? 12 : 100}
-                        step={rule.condition === "enemies_within" ? 1 : 5}
-                        value={rule.condition === "enemies_within"
-                          ? Math.round(rule.threshold ?? 3)
-                          : Math.round((rule.threshold ?? 0.3) * 100)}
-                        onChange={(event) => {
-                          const raw = Number(event.target.value);
-                          const threshold = rule.condition === "enemies_within" ? raw : raw / 100;
-                          updateDirectives(
-                            directiveRules.map((entry, position) =>
-                              position === index ? { ...entry, threshold } : entry,
-                            ),
-                          );
-                        }}
-                      />
-                    ) : <span className="rule-nothreshold">—</span>}
-                    <select
-                      aria-label="Действие"
-                      value={rule.action}
-                      onChange={(event) => updateDirectives(
-                        directiveRules.map((entry, position) =>
-                          position === index ? { ...entry, action: event.target.value as DirectiveAction } : entry,
-                        ),
-                      )}
-                    >
-                      {(Object.keys(DIRECTIVE_ACTION_LABELS) as DirectiveAction[]).map((action) => (
-                        <option key={action} value={action}>{DIRECTIVE_ACTION_LABELS[action]}</option>
-                      ))}
-                    </select>
-                    <div className="rule-controls">
-                      <button type="button" disabled={index === 0} aria-label="Выше" onClick={() => {
-                        const next = [...directiveRules];
-                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                        updateDirectives(next);
-                      }}>↑</button>
-                      <button type="button" disabled={index === directiveRules.length - 1} aria-label="Ниже" onClick={() => {
-                        const next = [...directiveRules];
-                        [next[index + 1], next[index]] = [next[index], next[index + 1]];
-                        updateDirectives(next);
-                      }}>↓</button>
-                      <button type="button" aria-label="Удалить" onClick={() => updateDirectives(directiveRules.filter((_, position) => position !== index))}>×</button>
-                    </div>
-                    <p className="rule-plain">{describeRule(rule)}</p>
-                  </li>
-                ))}
-              </ol>
-
-              <footer className="directive-footer">
-                <button
-                  type="button"
-                  className="add-rule"
-                  disabled={directiveRules.length >= MAX_DIRECTIVE_RULES}
-                  onClick={() => updateDirectives([
-                    ...directiveRules,
-                    { id: `rule-${Date.now()}`, condition: "hp_below", threshold: 0.3, action: "defensive_skill" },
-                  ])}
-                >
-                  Добавить правило {directiveRules.length >= MAX_DIRECTIVE_RULES ? "(предел)" : ""}
-                </button>
-                <button type="button" className="reset-rules" onClick={() => updateDirectives(DEFAULT_DIRECTIVES.map((rule) => ({ ...rule })))}>
-                  Вернуть набор по умолчанию
-                </button>
-                <span className="directive-status">
-                  {controlMode === "manual"
-                    ? "Ручной режим: правила не применяются."
-                    : suggestedAction
-                      ? `Сейчас сработало бы: ${DIRECTIVE_ACTION_LABELS[suggestedAction]}`
-                      : "Ни одно правило пока не подходит."}
-                </span>
-                <button type="button" className="close-main" onClick={() => setActivePanel(null)}>Вернуться в локацию</button>
-              </footer>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {talentsOpen ? (
         <div className="game-menu-overlay character-overlay talent-overlay" role="dialog" aria-modal="false" aria-label="Панель талантов">

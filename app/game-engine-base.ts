@@ -117,10 +117,7 @@ import {
   CONTROL_MODE_LABELS,
   type CombatSnapshot,
   type ControlMode,
-  DEFAULT_DIRECTIVES,
-  type DirectiveAction,
-  type DirectiveRule,
-  MAX_DIRECTIVE_RULES,
+  type CombatAction,
   decideAction,
 } from "./game-combat-modes.ts";
 
@@ -164,22 +161,14 @@ export {
   CONTROL_MODE_COST,
   CONTROL_MODE_HINTS,
   CONTROL_MODE_LABELS,
-  DEFAULT_DIRECTIVES,
-  DIRECTIVE_ACTION_LABELS,
-  DIRECTIVE_CONDITION_LABELS,
-  MAX_DIRECTIVE_RULES,
+  COMBAT_ACTION_LABELS,
   autopilotAction,
-  describeRule,
-  directiveNeedsThreshold,
-  evaluateDirectives,
 } from "./game-combat-modes.ts";
 export type {
   AutopilotTemper,
   CombatSnapshot,
   ControlMode,
-  DirectiveAction,
-  DirectiveCondition,
-  DirectiveRule,
+  CombatAction,
 } from "./game-combat-modes.ts";
 export {
   SAMOSBOR_GRACE_MS,
@@ -398,7 +387,6 @@ export type Hero = {
   combatDirective: CombatDirective;
   controlMode: ControlMode;
   autopilotTemper: AutopilotTemper;
-  directives: DirectiveRule[];
   braceUntilMs: number;
   silentUntilMs: number;
   overclockUntilMs: number;
@@ -1613,7 +1601,7 @@ export function combatSnapshot(state: GameState): CombatSnapshot {
 }
 
 export function controlModeFor(state: GameState): ControlMode {
-  return state.hero.controlMode ?? "directive";
+  return state.hero.controlMode ?? "manual";
 }
 
 export function setControlMode(state: GameState, mode: ControlMode): GameState {
@@ -1628,20 +1616,9 @@ export function setAutopilotTemper(state: GameState, temper: AutopilotTemper): G
   return { ...state, hero: { ...state.hero, autopilotTemper: temper } };
 }
 
-export function setDirectives(state: GameState, rules: DirectiveRule[]): GameState {
-  return {
-    ...state,
-    hero: {
-      ...state.hero,
-      directives: rules.slice(0, MAX_DIRECTIVE_RULES).map((rule) => ({ ...rule })),
-    },
-  };
-}
-
 /** Что режим предлагает делать прямо сейчас. Ручной режим не предлагает ничего. */
-export function currentModeAction(state: GameState): DirectiveAction | null {
+export function currentModeAction(state: GameState): CombatAction | null {
   return decideAction(controlModeFor(state), combatSnapshot(state), {
-    rules: state.hero.directives ?? DEFAULT_DIRECTIVES,
     temper: state.hero.autopilotTemper ?? "aggressive",
   });
 }
@@ -5525,9 +5502,8 @@ export function createInitialState(): GameState {
       activeSkillCooldowns: {},
       autocastDecisionCooldownMs: 0,
       combatDirective: "adaptive",
-      controlMode: "directive",
+      controlMode: "manual",
       autopilotTemper: "aggressive",
-      directives: DEFAULT_DIRECTIVES.map((rule) => ({ ...rule })),
       braceUntilMs: 0,
       silentUntilMs: 0,
       overclockUntilMs: 0,

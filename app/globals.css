@@ -1940,7 +1940,6 @@ kbd {
 }
 
 .training-builds button,
-.directive-selector button,
 .active-slot-selector button,
 .skill-choice {
   display: grid;
@@ -1956,7 +1955,6 @@ kbd {
 }
 
 .training-builds button small,
-.directive-selector button small,
 .active-slot-selector button small {
   margin-top: 3px;
   color: #999e92;
@@ -1964,24 +1962,6 @@ kbd {
   font-weight: 450;
 }
 
-.directive-selector {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.directive-selector button {
-  min-height: 58px;
-  padding: 8px 10px;
-  background: #252922;
-}
-
-.directive-selector button.active {
-  border-color: #bdab60;
-  color: #f1dda0;
-  background: #393526;
-}
 
 .talent-tabs {
   display: grid;
@@ -2422,7 +2402,6 @@ kbd {
   }
 
   .training-builds,
-  .directive-selector,
   .diagnostic-grid,
   .remote-map {
     grid-template-columns: 1fr;
@@ -3042,11 +3021,6 @@ kbd {
   color: #e2e9d8;
 }
 
-.control-mode-chip.mode-directive {
-  border-color: #6b8199;
-  color: #cfe0ee;
-}
-
 .control-mode-chip.mode-autopilot {
   border-color: #8a7346;
   color: #eed9a8;
@@ -3141,138 +3115,6 @@ kbd {
 
 .rules-chip:hover { border-color: #7f8a72; color: #e2e9d8; }
 
-.directive-window { max-width: 1040px; }
-
-.directive-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.directive-mode-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.directive-mode {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px 10px;
-  border: 1px solid #454e42;
-  border-radius: 10px;
-  background: rgba(30, 35, 29, 0.9);
-  color: #b9c2ae;
-  text-align: left;
-  cursor: pointer;
-}
-
-.directive-mode.active {
-  border-color: #93a884;
-  color: #e8efdd;
-  background: rgba(53, 66, 49, 0.95);
-}
-
-.directive-mode small { color: #8b9484; font-size: 0.62rem; }
-
-.directive-rules {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.directive-rules li {
-  display: grid;
-  grid-template-columns: 26px minmax(160px, 1.2fr) 78px minmax(150px, 1fr) 92px;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
-  border: 1px solid #3f4740;
-  border-radius: 9px;
-  background: rgba(28, 33, 28, 0.9);
-}
-
-.directive-rules li.firing {
-  border-color: rgba(150, 190, 140, 0.7);
-  background: rgba(41, 55, 38, 0.92);
-}
-
-.rule-order {
-  display: grid;
-  place-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: rgba(60, 70, 56, 0.9);
-  color: #cdd6c1;
-  font-size: 0.66rem;
-}
-
-.directive-rules select,
-.directive-rules input {
-  min-width: 0;
-  padding: 5px 7px;
-  border: 1px solid #4c5548;
-  border-radius: 7px;
-  color: #dbe3d1;
-  background: rgba(22, 26, 21, 0.95);
-  font-size: 0.72rem;
-}
-
-.rule-nothreshold { color: #6f7768; text-align: center; }
-
-.rule-controls { display: flex; gap: 4px; }
-
-.rule-controls button {
-  width: 26px;
-  height: 26px;
-  border: 1px solid #4c5548;
-  border-radius: 6px;
-  color: #c3ccb7;
-  background: rgba(38, 44, 36, 0.9);
-  cursor: pointer;
-}
-
-.rule-controls button:disabled { opacity: 0.35; cursor: default; }
-
-.rule-plain {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: #8d9685;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.62rem;
-}
-
-.directive-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.directive-footer .add-rule,
-.directive-footer .reset-rules {
-  padding: 7px 12px;
-  border: 1px solid #5b6553;
-  border-radius: 8px;
-  color: #d5ddc9;
-  background: rgba(40, 48, 38, 0.92);
-  cursor: pointer;
-}
-
-.directive-footer .add-rule:disabled { opacity: 0.4; cursor: default; }
-
-.directive-status {
-  flex: 1;
-  color: #96a08d;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.64rem;
-}
 
 /* Samosbor event cycle: omens, siren, active phase */
 .samosbor-state {
