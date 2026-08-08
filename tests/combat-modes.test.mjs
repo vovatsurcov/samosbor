@@ -103,3 +103,32 @@ test("режим встроен в игру: ручной отключает а�
   const autopilot = setControlMode(state, "autopilot");
   assert.ok(modeWearCost(autopilot, 10) > modeWearCost(manual, 10));
 });
+
+test("сохранение с удалённым режимом управления грузится, а не падает", async () => {
+  const { createInitialState, controlModeFor, migrateGameState, modeWearCost, tickGame } =
+    await import("../app/game-engine.ts");
+
+  // Реальный случай: сохранение, сделанное до удаления «директивы». Значение
+  // не null, поэтому обычная проверка на null его пропускала, и первое же
+  // обращение к таблице режимов роняло игру.
+  const legacy = JSON.parse(JSON.stringify(createInitialState()));
+  legacy.hero.controlMode = "directive";
+
+  assert.equal(controlModeFor(legacy), "manual", "неизвестный режим читается как ручной");
+  assert.equal(modeWearCost(legacy, 10), 10, "и не роняет расчёт износа");
+
+  const migrated = migrateGameState(legacy);
+  assert.equal(migrated.hero.controlMode, "manual", "миграция убирает удалённый режим насовсем");
+
+  // Полный путь падения из отчёта: тик боя с атакующим противником.
+  let state = {
+    ...migrated,
+    hero: { ...migrated.hero, positions: { ...migrated.hero.positions, [migrated.zone]: { x: 10, y: 9 } }, hp: 500 },
+    enemies: migrated.enemies.map((enemy) =>
+      enemy.id === "guard-kl4"
+        ? { ...enemy, position: { x: 11, y: 9 }, mode: "combat", attackCooldownMs: 0, thinkCooldownMs: 999999 }
+        : enemy),
+  };
+  for (let frame = 0; frame < 30; frame += 1) state = tickGame(state, 120);
+  assert.ok(state.worldTimeMs > 0, "бой идёт");
+});

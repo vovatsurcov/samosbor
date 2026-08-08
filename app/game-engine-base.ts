@@ -1890,7 +1890,11 @@ export function combatSnapshot(state: GameState): CombatSnapshot {
 }
 
 export function controlModeFor(state: GameState): ControlMode {
-  return state.hero.controlMode ?? "manual";
+  // Проверка по списку, а не только на null: в сохранениях остались режимы,
+  // которых больше нет (например удалённая «директива»). Такое значение
+  // проходило дальше как есть и роняло всё, что искало его в таблицах.
+  const saved = state.hero.controlMode;
+  return saved && saved in CONTROL_MODE_COST ? saved : "manual";
 }
 
 export function setControlMode(state: GameState, mode: ControlMode): GameState {
@@ -6712,6 +6716,12 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
       ...fresh.hero,
       ...rawHero,
       positions: { ...fresh.hero.positions, ...(rawHero?.positions ?? {}) },
+      // Удалённые режимы управления не переносятся: сохранение с «директивой»
+      // должно грузиться, а не падать на первом же обращении к таблице.
+      controlMode:
+        rawHero?.controlMode && rawHero.controlMode in CONTROL_MODE_COST
+          ? rawHero.controlMode
+          : "manual",
       pendingInteraction: null,
       evadeMode: rawHero?.evadeMode ?? false,
       talents: (rawHero?.talents ?? [])
