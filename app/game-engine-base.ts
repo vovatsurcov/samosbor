@@ -41,6 +41,21 @@ export {
 } from "./game-telegraph.ts";
 export type { TelegraphResponse, TelegraphTier } from "./game-telegraph.ts";
 import {
+  familyCooldown,
+  familyExposureBonus,
+  familyOf,
+  familyStanceDamage,
+} from "./game-weapon-families.ts";
+export {
+  WEAPON_FAMILIES,
+  WEAPON_FAMILY_OF,
+  familyCooldown,
+  familyExposureBonus,
+  familyOf,
+  familyStanceDamage,
+} from "./game-weapon-families.ts";
+export type { WeaponFamily, WeaponFamilyId } from "./game-weapon-families.ts";
+import {
   DISCORD_PULSE_MS,
   discordZone,
   OVERLOAD_HEAT_SHARE,
@@ -1862,6 +1877,8 @@ export function heroMoveSpeed(state: GameState): number {
   const overloadFactor = Math.max(0.55, 1 - overload * 0.08);
   const surge =
     archetypeFor(state) === "power" ? surgeSpeedBonus(surgeStepsFor(state.hero.surgeMs)) : 0;
+  // Тяжёлое оружие видно по походке, а не только в листе персонажа.
+  const weaponDrag = 1 - familyOf(weaponFor(state).id).mobilityPenalty;
   const deployed =
     archetypeFor(state) === "heavy_gunner" && state.hero.deployedSinceMs > 0
       ? 1 - SET_UP_SPEED_PENALTY
@@ -1875,6 +1892,7 @@ export function heroMoveSpeed(state: GameState): number {
       surge) *
       injuryFactor *
       overloadFactor *
+      weaponDrag *
       deployed,
   );
 }
@@ -1907,7 +1925,10 @@ export function heroAttackCooldown(state: GameState): number {
   const conditionPenalty = damagedWeapon < 40 ? 0.22 : damagedWeapon < 70 ? 0.08 : 0;
   return Math.max(
     360,
-    weaponFor(state).cooldownMs * (1 - technique - talentSpeed - overclock + conditionPenalty),
+    // Ритм — свойство семейства, а не только предмета: тяжёлое бьёт реже
+    // лёгкого даже при равном уроне.
+    familyCooldown(weaponFor(state).cooldownMs, familyOf(weaponFor(state).id)) *
+      (1 - technique - talentSpeed - overclock + conditionPenalty),
   );
 }
 
@@ -3729,7 +3750,7 @@ export function commandFlurry(state: GameState): GameState {
     const strike = resolveStrike(
       {
         damage: heroAttackDamage(next),
-        stanceDamage: weapon.stanceDamage,
+        stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
         damageType: weapon.damageType,
         kind: "light",
         penetration: weapon.penetration,
@@ -3788,7 +3809,7 @@ export function commandBackstab(state: GameState): GameState {
   const strike = resolveStrike(
     {
       damage: heroAttackDamage(next),
-      stanceDamage: weapon.stanceDamage,
+      stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
       damageType: weapon.damageType,
       kind: "light",
       penetration: weapon.penetration,
@@ -4201,7 +4222,7 @@ export function commandHeavyAttack(state: GameState): GameState {
   const strike = resolveStrike(
     {
       damage: heroAttackDamage(next),
-      stanceDamage: weapon.stanceDamage,
+      stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
       damageType: weapon.damageType,
       kind: "heavy",
       penetration: weapon.penetration,
@@ -4491,7 +4512,7 @@ export function commandFinisher(state: GameState): GameState {
   const strike = resolveStrike(
     {
       damage: heroAttackDamage(next),
-      stanceDamage: weapon.stanceDamage,
+      stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
       damageType: weapon.damageType,
       kind: "finisher",
       penetration: weapon.penetration,
@@ -4606,6 +4627,11 @@ function heroAttackTick(state: GameState): GameState {
           ? next.hero.deployedSinceMs > 0
             ? SET_UP_DAMAGE_BONUS
             : -UNDEPLOYED_DAMAGE_PENALTY
+          : 0) +
+        // Выжидающее оружие доплачивает за удар по уже вскрытой цели: винтовка
+        // наказывает подготовленное, а не создаёт окно сама.
+        ((target.exposedUntilMs ?? 0) > next.worldTimeMs
+          ? familyExposureBonus(familyOf(weapon.id))
           : 0) +
         (isolated ? 0.15 : 0) +
         talentBonus(next, "accuracy") * 0.04 +
