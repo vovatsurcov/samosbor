@@ -6060,3 +6060,48 @@ button.bag-cell:hover { border-color: var(--sam-brass); background: linear-gradi
 }
 
 .control-mode-row button:hover { border-color: var(--sam-brass); }
+
+/* --- Действия над предметом ---------------------------------------------- */
+
+.item-actions { display: flex; gap: 6px; }
+
+.item-actions button {
+  flex: 1 1 auto;
+  padding: 9px 12px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.item-actions .action-main {
+  color: #1b1d16;
+  border-color: var(--sam-brass);
+  background: linear-gradient(180deg, var(--sam-brass-hi), var(--sam-brass));
+}
+
+.item-actions .action-main:hover { background: linear-gradient(180deg, #ffe9ac, #d8b268); }
+
+.item-actions .action-drop {
+  flex: 0 0 auto;
+  color: var(--sam-muted);
+  background: rgba(16, 18, 14, 0.9);
+}
+
+.item-actions .action-drop:hover { color: var(--sam-enamel-red-hi); border-color: var(--sam-enamel-red); }
+.item-actions .action-note { flex: 1 1 auto; align-self: center; color: var(--sam-muted); font-size: 0.6rem; }
+
+/* Перетаскивание: видно, что предмет взят и куда его можно положить. */
+.bag-cell.selected { border-color: var(--sam-brass-hi); box-shadow: 0 0 0 1px rgba(240, 212, 137, 0.4); }
+.bag-cell[draggable="true"] { cursor: grab; }
+.bag-cell[draggable="true"]:active { cursor: grabbing; }
+
+.doll-slot.accepts {
+  border-color: var(--sam-brass);
+  background: linear-gradient(180deg, rgba(74, 64, 32, 0.9), rgba(30, 27, 15, 0.9));
+  box-shadow: inset 0 0 12px rgba(240, 212, 137, 0.22);
+}
+
+.doll-slot.filled { cursor: pointer; }

@@ -3040,6 +3040,29 @@ export function equipItem(state: GameState, instanceId: string): GameState {
   return appendLog(next, `Экипировано: ${definition.name}.`);
 }
 
+/**
+ * Снять предмет. Обратной операции к `equipItem` не существовало вовсе:
+ * надеть было можно, а вернуть слот в пустое состояние — нет.
+ *
+ * Оружие снять нельзя: без него у героя не остаётся основной атаки, и слот
+ * ЛКМ становится пустым. Замена оружия делается надеванием другого.
+ */
+export function unequipItem(state: GameState, instanceId: string): GameState {
+  const slot = (Object.keys(state.hero.equipment) as GearSlot[]).find(
+    (candidate) => state.hero.equipment[candidate] === instanceId,
+  );
+  if (!slot) return state;
+  if (slot === "weapon") {
+    return appendLog(state, "Оружие нельзя снять: замените его другим.");
+  }
+  const entry = inventoryEntryById(state, instanceId);
+  const next: GameState = {
+    ...state,
+    hero: { ...state.hero, equipment: { ...state.hero.equipment, [slot]: null } },
+  };
+  return appendLog(next, `Снято: ${entry ? ITEMS[entry.itemId].name : "снаряжение"}.`);
+}
+
 export function equipWeapon(state: GameState, weapon: WeaponId): GameState {
   const entry = state.hero.inventory.find((item) => item.itemId === weapon);
   return entry ? equipItem(state, entry.instanceId) : state;

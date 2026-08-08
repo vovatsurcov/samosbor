@@ -32,6 +32,8 @@ import {
   inspectHeroSlot,
   inspectInventoryItem,
   inspectTalentNode,
+  equipItem,
+  unequipItem,
   QUICK_SLOTS,
   quickSlotCharges,
   quickSlotEntry,
@@ -242,4 +244,29 @@ test("ячейки Q и E не претендуют на одни и те же �
   const q = new Set(QUICK_SLOTS.q.categories);
   const overlap = QUICK_SLOTS.e.categories.filter((category) => q.has(category));
   assert.deepEqual(overlap, [], "категории не пересекаются");
+});
+
+test("надеть и снять — обратимые действия", () => {
+  // Обратной операции к equipItem не существовало: слот можно было занять, но
+  // не освободить, и снятие в интерфейсе было нечем выполнить.
+  const state = createInitialState();
+  const head = state.hero.equipment.head;
+  assert.ok(head, "шлем надет с начала");
+
+  const bare = unequipItem(state, head);
+  assert.equal(bare.hero.equipment.head, null, "слот освободился");
+  assert.match(bare.log[0], /Снято/, "действие объяснено");
+
+  const again = equipItem(bare, head);
+  assert.equal(again.hero.equipment.head, head, "надевается обратно");
+
+  // Оружие — исключение: без него у героя не остаётся основной атаки.
+  const weapon = state.hero.equipment.weapon;
+  const kept = unequipItem(state, weapon);
+  assert.equal(kept.hero.equipment.weapon, weapon, "оружие остаётся в руке");
+  assert.match(kept.log[0], /нельзя снять/, "отказ объяснён");
+
+  // Предмет не из экипировки снятие не трогает.
+  const bandage = state.hero.inventory.find((entry) => entry.itemId === "bandage");
+  assert.equal(unequipItem(state, bandage.instanceId), state, "в сумке снимать нечего");
 });

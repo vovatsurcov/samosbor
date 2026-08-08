@@ -31,6 +31,8 @@ import {
   enemyVisibleToHero,
   equippedEntry,
   equipItem,
+  unequipItem,
+  dropInventoryItem,
   formattedWorldTime,
   GameState,
   GearSlot,
@@ -422,6 +424,26 @@ export default function GamePrototype() {
   const [inspected, setInspected] = useState<InspectCard | null>(null);
   const [logExpanded, setLogExpanded] = useState(false);
   const [inspectedItemId, setInspectedItemId] = useState<ItemId | null>(null);
+  const [inspectedInstanceId, setInspectedInstanceId] = useState<string | null>(null);
+  const [heldItem, setHeldItem] = useState<string | null>(null);
+
+  /**
+   * Сброс осмотра. Объявлен рядом с состоянием, а не ниже по файлу: обработчик
+   * клавиш вызывает его раньше по тексту, и объявление после привело бы к
+   * обращению к переменной до инициализации.
+   */
+  const clearInspect = useCallback(() => {
+    setInspected(null);
+    setInspectedItemId(null);
+    setInspectedInstanceId(null);
+    setHeldItem(null);
+  }, []);
+
+  /** Смена экрана всегда сбрасывает осмотр: карточка прошлого раздела — мусор. */
+  const showPanel = useCallback((panel: MenuPanel) => {
+    clearInspect();
+    setActivePanel(panel);
+  }, [clearInspect]);
   const stateRef = useRef(state);
   const lastFrameRef = useRef(0);
   const gamepadLockRef = useRef(0);
@@ -470,6 +492,15 @@ export default function GamePrototype() {
   // Сравнение считается для предмета под курсором: карточка осмотра и таблица
   // сравнения — две части одного ответа на вопрос «брать или нет».
   const comparison = inspected?.kind === "item" && inspectedItemId ? compareItem(state, inspectedItemId) : null;
+  const inspectedEntry = inspectedInstanceId
+    ? state.hero.inventory.find((entry) => entry.instanceId === inspectedInstanceId) ?? null
+    : null;
+  const inspectedEquipped = inspectedEntry
+    ? Object.values(state.hero.equipment).includes(inspectedEntry.instanceId)
+    : false;
+  const heldItemSlot = heldItem
+    ? ITEMS[state.hero.inventory.find((entry) => entry.instanceId === heldItem)?.itemId ?? "bandage"].slot ?? null
+    : null;
   const abilityShapeNow = heroAbilityShape(state);
   const visibleLoot = state.groundLoot.filter(
     (loot) => loot.zone === state.zone && isKnown(state, loot.position),
@@ -709,22 +740,22 @@ export default function GamePrototype() {
       const key = event.key.toLowerCase();
       if (key === "c") {
         event.preventDefault();
-        setActivePanel((panel) => panel === "character" ? null : "character");
+        showPanel(activePanel === "character" ? null : "character");
         return;
       }
       if (key === "i") {
         event.preventDefault();
-        setActivePanel((panel) => panel === "inventory" ? null : "inventory");
+        showPanel(activePanel === "inventory" ? null : "inventory");
         return;
       }
       if (key === "t") {
         event.preventDefault();
-        setActivePanel((panel) => panel === "talents" ? null : "talents");
+        showPanel(activePanel === "talents" ? null : "talents");
         return;
       }
       if (key === "m") {
         event.preventDefault();
-        setActivePanel((panel) => panel === "map" ? null : "map");
+        showPanel(activePanel === "map" ? null : "map");
         return;
       }
       if (key === "k") {
@@ -733,7 +764,7 @@ export default function GamePrototype() {
       }
       if (key === "escape" || key === "browserback" || event.keyCode === 461) {
         event.preventDefault();
-        if (menuOpen) setActivePanel(null);
+        if (menuOpen) showPanel(null);
         else cancelAction();
         return;
       }
@@ -814,7 +845,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [artifactNow, attackNearest, cancelAction, cycleControlMode, interactNow, menuOpen, moveTo, quickSlotNow, activateAbilitySlot]);
+  }, [activePanel, artifactNow, attackNearest, cancelAction, interactNow, menuOpen, moveTo, quickSlotNow, activateAbilitySlot, showPanel]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -835,7 +866,7 @@ export default function GamePrototype() {
       if (index === 0) attackNearest();
       else if (index === 1) cancelAction();
       else if (index === 2) interactNow();
-      else if (index === 3) setActivePanel((panel) => panel === "character" ? null : "character");
+      else if (index === 3) showPanel(activePanel === "character" ? null : "character");
       else if (index >= 12 && index <= 15 && !menuOpen) {
         const direction = index === 12 ? { x: 0, y: -1 } : index === 13 ? { x: 0, y: 1 } : index === 14 ? { x: -1, y: 0 } : { x: 1, y: 0 };
         const current = gridPoint(stateRef.current.hero.positions[stateRef.current.zone]);
@@ -843,7 +874,7 @@ export default function GamePrototype() {
       }
     }, 80);
     return () => window.clearInterval(timer);
-  }, [attackNearest, cancelAction, interactNow, menuOpen, moveTo]);
+  }, [activePanel, attackNearest, cancelAction, interactNow, menuOpen, moveTo, showPanel]);
 
   const tiles = useMemo(() => {
     const result: Point[] = [];
@@ -923,27 +954,61 @@ export default function GamePrototype() {
     return `mm mm-floor${cell.visible ? " lit" : ""}`;
   };
 
-  /** Осмотр предмета: карточка и сравнение показывают одно и то же. */
-  const inspectItemNow = (itemId: ItemId, quantity?: number, condition?: number) => {
+  /**
+   * Осмотр предмета: карточка, сравнение и кнопки действий смотрят на один и
+   * тот же предмет. Осмотр держится, пока не наведён другой: иначе до кнопок
+   * невозможно донести курсор — они находятся вне ячейки.
+   */
+  const inspectItemNow = (itemId: ItemId, quantity?: number, condition?: number, instanceId?: string) => {
     setInspectedItemId(itemId);
+    setInspectedInstanceId(instanceId ?? null);
     setInspected(inspectInventoryItem(state, itemId, { quantity, condition }));
   };
-  const clearInspect = () => {
-    setInspectedItemId(null);
-    setInspected(null);
+  /** Надеть или применить. Одно действие на клик по ячейке и на кнопку. */
+  const applyBagItem = (instanceId: string) => {
+    setState((current) => {
+      const entry = current.hero.inventory.find((candidate) => candidate.instanceId === instanceId);
+      if (!entry) return current;
+      const definition = ITEMS[entry.itemId];
+      if (definition.slot) return equipItem(current, instanceId);
+      if (definition.kind === "consumable") return consumeInventoryItem(current, instanceId);
+      return current;
+    });
+  };
+
+  const unequipNow = (instanceId: string) => {
+    setState((current) => unequipItem(current, instanceId));
+  };
+
+  const dropNow = (instanceId: string) => {
+    setState((current) => dropInventoryItem(current, instanceId));
   };
 
   /** Ячейка снаряжения на кукле: одна разметка на все слоты. */
   const renderGearSlot = (slot: GearSlot) => {
     const entry = equippedEntry(state, slot);
     const item = entry ? ITEMS[entry.itemId] : null;
+    const accepts = heldItemSlot === slot;
     return (
       <button
         key={slot}
         type="button"
-        className={`doll-slot ${entry ? "filled" : "empty"} rarity-${item?.rarity ?? "common"}`}
-        onPointerEnter={() => entry && inspectItemNow(entry.itemId, entry.quantity, entry.condition)}
-        onPointerLeave={() => clearInspect()}
+        className={`doll-slot ${entry ? "filled" : "empty"} rarity-${item?.rarity ?? "common"} ${accepts ? "accepts" : ""}`}
+        data-slot={slot}
+        onClick={() => entry && unequipNow(entry.instanceId)}
+        onDragOver={(event) => {
+          // Слот принимает только то, что в него вообще влезает.
+          if (!accepts) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          const instanceId = event.dataTransfer.getData("text/plain");
+          setHeldItem(null);
+          if (instanceId) setState((current) => equipItem(current, instanceId));
+        }}
+        onPointerEnter={() => entry && inspectItemNow(entry.itemId, entry.quantity, entry.condition, entry.instanceId)}
       >
         <small>{SLOT_NAMES[slot]}</small>
         <strong>{item?.shortName ?? "—"}</strong>
@@ -1613,10 +1678,10 @@ export default function GamePrototype() {
         </section>
 
         <nav className="hud-screens" aria-label="Экраны">
-          <button type="button" onClick={() => setActivePanel("character")} title="Персонаж"><kbd>C</kbd><span>Персонаж</span></button>
-          <button type="button" onClick={() => setActivePanel("inventory")} title="Инвентарь"><kbd>I</kbd><span>Инвентарь</span></button>
-          <button type="button" onClick={() => setActivePanel("talents")} title="Таланты"><kbd>T</kbd><span>Таланты</span>{state.hero.generalPoints + state.hero.skillPoints > 0 ? <em>{state.hero.generalPoints + state.hero.skillPoints}</em> : null}</button>
-          <button type="button" onClick={() => setActivePanel("map")} title="Карта"><kbd>M</kbd><span>Карта</span></button>
+          <button type="button" onClick={() => showPanel("character")} title="Персонаж"><kbd>C</kbd><span>Персонаж</span></button>
+          <button type="button" onClick={() => showPanel("inventory")} title="Инвентарь"><kbd>I</kbd><span>Инвентарь</span></button>
+          <button type="button" onClick={() => showPanel("talents")} title="Таланты"><kbd>T</kbd><span>Таланты</span>{state.hero.generalPoints + state.hero.skillPoints > 0 ? <em>{state.hero.generalPoints + state.hero.skillPoints}</em> : null}</button>
+          <button type="button" onClick={() => showPanel("map")} title="Карта"><kbd>M</kbd><span>Карта</span></button>
         </nav>
       </section>
 
@@ -1635,10 +1700,10 @@ export default function GamePrototype() {
               </div>
               <nav className="screen-tabs">
                 <button type="button" className="active">Персонаж</button>
-                <button type="button" onClick={() => setActivePanel("talents")}>Таланты<kbd>T</kbd></button>
-                <button type="button" onClick={() => setActivePanel("map")}>Карта<kbd>M</kbd></button>
+                <button type="button" onClick={() => showPanel("talents")}>Таланты<kbd>T</kbd></button>
+                <button type="button" onClick={() => showPanel("map")}>Карта<kbd>M</kbd></button>
               </nav>
-              <button type="button" className="screen-close" onClick={() => setActivePanel(null)} aria-label="Закрыть">✕</button>
+              <button type="button" className="screen-close" onClick={() => showPanel(null)} aria-label="Закрыть">✕</button>
             </header>
 
             <div className="sheet-layout">
@@ -1761,12 +1826,17 @@ export default function GamePrototype() {
                       <button
                         key={entry.instanceId}
                         type="button"
-                        className={`bag-cell rarity-${item.rarity ?? "common"} ${equipped ? "equipped" : ""}`}
-                        onClick={() => setState((current) => (item.slot
-                          ? equipItem(current, entry.instanceId)
-                          : item.kind === "consumable" ? consumeInventoryItem(current, entry.instanceId) : current))}
-                        onPointerEnter={() => inspectItemNow(entry.itemId, entry.quantity, entry.condition)}
-                        onPointerLeave={() => clearInspect()}
+                        className={`bag-cell rarity-${item.rarity ?? "common"} ${equipped ? "equipped" : ""} ${heldItem === entry.instanceId ? "selected" : ""}`}
+                        data-instance={entry.instanceId}
+                        draggable={Boolean(item.slot)}
+                        onDragStart={(event) => {
+                          setHeldItem(entry.instanceId);
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", entry.instanceId);
+                        }}
+                        onDragEnd={() => setHeldItem(null)}
+                        onClick={() => applyBagItem(entry.instanceId)}
+                        onPointerEnter={() => inspectItemNow(entry.itemId, entry.quantity, entry.condition, entry.instanceId)}
                       >
                         <span className="bag-glyph">{itemGlyph(entry)}</span>
                         {entry.quantity > 1 ? <b>{entry.quantity}</b> : null}
@@ -1778,7 +1848,7 @@ export default function GamePrototype() {
                     <span key={`empty-${index}`} className="bag-cell empty" />
                   ))}
                 </div>
-                <p className="bag-hint">ЛКМ по предмету — надеть или применить. Наведение — свойства и сравнение.</p>
+                <p className="bag-hint">ЛКМ — надеть или применить. Можно перетащить предмет в слот на кукле.</p>
               </section>
 
               {/* --- Сравнение: то, ради чего вообще открывают сумку -------- */}
@@ -1789,6 +1859,34 @@ export default function GamePrototype() {
                     <p>Наведите на предмет, чтобы увидеть его свойства, сравнение с надетым и то, как изменится связка рук.</p>
                   </div>
                 )}
+
+                {/*
+                  Явные действия. Голая сетка ячеек ничего о себе не сообщала:
+                  предмет надевался кликом, но об этом невозможно было
+                  догадаться. Кнопки называют действие словами.
+                */}
+                {inspectedEntry ? (
+                  <div className="item-actions">
+                    {inspectedEquipped ? (
+                      <button type="button" className="action-main" onClick={() => unequipNow(inspectedEntry.instanceId)}>
+                        Снять
+                      </button>
+                    ) : ITEMS[inspectedEntry.itemId].slot ? (
+                      <button type="button" className="action-main" onClick={() => applyBagItem(inspectedEntry.instanceId)}>
+                        Надеть
+                      </button>
+                    ) : ITEMS[inspectedEntry.itemId].kind === "consumable" ? (
+                      <button type="button" className="action-main" onClick={() => applyBagItem(inspectedEntry.instanceId)}>
+                        {ITEMS[inspectedEntry.itemId].useLabel ?? "Применить"}
+                      </button>
+                    ) : <span className="action-note">Хранится в сумке</span>}
+                    {!inspectedEquipped ? (
+                      <button type="button" className="action-drop" onClick={() => dropNow(inspectedEntry.instanceId)}>
+                        Выложить
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 {comparison ? (
                   <div className="comparison-card">
                     <header>
@@ -1846,11 +1944,11 @@ export default function GamePrototype() {
                 <h2>{map.name}</h2>
               </div>
               <nav className="screen-tabs">
-                <button type="button" onClick={() => setActivePanel("character")}>Персонаж<kbd>C</kbd></button>
-                <button type="button" onClick={() => setActivePanel("talents")}>Таланты<kbd>T</kbd></button>
+                <button type="button" onClick={() => showPanel("character")}>Персонаж<kbd>C</kbd></button>
+                <button type="button" onClick={() => showPanel("talents")}>Таланты<kbd>T</kbd></button>
                 <button type="button" className="active">Карта</button>
               </nav>
-              <button type="button" className="screen-close" onClick={() => setActivePanel(null)} aria-label="Закрыть">✕</button>
+              <button type="button" className="screen-close" onClick={() => showPanel(null)} aria-label="Закрыть">✕</button>
             </header>
 
             <div className="map-layout">
@@ -1935,11 +2033,11 @@ export default function GamePrototype() {
                 <h2>Таланты</h2>
               </div>
               <nav className="screen-tabs">
-                <button type="button" onClick={() => setActivePanel("character")}>Персонаж<kbd>C</kbd></button>
+                <button type="button" onClick={() => showPanel("character")}>Персонаж<kbd>C</kbd></button>
                 <button type="button" className="active">Таланты</button>
-                <button type="button" onClick={() => setActivePanel("map")}>Карта<kbd>M</kbd></button>
+                <button type="button" onClick={() => showPanel("map")}>Карта<kbd>M</kbd></button>
               </nav>
-              <button type="button" className="screen-close" onClick={() => setActivePanel(null)} aria-label="Закрыть">✕</button>
+              <button type="button" className="screen-close" onClick={() => showPanel(null)} aria-label="Закрыть">✕</button>
             </header>
 
             <div className="tree-layout">
