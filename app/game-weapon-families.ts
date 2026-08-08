@@ -10,6 +10,7 @@
 //
 // Модуль чистый: он описывает семейства данными и не знает про состояние мира.
 
+import type { HandCapability } from "./game-hands.ts";
 import type { WeaponId } from "./game-items.ts";
 
 export type WeaponFamilyId =
@@ -135,6 +136,18 @@ export const WEAPON_FAMILY_OF: Record<WeaponId, WeaponFamilyId> = {
   coilRifle: "rifle",
   horizonCarbine: "rifle",
   sectorMaul: "industrial",
+};
+
+/**
+ * Способности семейства. Из них выводится поведение сочетания рук
+ * (game-hands.ts), поэтому новое оружие достаточно отнести к семейству.
+ */
+export const FAMILY_CAPABILITIES: Record<WeaponFamilyId, HandCapability[]> = {
+  heavy_melee: ["two_handed", "melee", "breach", "heavy", "consumes_state"],
+  light_melee: ["one_handed", "melee", "light", "applies_state"],
+  sidearm: ["one_handed", "ranged", "precise", "applies_state"],
+  rifle: ["two_handed", "ranged", "precise", "consumes_state"],
+  industrial: ["two_handed", "melee", "sweep", "breach", "industrial", "consumes_state"],
 };
 
 export function familyOf(weaponId: WeaponId): WeaponFamily {

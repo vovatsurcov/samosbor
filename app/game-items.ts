@@ -13,6 +13,7 @@ export type GearSlot =
   | "feet"
   | "back"
   | "weapon"
+  | "offhand"
   | "artifact";
 
 export type AttributeId = "body" | "reaction" | "attention" | "technique" | "will";
@@ -33,6 +34,9 @@ export type ItemId =
   | "traumaInjector"
   | "filterCartridge"
   | "batteryPack"
+  | "pryBar"
+  | "riotShield"
+  | "reserveSidearm"
   | "repairKit"
   | "coilPart"
   | "reverseCoil"
@@ -403,6 +407,39 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     useLabel: "Подключить",
     consumableCategory: "booster",
   },
+  pryBar: {
+    id: "pryBar",
+    name: "Монтировка МЛ-3",
+    shortName: "МЛ-3",
+    kind: "gear",
+    slot: "offhand",
+    weight: 2.4,
+    stackable: false,
+    description: "Ломик под левую руку. Позволяет добирать вплотную то, что подготовила правая.",
+    stats: {},
+  },
+  riotShield: {
+    id: "riotShield",
+    name: "Щит охраны СБ-2",
+    shortName: "СБ-2",
+    kind: "gear",
+    slot: "offhand",
+    weight: 4.2,
+    stackable: false,
+    description: "Штатный щит службы безопасности. Занимает левую руку и меняет то, как персонаж стоит в бою.",
+    stats: { armor: 3 },
+  },
+  reserveSidearm: {
+    id: "reserveSidearm",
+    name: "Запасной ИП-4",
+    shortName: "ИП-4/з",
+    kind: "gear",
+    slot: "offhand",
+    weight: 1.8,
+    stackable: false,
+    description: "Второй пистолет под левую руку. Стрельба идёт попеременно и заметно плотнее.",
+    stats: {},
+  },
   repairKit: {
     id: "repairKit",
     name: "Ремкомплект РК-3",
@@ -479,6 +516,7 @@ export const SLOT_NAMES: Record<GearSlot, string> = {
   hands: "Руки",
   feet: "Ноги",
   back: "Спина",
-  weapon: "Оружие",
+  weapon: "Правая рука",
+  offhand: "Левая рука",
   artifact: "Артефакт",
 };

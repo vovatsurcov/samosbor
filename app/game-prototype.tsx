@@ -77,7 +77,10 @@ import {
   branchPointsByDirection,
   heroChargeSteps,
   heroChargeTuning,
+  describeCombination,
   heroDefenceProfile,
+  inventoryEntryById,
+  heroHandCombination,
   releaseCharge,
   canSpendBreath,
   commandBackstab,
@@ -476,6 +479,8 @@ export default function GamePrototype() {
   const heroMaxBreath = maxHeroBreath(state);
   const stanceState = heroStanceState(state);
   const defenceProfile = heroDefenceProfile(state);
+  const handCombination = heroHandCombination(state);
+  const offhandEntry = inventoryEntryById(state, state.hero.equipment.offhand ?? null);
   const chargeTuningNow = heroChargeTuning(state);
   const chargeSteps = heroChargeSteps(state);
   const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
@@ -1540,7 +1545,17 @@ export default function GamePrototype() {
             <div className="stat-row compact"><span>Квалификация</span><strong>{state.hero.level} / 50</strong></div>
             <div className="meter xp-meter"><i style={{ width: `${experienceProgress}%` }} /></div>
             <div className="xp-caption"><span>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} опыта` : "Основной предел достигнут"}</span><strong>{state.hero.generalPoints} общ. · {state.hero.skillPoints} проф.</strong></div>
-            <div className="stat-row compact"><span>Оружие</span><strong>{weapon.shortName} · {weapon.range.toFixed(1)} кл.</strong></div>
+            <div className="stat-row compact"><span>Правая рука</span><strong>{weapon.shortName} · {weapon.range.toFixed(1)} кл.</strong></div>
+            {/*
+              Обе руки видны сразу, и рядом — что даёт именно сочетание, а не
+              второй предмет сам по себе: пара меняет ритм и стиль, а не только
+              сумму характеристик.
+            */}
+            <div className="stat-row compact"><span>Левая рука</span><strong>{offhandEntry ? ITEMS[offhandEntry.itemId].shortName : "свободна"}</strong></div>
+            <div className="hand-combination" title={describeCombination(handCombination)}>
+              <strong>{handCombination.name}</strong>
+              <small>{handCombination.verb}</small>
+            </div>
             <div className="stat-row compact"><span>Защита</span><strong>{heroDefense(state)}</strong></div>
             <div className="survival-stats">
               <span className={carriedWeight > weightLimit ? "danger" : ""}><small>Груз</small><strong>{carriedWeight.toFixed(1)} / {weightLimit.toFixed(0)} кг</strong></span>

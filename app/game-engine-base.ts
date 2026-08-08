@@ -41,12 +41,24 @@ export {
 } from "./game-telegraph.ts";
 export type { TelegraphResponse, TelegraphTier } from "./game-telegraph.ts";
 import {
+  type HandCapability,
+  type HandItem,
+  combineHands,
+} from "./game-hands.ts";
+export {
+  combineHands,
+  describeCombination,
+} from "./game-hands.ts";
+export type { HandCapability, HandCombination, HandItem } from "./game-hands.ts";
+import {
+  FAMILY_CAPABILITIES,
   familyCooldown,
   familyExposureBonus,
   familyOf,
   familyStanceDamage,
 } from "./game-weapon-families.ts";
 export {
+  FAMILY_CAPABILITIES,
   WEAPON_FAMILIES,
   WEAPON_FAMILY_OF,
   familyCooldown,
@@ -1878,7 +1890,7 @@ export function heroMoveSpeed(state: GameState): number {
   const surge =
     archetypeFor(state) === "power" ? surgeSpeedBonus(surgeStepsFor(state.hero.surgeMs)) : 0;
   // Тяжёлое оружие видно по походке, а не только в листе персонажа.
-  const weaponDrag = 1 - familyOf(weaponFor(state).id).mobilityPenalty;
+  const weaponDrag = (1 - familyOf(weaponFor(state).id).mobilityPenalty) * heroHandCombination(state).mobility;
   const deployed =
     archetypeFor(state) === "heavy_gunner" && state.hero.deployedSinceMs > 0
       ? 1 - SET_UP_SPEED_PENALTY
@@ -1917,6 +1929,47 @@ export function heroAttackRange(state: GameState): number {
   return weaponFor(state).range;
 }
 
+
+/**
+ * Что сейчас в руках как набор способностей. Правая рука — оружие, левая —
+ * слот offhand: щит, второй пистолет, инструмент.
+ */
+function handItems(state: GameState): { primary: HandItem | null; secondary: HandItem | null } {
+  const weapon = weaponFor(state);
+  const primary: HandItem = {
+    id: weapon.id,
+    name: weapon.shortName,
+    capabilities: [...FAMILY_CAPABILITIES[familyOf(weapon.id).id]],
+  };
+  const offhandEntry = inventoryEntryById(state, state.hero.equipment.offhand ?? null);
+  if (!offhandEntry) return { primary, secondary: null };
+  const definition = ITEMS[offhandEntry.itemId];
+  return {
+    primary,
+    secondary: {
+      id: offhandEntry.itemId,
+      name: definition.shortName,
+      capabilities: OFFHAND_CAPABILITIES[offhandEntry.itemId] ?? ["one_handed", "defensive"],
+    },
+  };
+}
+
+/**
+ * Способности предметов левой руки. Совместимость определяется конструкцией
+ * предмета, а не направлением персонажа: щит защищает у любой сборки.
+ */
+const OFFHAND_CAPABILITIES: Partial<Record<ItemId, HandCapability[]>> = {
+  pryBar: ["one_handed", "melee", "light", "consumes_state"],
+  riotShield: ["one_handed", "defensive"],
+  reserveSidearm: ["one_handed", "ranged", "precise", "applies_state"],
+};
+
+/** Поведение текущего сочетания рук. */
+export function heroHandCombination(state: GameState) {
+  const { primary, secondary } = handItems(state);
+  return combineHands(primary, secondary);
+}
+
 export function heroAttackCooldown(state: GameState): number {
   const technique = effectiveAttribute(state, "technique") * 0.018;
   const talentSpeed = talentBonus(state, "attackSpeed");
@@ -1928,6 +1981,7 @@ export function heroAttackCooldown(state: GameState): number {
     // Ритм — свойство семейства, а не только предмета: тяжёлое бьёт реже
     // лёгкого даже при равном уроне.
     familyCooldown(weaponFor(state).cooldownMs, familyOf(weaponFor(state).id)) *
+      heroHandCombination(state).cadence *
       (1 - technique - talentSpeed - overclock + conditionPenalty),
   );
 }
@@ -3750,7 +3804,9 @@ export function commandFlurry(state: GameState): GameState {
     const strike = resolveStrike(
       {
         damage: heroAttackDamage(next),
-        stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
+        stanceDamage: Math.round(
+          familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)) * heroHandCombination(next).stance,
+        ),
         damageType: weapon.damageType,
         kind: "light",
         penetration: weapon.penetration,
@@ -3809,7 +3865,9 @@ export function commandBackstab(state: GameState): GameState {
   const strike = resolveStrike(
     {
       damage: heroAttackDamage(next),
-      stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
+      stanceDamage: Math.round(
+        familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)) * heroHandCombination(next).stance,
+      ),
       damageType: weapon.damageType,
       kind: "light",
       penetration: weapon.penetration,
@@ -4018,7 +4076,9 @@ export function heroDefenceProfile(state: GameState): DefenceProfile {
     // Уклонение — разброс: чаще спасает от череды мелких ударов, но на один
     // тяжёлый на него полагаться нельзя.
     evasion: Math.min(0.6, talentBonus(state, "evasion") + (inCover ? 0.05 : 0)),
-    blockChance: Math.min(0.75, talentBonus(state, "block")),
+    // Щит в левой руке даёт блок сам, без нажатия и без вложений в дерево:
+    // это свойство снаряжения, а не способность.
+    blockChance: Math.min(0.75, talentBonus(state, "block") + heroHandCombination(state).blockChance),
     blockEffectiveness: Math.min(0.8, 0.35 + talentBonus(state, "blockPower")),
     // Парирование реже блока: оно не просто гасит удар, а обращает его.
     parryChance: Math.min(0.4, talentBonus(state, "parry")),
@@ -4222,7 +4282,9 @@ export function commandHeavyAttack(state: GameState): GameState {
   const strike = resolveStrike(
     {
       damage: heroAttackDamage(next),
-      stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
+      stanceDamage: Math.round(
+        familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)) * heroHandCombination(next).stance,
+      ),
       damageType: weapon.damageType,
       kind: "heavy",
       penetration: weapon.penetration,
@@ -4512,7 +4574,9 @@ export function commandFinisher(state: GameState): GameState {
   const strike = resolveStrike(
     {
       damage: heroAttackDamage(next),
-      stanceDamage: familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)),
+      stanceDamage: Math.round(
+        familyStanceDamage(weapon.stanceDamage, familyOf(weapon.id)) * heroHandCombination(next).stance,
+      ),
       damageType: weapon.damageType,
       kind: "finisher",
       penetration: weapon.penetration,

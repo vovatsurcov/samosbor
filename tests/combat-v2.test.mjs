@@ -230,7 +230,9 @@ test("разбор удара объясним: каждый слой отчит
 test("защитный профиль собирается вложениями, а не нажатиями", async () => {
   const { heroDefenceProfile } = await import("../app/game-engine.ts");
   const bare = heroDefenceProfile(createInitialState());
-  assert.equal(bare.blockChance, 0, "без вложений блока нет");
+  // Свободная рука даёт символический блок сама; вложения и щит поднимают его
+  // на другой порядок.
+  assert.ok(bare.blockChance <= 0.05, "без вложений блок символический");
   assert.equal(bare.parryChance, 0);
   assert.equal(bare.evasion, 0);
 

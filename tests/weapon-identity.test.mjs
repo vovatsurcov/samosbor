@@ -99,3 +99,90 @@ test("ни одно семейство не закреплено за напра
     assert.equal("requiredDirection" in family, false, `${family.id}: требований по направлению быть не может`);
   }
 });
+
+// --- Две руки -------------------------------------------------------------
+
+import { combineHands, describeCombination } from "../app/game-hands.ts";
+import { heroDefenceProfile, heroHandCombination } from "../app/game-engine.ts";
+
+function withOffhand(state, itemId) {
+  const instanceId = `off-${itemId}`;
+  const seeded = {
+    ...state,
+    hero: {
+      ...state.hero,
+      inventory: [...state.hero.inventory, { instanceId, itemId, quantity: 1, condition: 100 }],
+    },
+  };
+  return equipItem(seeded, instanceId);
+}
+
+test("сочетание рук выводится из способностей, а не прописано парой", () => {
+  const pistol = { id: "p", name: "пистолет", capabilities: ["one_handed", "ranged", "applies_state"] };
+  const shield = { id: "s", name: "щит", capabilities: ["one_handed", "defensive"] };
+  const bar = { id: "b", name: "монтировка", capabilities: ["one_handed", "melee", "consumes_state"] };
+
+  assert.equal(combineHands(pistol, null).id, "free_hand");
+  assert.equal(combineHands(pistol, shield).id, "covered_fire");
+  assert.equal(combineHands(pistol, { ...pistol, id: "p2" }).id, "dual_ranged");
+  assert.equal(combineHands(bar, shield).id, "shielded_melee");
+  assert.equal(combineHands(bar, { ...bar, id: "b2" }).id, "dual_melee");
+  assert.equal(combineHands(pistol, bar).id, "mixed_grip");
+
+  // Новое оружие получает поведение само, стоит ему объявить теги.
+  const unknown = { id: "x", name: "неизвестное", capabilities: ["one_handed", "melee"] };
+  assert.equal(combineHands(unknown, shield).id, "shielded_melee");
+});
+
+test("две руки — не сумма характеристик: каждая пара играется иначе", () => {
+  const base = createInitialState();
+  const dual = withOffhand(base, "reserveSidearm");
+  const shielded = withOffhand(base, "riotShield");
+  const mixed = withOffhand(base, "pryBar");
+
+  const cadence = {
+    dual: heroAttackCooldown(dual),
+    shielded: heroAttackCooldown(shielded),
+    mixed: heroAttackCooldown(mixed),
+  };
+  // Пистолет со щитом — не «пистолет с запасом ОЗ»: он медленнее и тяжелее.
+  assert.ok(cadence.shielded > cadence.dual, "щит замедляет, парная стрельба ускоряет");
+  assert.ok(heroMoveSpeed(shielded) < heroMoveSpeed(dual), "щит стоит подвижности");
+  assert.ok(
+    heroDefenceProfile(shielded).blockChance > heroDefenceProfile(dual).blockChance + 0.15,
+    "защитная рука меняет защиту на порядок, а не на проценты",
+  );
+  // Парная стрельба отказывается от защиты ради темпа — это её размен.
+  assert.equal(heroDefenceProfile(dual).blockChance, 0, "обе руки заняты стрельбой");
+
+  // Смешанный хват — отдельный стиль, а не «стрелок с другим вторым предметом».
+  assert.equal(heroHandCombination(mixed).reach, "hybrid");
+  assert.equal(heroHandCombination(dual).reach, "ranged");
+  assert.ok(heroHandCombination(mixed).stateLoop, "одна рука наводит состояние, другая расходует");
+  assert.equal(heroHandCombination(dual).stateLoop, false);
+});
+
+test("пары различаются руками, а не только числами", () => {
+  const base = createInitialState();
+  const pairs = ["reserveSidearm", "riotShield", "pryBar"].map((id) => heroHandCombination(withOffhand(base, id)));
+  const shapes = pairs.map((c) => `${c.id}|${c.reach}|${c.sweep}|${c.stateLoop}|${c.blockChance}`);
+  assert.equal(new Set(shapes).size, pairs.length, "каждая пара — свой стиль");
+  for (const combination of pairs) {
+    assert.ok(combination.verb.length > 0, `${combination.id}: не сказано, что делают руки`);
+    assert.ok(describeCombination(combination).length > 0, "интерфейс может объяснить пару");
+  }
+});
+
+test("совместимость определяется предметом, а не направлением", () => {
+  // Один и тот же щит работает у любой сборки: класса нет.
+  const aim = withOffhand(applyDevProfile(createInitialState(), devProfileById("pure-aim")), "riotShield");
+  const surge = withOffhand(applyDevProfile(createInitialState(), devProfileById("pure-surge")), "riotShield");
+  assert.equal(heroHandCombination(aim).id, heroHandCombination(surge).id);
+  assert.ok(heroDefenceProfile(aim).blockChance > 0.15 && heroDefenceProfile(surge).blockChance > 0.15);
+});
+
+test("двуручное оружие занимает обе руки", () => {
+  const rifle = withWeapon(createInitialState(), "coilRifle");
+  assert.equal(heroHandCombination(rifle).id, "two_handed");
+  assert.match(heroHandCombination(rifle).weakness, /свободной руки нет/i);
+});
