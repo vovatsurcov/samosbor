@@ -165,3 +165,45 @@ test("гибридизация: вскрытие Прицела ускоряет
   const exposedLost = 9000 - enemyById(onExposed, "guard-kl4").hp;
   assert.ok(exposedLost > plainLost, "по вскрытой цели тот же удар проходит лучше");
 });
+
+test("Резонанс: накопленное сворачивается в звучащий участок, а не в один удар", async () => {
+  const { DISCORD_PULSE_MS, discordZone } = await import("../app/game-combat-states.ts");
+  // Один стек свернуть нельзя: направление платит за накопление, как и Разгон,
+  // но получает другое — область вместо всплеска.
+  assert.equal(discordZone(1), null);
+  const two = discordZone(2);
+  const four = discordZone(4);
+  assert.ok(four.radius > two.radius && four.durationMs > two.durationMs);
+  assert.ok(four.contamination > two.contamination, "чем больше свёрнуто, тем дороже герою");
+
+  let state = sparring("pure-resonance");
+  state = withEnemy(state, "guard-kl4", { resonanceStacks: 3 });
+  const before = state.hero.contamination;
+
+  const after = strike(state, "guard-kl4");
+  assert.ok(after.discordZones.length > 0, "участок создан");
+  assert.equal(enemyById(after, "guard-kl4").resonanceStacks, 0, "стеки свёрнуты");
+  assert.ok(after.hero.contamination > before, "направление платит собой");
+  assert.ok(after.log.some((line) => /Разлад свёрнут/i.test(line)));
+
+  // Участок звучит сам: соседняя цель получает резонанс без действий игрока.
+  let pulsing = after;
+  const neighbourBefore = enemyById(pulsing, "stalker-17").resonanceStacks;
+  for (let frame = 0; frame < 12; frame += 1) pulsing = tickGame(pulsing, DISCORD_PULSE_MS / 2);
+  assert.ok(
+    enemyById(pulsing, "stalker-17").resonanceStacks > neighbourBefore,
+    "звучащий участок наводит резонанс сам",
+  );
+});
+
+test("Резонанс и Разгон тратят одно накопление по-разному", () => {
+  const base = withEnemy(sparring("pure-resonance"), "guard-kl4", { resonanceStacks: 3 });
+  const collapsed = strike(base, "guard-kl4");
+
+  const surgeBase = withEnemy(sparring("pure-surge"), "guard-kl4", { resonanceStacks: 3 });
+  const detonated = commandHeavyAttack(surgeBase);
+
+  assert.ok(collapsed.discordZones.length > 0, "Резонанс оставляет область");
+  assert.equal((detonated.discordZones ?? []).length, 0, "Разгон области не оставляет");
+  assert.ok(detonated.log.some((line) => /Резонанс сорван/i.test(line)), "Разгон срывает накопленное сразу");
+});

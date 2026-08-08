@@ -9,7 +9,7 @@
 // Модуль чистый: он не знает про состояние мира и работает с числами. Правила
 // и порядок работ — docs/COMBAT_DEPTH_ROADMAP.md §2, этап 1.
 
-export type CombatStateId = "resonance" | "exposure" | "overload";
+export type CombatStateId = "resonance" | "exposure" | "overload" | "discord";
 
 export type CombatStateInfo = {
   id: CombatStateId;
@@ -37,6 +37,14 @@ export const COMBAT_STATES: Record<CombatStateId, CombatStateInfo> = {
     consumedBy: "любой урон в упор",
     description:
       "Защита цели разошлась по швам. Пока вскрытие держится, броня почти не работает.",
+  },
+  discord: {
+    id: "discord",
+    name: "Разлад",
+    appliedBy: "свёртывание накопленного резонанса",
+    consumedBy: "не расходуется: звучит сам",
+    description:
+      "Участок пространства продолжает звучать и сам наводит резонанс на всех, кто внутри. Держится недолго и стоит герою заражения.",
   },
   overload: {
     id: "overload",
@@ -125,6 +133,36 @@ export function overloadBreach(baseDamage: number, heatShare: number): OverloadB
     damage: Math.round(baseDamage * (0.3 + 0.25 * intensity)),
     radius: 2.2,
     maxTargets: 2 + Math.round(intensity * 2),
+  };
+}
+
+/**
+ * Разлад — собственная расплата Резонанса.
+ *
+ * Разгон срывает накопленное в одну точку мгновенно. Резонанс, наоборот,
+ * сворачивает стеки в область, которая продолжает звучать: она сама наводит
+ * резонанс на всех, кто внутри. Поэтому Разгон вознаграждает подготовку одной
+ * цели, а Резонанс — удержание пространства.
+ */
+export const DISCORD_PULSE_MS = 900;
+
+export type DiscordZone = {
+  radius: number;
+  durationMs: number;
+  /** Сколько стеков резонанса накидывает один импульс. */
+  stacksPerPulse: number;
+  /** Заражение героя за свёртывание: направление платит собой. */
+  contamination: number;
+};
+
+export function discordZone(stacks: number): DiscordZone | null {
+  const spent = Math.min(RESONANCE_MAX_STACKS, Math.max(0, Math.floor(stacks)));
+  if (spent < 2) return null;
+  return {
+    radius: 1.6 + 0.35 * spent,
+    durationMs: 2600 + 900 * spent,
+    stacksPerPulse: 1,
+    contamination: 3 + spent,
   };
 }
 

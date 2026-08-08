@@ -1271,6 +1271,33 @@ export default function GamePrototype() {
                 );
               })}
 
+              {/*
+                Звучащие участки Резонанса: область продолжает наводить
+                резонанс сама, поэтому её обязательно видно на полу — иначе
+                игрок не понимает, откуда на целях берутся новые стеки.
+              */}
+              {(state.discordZones ?? [])
+                .filter((zone) => zone.zone === state.zone && zone.untilMs > state.worldTimeMs)
+                .map((zone) => {
+                  const centre = toIso(zone.position, originX, originY);
+                  const life = Math.max(0, Math.min(1, (zone.untilMs - state.worldTimeMs) / 4000));
+                  return (
+                    <ellipse
+                      key={zone.id}
+                      className="discord-zone"
+                      cx={centre.x}
+                      cy={centre.y + 6}
+                      rx={zone.radius * 27}
+                      ry={zone.radius * 14}
+                      fill="rgba(158, 120, 214, 0.15)"
+                      stroke="#9e78d6"
+                      strokeWidth="1.8"
+                      strokeDasharray="7 5"
+                      opacity={0.45 + life * 0.5}
+                    />
+                  );
+                })}
+
               {visibleEnemies.map((enemy) => {
                 const iso = toIso(enemy.position, originX, originY);
                 const color = MODE_COLORS[enemy.mode];

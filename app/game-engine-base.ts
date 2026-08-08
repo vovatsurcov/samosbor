@@ -41,6 +41,8 @@ export {
 } from "./game-telegraph.ts";
 export type { TelegraphResponse, TelegraphTier } from "./game-telegraph.ts";
 import {
+  DISCORD_PULSE_MS,
+  discordZone,
   OVERLOAD_HEAT_SHARE,
   OVERLOAD_MS,
   overloadBreach,
@@ -49,6 +51,8 @@ import {
   resonanceImpulse,
 } from "./game-combat-states.ts";
 export {
+  DISCORD_PULSE_MS,
+  discordZone,
   OVERLOAD_HEAT_SHARE,
   OVERLOAD_MS,
   overloadBreach,
@@ -548,6 +552,8 @@ export type GameState = {
   zone: ZoneId;
   hero: Hero;
   worldTimeMs: number;
+  /** Звучащие участки: собственная расплата Резонанса (game-combat-states.ts). */
+  discordZones: DiscordZoneState[];
   mutated: boolean;
   sensorFixed: boolean;
   artifactRecovered: boolean;
@@ -571,6 +577,15 @@ export type GameState = {
   populationCycle: number;
   samosbor: SamosborState;
   log: string[];
+};
+
+export type DiscordZoneState = {
+  id: string;
+  zone: ZoneId;
+  position: Point;
+  radius: number;
+  untilMs: number;
+  nextPulseMs: number;
 };
 
 export type MapDefinition = {
@@ -4279,7 +4294,41 @@ function applyDirectionLoop(
 ): GameState {
   const direction = archetypeFor(state);
   const target = enemyById(state, targetId);
-  if (!target || target.hp <= 0) return state;
+  if (!target) return state;
+
+  // Свёртывание Резонанса переживает смерть цели: резонанс был в металле, и
+  // добивание его не отменяет. Без этого направление почти не срабатывало —
+  // обычный противник как раз и набирает второй стек с последнего удара.
+  if (direction === "resonance" && target.resonanceStacks >= 2) {
+    const zone = discordZone(target.resonanceStacks);
+    if (zone) {
+      let next = updateEnemy(state, targetId, (enemy) => ({ ...enemy, resonanceStacks: 0 }));
+      next = {
+        ...next,
+        discordZones: [
+          ...next.discordZones,
+          {
+            id: `discord-${next.worldTimeMs}-${targetId}`,
+            zone: next.zone,
+            position: { ...target.position },
+            radius: zone.radius,
+            untilMs: next.worldTimeMs + zone.durationMs,
+            nextPulseMs: next.worldTimeMs + DISCORD_PULSE_MS,
+          },
+        ],
+        hero: {
+          ...next.hero,
+          contamination: Math.min(100, next.hero.contamination + zone.contamination),
+        },
+      };
+      return appendLog(
+        next,
+        `Разлад свёрнут: участок звучит ${(zone.durationMs / 1000).toFixed(1)} с. Цена: +${zone.contamination} заражения.`,
+      );
+    }
+  }
+
+  if (target.hp <= 0) return state;
 
   // Перегрузку пробивает любое попадание, а не только выстрел того, кто её
   // навёл: это и делает её точкой стыковки между направлениями. Пробой идёт
@@ -4351,6 +4400,36 @@ function applyDirectionLoop(
   }
 
   return state;
+}
+
+/**
+ * Звучащие участки наводят резонанс сами, пока держатся. Это и делает
+ * Резонанс направлением контроля пространства, а не ещё одним источником
+ * бурста по одной цели.
+ */
+function tickDiscordZones(state: GameState): GameState {
+  if (!state.discordZones?.length) return state;
+  const alive = state.discordZones.filter((zone) => zone.untilMs > state.worldTimeMs);
+  if (!alive.length) return { ...state, discordZones: [] };
+
+  let next: GameState = { ...state, discordZones: alive };
+  const pulsed: DiscordZoneState[] = [];
+  for (const zone of alive) {
+    if (zone.nextPulseMs > next.worldTimeMs || zone.zone !== next.zone) {
+      pulsed.push(zone);
+      continue;
+    }
+    for (const enemy of next.enemies) {
+      if (enemy.hp <= 0 || enemy.zone !== zone.zone) continue;
+      if (distance(enemy.position, zone.position) > zone.radius) continue;
+      next = updateEnemy(next, enemy.id, (current) => ({
+        ...current,
+        resonanceStacks: Math.min(RESONANCE_MAX_STACKS, current.resonanceStacks + 1),
+      }));
+    }
+    pulsed.push({ ...zone, nextPulseMs: next.worldTimeMs + DISCORD_PULSE_MS });
+  }
+  return { ...next, discordZones: pulsed };
 }
 
 /**
@@ -5857,6 +5936,7 @@ export function createInitialState(): GameState {
       injuryReliefUntilMs: 0,
     },
     worldTimeMs: 0,
+    discordZones: [],
     mutated: false,
     sensorFixed: false,
     artifactRecovered: false,
@@ -5959,6 +6039,9 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
     visited: { ...fresh.visited, ...(raw.visited ?? {}) },
     populations,
     npcs: Array.isArray(raw.npcs) && raw.npcs.length === 34 ? raw.npcs : fresh.npcs,
+    // Звучащие участки временны и не переживают загрузку: восстанавливать
+    // недожившую до сохранения область бессмысленно.
+    discordZones: [],
     npcConversationCooldownMs: raw.npcConversationCooldownMs ?? fresh.npcConversationCooldownMs,
     samosbor: {
       ...fresh.samosbor,
@@ -6123,6 +6206,7 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
   }
 
   next = tickSamosborSchedule(next);
+  next = tickDiscordZones(next);
 
   const heroPosition = next.hero.positions[next.zone];
   const combatDirective = combatDirectiveFor(next);
