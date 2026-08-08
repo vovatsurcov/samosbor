@@ -257,6 +257,19 @@ export const ENCOUNTERS: EncounterDefinition[] = [
     ],
   },
   {
+    id: "pack:mixed-shift",
+    name: "Сводная смена",
+    // Состав для человеческой проверки приоритета цели. Подсказки игроку здесь
+    // намеренно нет: он должен прочитать приоритет из поведения группы, а не
+    // из текста.
+    question: "Тяжёлый держит проход, напор не даёт стоять, и кто-то заставляет их всех работать быстрее.",
+    members: [
+      { defId: "circuit-dispatcher", count: 1, offset: { x: 5, y: -3 } },
+      { defId: "loading-frame", count: 1, offset: { x: 1, y: 0 } },
+      { defId: "shift-runner", count: 3, offset: { x: -1, y: 2 } },
+    ],
+  },
+  {
     id: "pack:adjuster",
     name: "Наладчик линии",
     question: "Минибосс: сборке хватает времени раскрыться несколько раз.",

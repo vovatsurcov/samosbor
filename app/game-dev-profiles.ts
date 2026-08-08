@@ -34,6 +34,13 @@ export const DEV_PROFILES: DevProfile[] = [
   { id: "glass-cannon", name: "Стеклянная пушка", invest: { power: 8, precision: 8 }, note: "Урон без защитных вложений: любой пропущенный удар дорог." },
   { id: "armour-block", name: "Броня и блок", invest: { guard: 15 }, note: "Проверка слоёв брони и блока без уклонения." },
   { id: "evasion-parry", name: "Уклонение и парирование", invest: { agility: 16 }, note: "Проверка слоёв уклонения и парирования без брони." },
+  {
+    id: "playtest",
+    name: "Проверочная сборка",
+    invest: { power: 6, guard: 5, precision: 4 },
+    note: "Сборка для человеческой проверки боя: способна и бить, и держать удар, без перекоса в одну механику.",
+  },
+
   { id: "resistance", name: "Сопротивления", invest: { guard: 12, resonance: 4 }, note: "Проверка сопротивлений по категориям угроз." },
 ];
 
