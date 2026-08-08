@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   REGION_MAPS,
   REGION_STARTS,
-  REGION_TRANSITIONS,
   REGION_POPULATIONS,
   REGION_SAFE_ZONES,
 } from "../app/game-region-549-545.ts";
@@ -15,6 +14,8 @@ import {
   mapForZone,
   migrateGameState,
 } from "../app/game-engine.ts";
+
+const UPPER_REGION_ZONES = ["floor549", "floor548", "floor547", "floor546", "floor545"];
 
 function findTile(map, tile) {
   const points = [];
@@ -60,9 +61,10 @@ function interactAtTile(state, zone, tile) {
   return commandInteractAt(positioned, point);
 }
 
-test("регион 549–545 содержит пять карт единого производственного масштаба", () => {
-  assert.deepEqual(Object.keys(REGION_MAPS).sort(), ["floor545", "floor546", "floor547", "floor548", "floor549"]);
-  for (const [zone, map] of Object.entries(REGION_MAPS)) {
+test("регион 549–545 сохраняет пять исходных карт единого производственного масштаба", () => {
+  for (const zone of UPPER_REGION_ZONES) {
+    const map = REGION_MAPS[zone];
+    assert.ok(map, zone);
     assert.equal(map.rows.length, 36, zone);
     assert.ok(map.rows.every((row) => row.length === 56), zone);
     assert.equal(findTile(map, "U").length, 1, `${zone}: U`);
@@ -70,7 +72,7 @@ test("регион 549–545 содержит пять карт единого �
   }
 });
 
-test("опасные этажи имеют доступные гермокомнаты", () => {
+test("опасные этажи 549–546 имеют доступные гермокомнаты", () => {
   for (const zone of ["floor549", "floor548", "floor547", "floor546"]) {
     const map = REGION_MAPS[zone];
     const door = findTile(map, "H")[0];
@@ -80,8 +82,9 @@ test("опасные этажи имеют доступные гермокомн
   }
 });
 
-test("все переходы и специальные точки достижимы", () => {
-  for (const [zone, map] of Object.entries(REGION_MAPS)) {
+test("переходы верхнего промышленного региона достижимы", () => {
+  for (const zone of UPPER_REGION_ZONES) {
+    const map = REGION_MAPS[zone];
     const start = REGION_STARTS[zone];
     for (const tile of ["U", ...(zone === "floor545" ? [] : ["D"])]) {
       assert.ok(reachable(map, start, findTile(map, tile)[0]), `${zone}: ${tile}`);
@@ -90,7 +93,6 @@ test("все переходы и специальные точки достиж�
   const voidGate = findTile(REGION_MAPS.floor547, "P")[0];
   assert.ok(voidGate);
   assert.ok(reachable(REGION_MAPS.floor547, REGION_STARTS.floor547, voidGate));
-  assert.equal(Object.keys(REGION_TRANSITIONS).length, 10);
 });
 
 test("переход с этажа 550 ведёт через всю цепочку до Города 545", () => {
@@ -122,10 +124,10 @@ test("Город 545 является защищённым многоэтажн�
   assert.equal(state.enemies.filter((enemy) => enemy.zone === "floor545" && enemy.hp > 0).length, 0);
 });
 
-test("на четырёх опасных этажах существуют физические популяции", () => {
+test("на четырёх исходных опасных этажах существуют физические популяции", () => {
   const state = createInitialState();
-  assert.equal(REGION_POPULATIONS.length, 5);
   for (const zone of ["floor549", "floor548", "floor547", "floor546"]) {
+    assert.ok(REGION_POPULATIONS.some((population) => population.zone === zone));
     assert.ok(state.populations.some((population) => population.zone === zone));
     assert.ok(state.enemies.some((enemy) => enemy.zone === zone && enemy.hp > 0));
   }
@@ -145,9 +147,9 @@ test("разрыв НИИ-547 ведёт в существующую войд-з
   assert.equal(state.zone, "voidLab");
 });
 
-test("миграция старого сохранения добавляет позиции и разведку новых этажей", () => {
+test("миграция старого сохранения сохраняет позиции исходного региона", () => {
   const migrated = migrateGameState({});
-  for (const zone of Object.keys(REGION_MAPS)) {
+  for (const zone of UPPER_REGION_ZONES) {
     assert.deepEqual(migrated.hero.positions[zone], REGION_STARTS[zone]);
     assert.ok(Array.isArray(migrated.visited[zone]));
   }

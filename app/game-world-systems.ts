@@ -1,21 +1,20 @@
 import * as base from "./game-engine-base.ts";
-import {
-  FLOOR_544_MAP,
-  FLOOR_545_MAP,
-  FLOOR_547_MAP,
-  FLOOR_548_MAP,
-} from "./game-region-map-544.ts";
+import { FLOOR_544_MAP } from "./game-region-map-544.ts";
 
 export type TravelNodeId =
   | "city550"
   | "city545"
   | "technical556"
   | "archive547"
-  | "traction549";
+  | "traction549"
+  | "transit543"
+  | "city539"
+  | "grid537"
+  | "frontier534";
 
 export type CommunicationStatus = "offline" | "unstable" | "online";
 export type RepairMaterialId = "coilPart" | "repairKit" | "batteryPack" | "filterCartridge";
-export type SettlementId = "city550" | "city545";
+export type SettlementId = "city550" | "city545" | "city539";
 export type DefenseStatus = "idle" | "warning" | "active" | "victory" | "defeat";
 
 export type ResourceBundle = Record<RepairMaterialId, number>;
@@ -142,6 +141,39 @@ export const TRAVEL_NODES: Record<TravelNodeId, TravelNodeSpec> = {
     position: { x: 5, y: 31 },
     kind: "interest",
   },
+  transit543: {
+    id: "transit543",
+    label: "Межгородской транзит 543",
+    shortLabel: "Транзит 543",
+    zone: "floor543",
+    position: { x: 6, y: 31 },
+    kind: "interest",
+  },
+  city539: {
+    id: "city539",
+    label: "Город 539 · Город без номера",
+    shortLabel: "Город 539",
+    zone: "floor539",
+    position: { x: 51, y: 31 },
+    kind: "city",
+    cityId: "city539",
+  },
+  grid537: {
+    id: "grid537",
+    label: "Силовая станция 537",
+    shortLabel: "Станция 537",
+    zone: "floor537",
+    position: { x: 6, y: 31 },
+    kind: "interest",
+  },
+  frontier534: {
+    id: "frontier534",
+    label: "Нижний фронтир 534",
+    shortLabel: "Фронтир 534",
+    zone: "floor534",
+    position: { x: 6, y: 31 },
+    kind: "interest",
+  },
 };
 
 export const COMMUNICATION_REQUIREMENTS: Record<TravelNodeId, ResourceBundle> = {
@@ -150,6 +182,10 @@ export const COMMUNICATION_REQUIREMENTS: Record<TravelNodeId, ResourceBundle> = 
   technical556: { coilPart: 4, repairKit: 1, batteryPack: 1, filterCartridge: 0 },
   archive547: { coilPart: 6, repairKit: 2, batteryPack: 1, filterCartridge: 1 },
   traction549: { coilPart: 8, repairKit: 2, batteryPack: 2, filterCartridge: 1 },
+  transit543: { coilPart: 10, repairKit: 2, batteryPack: 2, filterCartridge: 1 },
+  city539: { coilPart: 12, repairKit: 3, batteryPack: 3, filterCartridge: 2 },
+  grid537: { coilPart: 10, repairKit: 3, batteryPack: 2, filterCartridge: 2 },
+  frontier534: { coilPart: 14, repairKit: 4, batteryPack: 3, filterCartridge: 2 },
 };
 
 const GLOBAL_NODE_SPECS = [
@@ -163,6 +199,16 @@ const GLOBAL_NODE_SPECS = [
   { id: "archive547", label: "Архив НИИ-547", floors: ["floor547"], kind: "floor" as const, travelNodeId: "archive547" as const },
   { id: "floor546", label: "Грузовой узел ГУ-46", floors: ["floor546"], kind: "floor" as const, travelNodeId: null },
   { id: "city545", label: "Город 545 · уровни 545–544", floors: ["floor545", "floor544"], kind: "city" as const, travelNodeId: "city545" as const },
+  { id: "transit543", label: "Межгородской транзит 543", floors: ["floor543"], kind: "floor" as const, travelNodeId: "transit543" as const },
+  { id: "floor542", label: "Теплообменный пояс 542 · Тепловой пост", floors: ["floor542"], kind: "floor" as const, travelNodeId: null },
+  { id: "floor541", label: "Ведомственный архив 541", floors: ["floor541"], kind: "floor" as const, travelNodeId: null },
+  { id: "floor540", label: "Безымянный промышленный пояс 540", floors: ["floor540"], kind: "floor" as const, travelNodeId: null },
+  { id: "city539", label: "Город 539 · Город без номера", floors: ["floor539"], kind: "city" as const, travelNodeId: "city539" as const },
+  { id: "floor538", label: "Карантинный пояс 538", floors: ["floor538"], kind: "floor" as const, travelNodeId: null },
+  { id: "grid537", label: "Силовая магистраль 537", floors: ["floor537"], kind: "floor" as const, travelNodeId: "grid537" as const },
+  { id: "floor536", label: "Машинный лабиринт 536 · Моторная артель", floors: ["floor536"], kind: "floor" as const, travelNodeId: null },
+  { id: "floor535", label: "Глубокий грузовой узел 535", floors: ["floor535"], kind: "floor" as const, travelNodeId: null },
+  { id: "frontier534", label: "Нижний разведывательный фронтир 534", floors: ["floor534"], kind: "floor" as const, travelNodeId: "frontier534" as const },
   { id: "voidLab", label: "Войд-зона ВЖ-7", floors: ["voidLab"], kind: "anomaly" as const, travelNodeId: null },
 ];
 
@@ -175,7 +221,18 @@ export const GLOBAL_MAP_CONNECTIONS: [string, string][] = [
   ["traction549", "floor548"],
   ["floor548", "archive547"],
   ["archive547", "floor546"],
+  ["archive547", "voidLab"],
   ["floor546", "city545"],
+  ["city545", "transit543"],
+  ["transit543", "floor542"],
+  ["floor542", "floor541"],
+  ["floor541", "floor540"],
+  ["floor540", "city539"],
+  ["city539", "floor538"],
+  ["floor538", "grid537"],
+  ["grid537", "floor536"],
+  ["floor536", "floor535"],
+  ["floor535", "frontier534"],
 ];
 
 function copyBundle(source?: Partial<ResourceBundle>): ResourceBundle {
@@ -187,10 +244,7 @@ function copyBundle(source?: Partial<ResourceBundle>): ResourceBundle {
   };
 }
 
-function createCommunication(
-  status: CommunicationStatus,
-  saved?: Partial<CommunicationState>,
-): CommunicationState {
+function createCommunication(status: CommunicationStatus, saved?: Partial<CommunicationState>): CommunicationState {
   return {
     status: saved?.status ?? status,
     contributed: copyBundle(saved?.contributed),
@@ -222,10 +276,15 @@ export function createWorldSystemsState(saved?: Partial<WorldSystemsState>): Wor
       technical556: createCommunication("unstable", saved?.communications?.technical556),
       archive547: createCommunication("offline", saved?.communications?.archive547),
       traction549: createCommunication("offline", saved?.communications?.traction549),
+      transit543: createCommunication("offline", saved?.communications?.transit543),
+      city539: createCommunication("unstable", saved?.communications?.city539),
+      grid537: createCommunication("offline", saved?.communications?.grid537),
+      frontier534: createCommunication("offline", saved?.communications?.frontier534),
     },
     defense: {
       city550: createDefense(saved?.defense?.city550),
       city545: createDefense(saved?.defense?.city545),
+      city539: createDefense(saved?.defense?.city539),
     },
     excellentRewards: Array.isArray(saved?.excellentRewards)
       ? saved.excellentRewards.map((reward) => ({ ...reward }))
@@ -234,10 +293,7 @@ export function createWorldSystemsState(saved?: Partial<WorldSystemsState>): Wor
 }
 
 export function ensureWorldSystemsState(state: any): any {
-  return {
-    ...state,
-    worldSystems: createWorldSystemsState(state.worldSystems),
-  };
+  return { ...state, worldSystems: createWorldSystemsState(state.worldSystems) };
 }
 
 function pointKey(point: base.Point): string {
@@ -247,6 +303,7 @@ function pointKey(point: base.Point): string {
 function cityForZone(zone: string): SettlementId | null {
   if (zone === "floor554") return "city550";
   if (zone === "floor545" || zone === "floor544") return "city545";
+  if (zone === "floor539") return "city539";
   return null;
 }
 
@@ -256,6 +313,10 @@ export function travelNodeForZone(zone: string): TravelNodeId | null {
   if (zone === "floor556") return "technical556";
   if (zone === "floor547") return "archive547";
   if (zone === "floor549") return "traction549";
+  if (zone === "floor543") return "transit543";
+  if (zone === "floor539") return "city539";
+  if (zone === "floor537") return "grid537";
+  if (zone === "floor534") return "frontier534";
   return null;
 }
 
@@ -310,29 +371,20 @@ export function communicationProgress(state: any, nodeId: TravelNodeId): {
   };
 }
 
-export function canFastTravel(state: any, destinationId: TravelNodeId): {
-  allowed: boolean;
-  reason: string;
-} {
+export function canFastTravel(state: any, destinationId: TravelNodeId): { allowed: boolean; reason: string } {
   const ensured = ensureWorldSystemsState(state);
   const originId = travelNodeForZone(ensured.zone);
   if (!originId) return { allowed: false, reason: "Поблизости нет зарегистрированного лифтового узла." };
-  if (!isAtTravelAccess(ensured, originId)) {
-    return { allowed: false, reason: "Нужно подойти к лифтовому узлу." };
-  }
+  if (!isAtTravelAccess(ensured, originId)) return { allowed: false, reason: "Нужно подойти к лифтовому узлу." };
   if (originId === destinationId) return { allowed: false, reason: "Герой уже находится в этом узле." };
-  if (!isTravelNodeDiscovered(ensured, destinationId)) {
-    return { allowed: false, reason: "Маршрут ещё не разведан." };
-  }
+  if (!isTravelNodeDiscovered(ensured, destinationId)) return { allowed: false, reason: "Маршрут ещё не разведан." };
   if (ensured.worldSystems.communications[originId].status !== "online") {
     return { allowed: false, reason: "Исходящий узел не имеет устойчивой связи." };
   }
   if (ensured.worldSystems.communications[destinationId].status !== "online") {
     return { allowed: false, reason: "Связь с пунктом назначения не восстановлена." };
   }
-  if (hasActiveThreats(ensured)) {
-    return { allowed: false, reason: "Лифт заблокирован локальной тревогой." };
-  }
+  if (hasActiveThreats(ensured)) return { allowed: false, reason: "Лифт заблокирован локальной тревогой." };
   const settlement = cityForZone(ensured.zone);
   if (settlement && ensured.worldSystems.defense[settlement].status === "active") {
     return { allowed: false, reason: "Во время обороны города лифты работают только на эвакуацию." };
@@ -358,10 +410,7 @@ export function commandFastTravel(state: any, destinationId: TravelNodeId): any 
       worldTimeMs: ensured.worldTimeMs + travelMs,
       hero: {
         ...ensured.hero,
-        positions: {
-          ...ensured.hero.positions,
-          [destination.zone]: { ...destination.position },
-        },
+        positions: { ...ensured.hero.positions, [destination.zone]: { ...destination.position } },
         path: [],
         destination: null,
         attackTargetId: null,
@@ -395,19 +444,11 @@ function takeMaterial(
 export function donateLiftResources(state: any, nodeId: TravelNodeId): any {
   const ensured = ensureWorldSystemsState(state);
   const city = cityForZone(ensured.zone);
-  if (!city) {
-    return appendWorldLog(
-      ensured,
-      "Ресурсы принимает только городское Управление межэтажных сообщений.",
-    );
-  }
-  if (!isTravelNodeDiscovered(ensured, nodeId)) {
-    return appendWorldLog(ensured, "УМС не принимает материалы на неразведанный маршрут.");
-  }
+  if (!city) return appendWorldLog(ensured, "Ресурсы принимает только городское Управление межэтажных сообщений.");
+  if (!isTravelNodeDiscovered(ensured, nodeId)) return appendWorldLog(ensured, "УМС не принимает материалы на неразведанный маршрут.");
   const communication = ensured.worldSystems.communications[nodeId];
-  if (communication.status === "online") {
-    return appendWorldLog(ensured, `${TRAVEL_NODES[nodeId].shortLabel}: связь уже работает.`);
-  }
+  if (communication.status === "online") return appendWorldLog(ensured, `${TRAVEL_NODES[nodeId].shortLabel}: связь уже работает.`);
+
   const progress = communicationProgress(ensured, nodeId);
   let inventory = ensured.hero.inventory as base.InventoryEntry[];
   const donated = copyBundle();
@@ -417,9 +458,8 @@ export function donateLiftResources(state: any, nodeId: TravelNodeId): any {
     donated[itemId] = result.taken;
   }
   const total = Object.values(donated).reduce((sum, value) => sum + value, 0);
-  if (total <= 0) {
-    return appendWorldLog(ensured, "Для ремонта линии нет подходящих материалов в инвентаре.");
-  }
+  if (total <= 0) return appendWorldLog(ensured, "Для ремонта линии нет подходящих материалов в инвентаре.");
+
   const contributed = {
     coilPart: communication.contributed.coilPart + donated.coilPart,
     repairKit: communication.contributed.repairKit + donated.repairKit,
@@ -427,9 +467,7 @@ export function donateLiftResources(state: any, nodeId: TravelNodeId): any {
     filterCartridge: communication.contributed.filterCartridge + donated.filterCartridge,
   };
   const required = COMMUNICATION_REQUIREMENTS[nodeId];
-  const complete = (Object.keys(required) as RepairMaterialId[]).every(
-    (itemId) => contributed[itemId] >= required[itemId],
-  );
+  const complete = (Object.keys(required) as RepairMaterialId[]).every((itemId) => contributed[itemId] >= required[itemId]);
   const next = {
     ...ensured,
     hero: { ...ensured.hero, inventory },
@@ -483,6 +521,10 @@ export function liftInteractionMessage(state: any): string {
   return `Линия связи ${communication.status === "offline" ? "отключена" : "нестабильна"}. УМС запрашивает: ${missing || "диагностику"}.`;
 }
 
+function settlementLabel(settlementId: SettlementId): string {
+  return settlementId === "city550" ? "Город 550" : settlementId === "city545" ? "Город 545" : "Город 539";
+}
+
 export function startDefenseEvent(
   state: any,
   settlementId: SettlementId,
@@ -513,7 +555,7 @@ export function startDefenseEvent(
         },
       },
     },
-    `${settlementId === "city545" ? "Город 545" : "Город 550"}: объявлена подготовка к обороне.`,
+    `${settlementLabel(settlementId)}: объявлена подготовка к обороне.`,
   );
 }
 
@@ -524,9 +566,7 @@ export function commandDefensePreparation(
 ): any {
   const ensured = ensureWorldSystemsState(state);
   const event = ensured.worldSystems.defense[settlementId];
-  if (event.status !== "warning") {
-    return appendWorldLog(ensured, "Подготовительный этап обороны сейчас не активен.");
-  }
+  if (event.status !== "warning") return appendWorldLog(ensured, "Подготовительный этап обороны сейчас не активен.");
   const value = action === "fortify" || action === "power" ? 3 : 2;
   const label = {
     fortify: "укреплены проходы",
@@ -553,14 +593,10 @@ export function commandDefensePreparation(
   );
 }
 
-export function recordDefenseWaveVictory(
-  state: any,
-  settlementId: SettlementId,
-  heroContribution = 2,
-): any {
+export function recordDefenseWaveVictory(state: any, settlementId: SettlementId, heroContribution = 2): any {
   const ensured = ensureWorldSystemsState(state);
   const event = ensured.worldSystems.defense[settlementId];
-  if (!['warning', 'active'].includes(event.status)) return ensured;
+  if (!["warning", "active"].includes(event.status)) return ensured;
   const wave = Math.min(event.totalWaves, event.wave + 1);
   const victory = wave >= event.totalWaves;
   const nextEvent: DefenseEventState = {
@@ -580,9 +616,7 @@ export function recordDefenseWaveVictory(
         defense: { ...ensured.worldSystems.defense, [settlementId]: nextEvent },
       },
     },
-    victory
-      ? "Последняя волна отражена. Город удержан."
-      : `Волна ${wave}/${event.totalWaves} отражена. Следующий сектор готовится к атаке.`,
+    victory ? "Последняя волна отражена. Город удержан." : `Волна ${wave}/${event.totalWaves} отражена. Следующий сектор готовится к атаке.`,
   );
 }
 
@@ -590,8 +624,7 @@ export function grantDefenseVictoryRewards(state: any, settlementId: SettlementI
   const ensured = ensureWorldSystemsState(state);
   const event = ensured.worldSystems.defense[settlementId];
   if (event.status !== "victory" || event.rewardClaimed) return ensured;
-  const share = TRAVEL_NODES[settlementId].kind === "city" ? 1.1 : 0.65;
-  const xp = Math.max(1, Math.round(base.xpRequiredForLevel(ensured.hero.level) * share));
+  const xp = Math.max(1, Math.round(base.xpRequiredForLevel(ensured.hero.level) * 1.1));
   let rewarded = base.awardXp(ensured, xp) as any;
   const contract: ExcellentRewardContract = {
     id: `defense:${settlementId}:${Math.round(ensured.worldTimeMs)}`,
@@ -614,10 +647,7 @@ export function grantDefenseVictoryRewards(state: any, settlementId: SettlementI
       excellentRewards: [...rewarded.worldSystems.excellentRewards, contract],
     },
   };
-  return appendWorldLog(
-    rewarded,
-    `Оборона города: +${xp} опыта. Выдано право на снаряжение отличного качества, предмет определит Claude.`,
-  );
+  return appendWorldLog(rewarded, `Оборона города: +${xp} опыта. Выдано право на снаряжение отличного качества, предмет определит Claude.`);
 }
 
 export function tickWorldSystems(state: any): any {
@@ -636,17 +666,18 @@ export function tickWorldSystems(state: any): any {
           },
         },
       };
-      next = appendWorldLog(next, `${settlementId === "city545" ? "Город 545" : "Город 550"}: началась первая волна атаки.`);
+      next = appendWorldLog(next, `${settlementLabel(settlementId)}: началась первая волна атаки.`);
     }
   }
   return next;
 }
 
 function mapForSystemZone(zone: string): base.MapDefinition {
-  if (zone === "floor544") return FLOOR_544_MAP;
-  if (zone === "floor545") return FLOOR_545_MAP;
-  if (zone === "floor547") return FLOOR_547_MAP;
-  if (zone === "floor548") return FLOOR_548_MAP;
+  if (zone === "floor544") {
+    const rows = FLOOR_544_MAP.rows.map((row) => [...row]);
+    rows[2][52] = "D";
+    return { ...FLOOR_544_MAP, rows: rows.map((row) => row.join("")) };
+  }
   return base.mapForZone(zone as base.ZoneId);
 }
 
@@ -690,10 +721,7 @@ export function localMapSnapshot(state: any, radius = 7): {
   return { zone: state.zone, title: map.name, cells, minX, maxX, minY, maxY };
 }
 
-export function globalMapSnapshot(state: any): {
-  nodes: GlobalMapNode[];
-  connections: [string, string][];
-} {
+export function globalMapSnapshot(state: any): { nodes: GlobalMapNode[]; connections: [string, string][] } {
   const ensured = ensureWorldSystemsState(state);
   const nodes = GLOBAL_NODE_SPECS.map((spec): GlobalMapNode => {
     const discovered = spec.floors.some(
@@ -706,7 +734,13 @@ export function globalMapSnapshot(state: any): {
     const permission = spec.travelNodeId
       ? canFastTravel(ensured, spec.travelNodeId)
       : { allowed: false, reason: "В этой точке нет узла быстрого перемещения." };
-    const settlement = spec.id === "city550" ? "city550" : spec.id === "city545" ? "city545" : null;
+    const settlement: SettlementId | null = spec.id === "city550"
+      ? "city550"
+      : spec.id === "city545"
+        ? "city545"
+        : spec.id === "city539"
+          ? "city539"
+          : null;
     return {
       id: spec.id,
       label: spec.label,
