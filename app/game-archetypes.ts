@@ -475,13 +475,18 @@ export const SCOUT_VISION_BONUS = 2.5;
 export const SCOUT_DURATION_MS = 6000;
 export const AIMED_SHOT_ARMOR_SHARE = 0.5;
 
-/** Опора танка: ступень за каждые 1.2 с удержания блока, идеальный блок даёт сразу ступень. */
+/**
+ * Опора: ресурс направления «Опора». Копится не удержанием кнопки — блок в
+ * SAMOSBOR не нажимают, он свойство сборки — а **сработавшими блоками**.
+ * Каждый принятый на защиту удар добавляет ступень; без входящего давления
+ * опора рассыпается сама.
+ */
 export const FOOTING_STEP_MS = 1200;
-export const FOOTING_PERFECT_BONUS_MS = 1200;
+export const FOOTING_DECAY_MS = 4000;
 export const FOOTING_BLOCK_ABSORB_BONUS = 0.06;
 
-export function footingStepsFor(blockHeldMs: number): number {
-  return Math.min(3, Math.floor(blockHeldMs / FOOTING_STEP_MS));
+export function footingStepsFor(footingMs: number): number {
+  return Math.min(3, Math.floor(footingMs / FOOTING_STEP_MS));
 }
 
 /** Каждая ступень опоры добавляет поглощение блока. */

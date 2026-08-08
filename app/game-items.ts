@@ -57,7 +57,10 @@ export type ItemId =
   | "seventhToleranceHarness"
   | "elevatorHeartbeat";
 
-export type ItemKind = "weapon" | "clothing" | "consumable" | "material" | "artifact";
+// «Снаряжение» — одно понятие и одно имя. Раньше половина предметов была
+// объявлена как "clothing", половина как "gear", и ни одна ветка кода их не
+// различала: на экране это давало предмет с типом «GEAR» без перевода.
+export type ItemKind = "weapon" | "gear" | "consumable" | "material" | "artifact";
 export type ItemRarity = "common" | "uncommon" | "rare" | "legendary";
 export type ConsumableCategory = "bandage" | "healing" | "pills" | "booster" | "food" | "utility";
 
@@ -415,7 +418,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "respiratorIp7",
     name: "Респиратор ИП-7",
     shortName: "ИП-7",
-    kind: "clothing",
+    kind: "gear",
     slot: "head",
     weight: 1,
     stackable: false,
@@ -426,7 +429,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "repairCoatRs12",
     name: "Ремонтный ватник РС-12",
     shortName: "РС-12",
-    kind: "clothing",
+    kind: "gear",
     slot: "body",
     weight: 3.5,
     stackable: false,
@@ -437,7 +440,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "installerGloves",
     name: "Перчатки монтажника",
     shortName: "ПМ-4",
-    kind: "clothing",
+    kind: "gear",
     slot: "hands",
     weight: 0.8,
     stackable: false,
@@ -448,7 +451,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "dielectricBoots",
     name: "Диэлектрические сапоги",
     shortName: "ДС-2",
-    kind: "clothing",
+    kind: "gear",
     slot: "feet",
     weight: 1.8,
     stackable: false,
@@ -459,7 +462,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "backpackRd54",
     name: "Рюкзак РД-54",
     shortName: "РД-54",
-    kind: "clothing",
+    kind: "gear",
     slot: "back",
     weight: 1.5,
     stackable: false,
@@ -470,7 +473,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "platedVestBn3",
     name: "Броневатник БН-3",
     shortName: "БН-3",
-    kind: "clothing",
+    kind: "gear",
     slot: "body",
     weight: 6.2,
     stackable: false,
@@ -481,7 +484,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "hermeticJacketGk3",
     name: "Гермокуртка ГК-3",
     shortName: "ГК-3",
-    kind: "clothing",
+    kind: "gear",
     slot: "body",
     weight: 3.9,
     stackable: false,
@@ -493,7 +496,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "quietHoodTo2",
     name: "Тихий капюшон ТО-2",
     shortName: "ТО-2",
-    kind: "clothing",
+    kind: "gear",
     slot: "head",
     weight: 0.7,
     stackable: false,
@@ -656,7 +659,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: "seventhToleranceHarness",
     name: "Разгрузка седьмого допуска",
     shortName: "РСД-7",
-    kind: "clothing",
+    kind: "gear",
     slot: "body",
     weight: 4.6,
     stackable: false,

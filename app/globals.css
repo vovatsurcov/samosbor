@@ -2874,9 +2874,227 @@ kbd {
   backdrop-filter: blur(8px);
 }
 
-.map-hover-card strong { color: #f0d77c; font-size: 0.95rem; }
-.map-hover-card p { margin: 6px 0; color: #d8ddd4; line-height: 1.35; }
-.map-hover-card small { color: #8da096; }
+.map-hover-card { padding: 0; border: none; background: none; box-shadow: none; backdrop-filter: none; }
+
+/* Прозрачная зона наведения актёра: ловит курсор, но ничего не рисует. */
+.actor-hit { pointer-events: all; }
+
+.inspect-card {
+  padding: 11px 13px;
+  border: 1px solid rgba(225, 200, 109, 0.44);
+  background: rgba(17, 19, 17, 0.96);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  font-size: 0.66rem;
+  line-height: 1.42;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+
+.inspect-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(225, 200, 109, 0.2);
+}
+
+.inspect-card > header strong {
+  display: block;
+  color: #f0d77c;
+  font-size: 0.86rem;
+  letter-spacing: 0.01em;
+}
+
+.inspect-card > header small {
+  display: block;
+  margin-top: 2px;
+  color: #8da096;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.55rem;
+}
+
+.inspect-card > header kbd {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid rgba(160, 176, 158, 0.4);
+  color: #cdd6c8;
+  background: rgba(38, 43, 37, 0.9);
+  font-size: 0.55rem;
+  white-space: nowrap;
+}
+
+.inspect-blocked {
+  margin: 7px 0 0;
+  padding: 4px 7px;
+  border-left: 2px solid #d08a5c;
+  color: #e2a880;
+  background: rgba(64, 42, 28, 0.5);
+}
+
+/* Замена управления — главное, что карточка должна сообщить. */
+.inspect-transform {
+  margin: 8px 0 2px;
+  padding: 7px 9px;
+  border: 1px solid rgba(176, 139, 214, 0.55);
+  background: rgba(44, 34, 56, 0.72);
+}
+
+.inspect-transform small {
+  display: block;
+  color: #a98fc6;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.52rem;
+}
+
+.inspect-transform p {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 4px 0 0;
+}
+
+.inspect-transform s { color: #7d8578; }
+.inspect-transform i { color: #a98fc6; font-style: normal; }
+.inspect-transform b { color: #e2cdf6; font-size: 0.78rem; }
+
+.inspect-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 3px 8px;
+  margin-top: 8px;
+  position: relative;
+}
+
+.inspect-bar span { color: #8da096; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.inspect-bar b { color: #cdd6c8; font-weight: 600; font-size: 0.6rem; }
+
+.inspect-bar::after {
+  content: "";
+  grid-column: 1 / 3;
+  height: 4px;
+  background: rgba(90, 98, 87, 0.35);
+}
+
+.inspect-bar i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: #8da096;
+}
+
+.inspect-bar.bar-health i { background: linear-gradient(90deg, #a04b43, #d67a6a); }
+.inspect-bar.bar-stance i { background: linear-gradient(90deg, #6f8fb0, #9bb9d6); }
+.inspect-bar.bar-charges i { background: linear-gradient(90deg, #6d9a70, #a8cf94); }
+.inspect-bar.bar-progress i { background: linear-gradient(90deg, #8a7a45, #c0ab63); }
+.inspect-bar.bar-danger i { background: linear-gradient(90deg, #b0563f, #e08d61); }
+
+.inspect-card section {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(120, 132, 116, 0.16);
+}
+
+.inspect-card section:first-of-type { border-top: none; padding-top: 0; }
+
+.inspect-card h5 {
+  margin: 0 0 5px;
+  color: #8da096;
+  font-size: 0.54rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.inspect-card section p {
+  margin: 0 0 4px;
+  color: #d8ddd4;
+}
+
+.inspect-card section p:last-child { margin-bottom: 0; }
+
+.inspect-card section p > span {
+  display: inline;
+  margin-right: 6px;
+  color: #8da096;
+}
+
+.inspect-card p.tone-gain { color: #a8cf94; }
+.inspect-card p.tone-gain > span { color: #7fa471; }
+.inspect-card p.tone-cost { color: #e0a882; }
+.inspect-card p.tone-cost > span { color: #b58058; }
+.inspect-card p.tone-danger { color: #e88b80; }
+.inspect-card p.tone-danger > span { color: #b5605a; }
+.inspect-card p.tone-change { color: #c4a2e2; }
+.inspect-card p.tone-change > span { color: #9a80b8; }
+.inspect-card p.tone-locked { color: #7d8578; }
+
+.inspect-card > footer {
+  margin-top: 9px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(120, 132, 116, 0.16);
+  color: #8da096;
+  font-size: 0.58rem;
+}
+
+/* Та же карточка внутри панелей: без собственного фона и без ограничения высоты. */
+.target-card .inspect-card,
+.talent-inspector .inspect-card {
+  max-height: none;
+  border: none;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.skillbar-panel {
+  margin-top: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba(226, 205, 122, 0.2);
+  background: rgba(26, 29, 24, 0.72);
+}
+
+.skillbar-panel > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.skillbar-panel strong { color: #cdd6c8; font-size: 0.66rem; }
+
+.skillbar-rows { display: grid; gap: 5px; margin-top: 7px; }
+
+.skillbar-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px;
+}
+
+.skillbar-row kbd {
+  padding: 2px 7px;
+  border: 1px solid rgba(160, 176, 158, 0.4);
+  color: #cdd6c8;
+  background: rgba(38, 43, 37, 0.9);
+  font-size: 0.58rem;
+}
+
+.skillbar-row select {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid rgba(120, 132, 116, 0.4);
+  color: #d8ddd4;
+  background: #1d211c;
+  font-size: 0.62rem;
+}
 
 
 .safe-room-state {
@@ -2913,13 +3131,13 @@ kbd {
 }
 
 .action-dock-v2 > .health-orb { grid-column: 1; grid-row: 1; }
-.action-dock-v2 > .combat-cluster:not(.combat-v2) { grid-column: 2; grid-row: 1; }
-.action-dock-v2 > .combat-v2 { grid-column: 3; grid-row: 1; }
+.action-dock-v2 > .mouse-cluster { grid-column: 2; grid-row: 1; }
+.action-dock-v2 > .ability-cluster { grid-column: 3; grid-row: 1; }
 .action-dock-v2 > .archetype-cluster { grid-column: 4; grid-row: 1 / 3; align-self: stretch; }
-.action-dock-v2 > .experience-orb { grid-column: 1; grid-row: 2; }
+.action-dock-v2 > .experience-orb { grid-column: 5; grid-row: 1; }
 .action-dock-v2 > .consumable-belt { grid-column: 2 / 4; grid-row: 2; }
 .action-dock-v2 > .menu-cluster {
-  grid-column: 1 / 4;
+  grid-column: 1 / -1;
   grid-row: 3;
   display: flex;
   flex-wrap: wrap;
@@ -2958,8 +3176,38 @@ kbd {
   color: #e88b80;
 }
 
-.combat-cluster.combat-v2 .ability {
-  min-width: 118px;
+.combat-cluster.mouse-cluster,
+.combat-cluster.ability-cluster {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.combat-cluster.ability-cluster {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/*
+  Слот, заменённый сборкой, обязан выглядеть иначе: игрок должен видеть, что под
+  клавишей теперь не то, что было в начале игры.
+*/
+.ability.slot-ability.transformed {
+  border-color: rgba(176, 139, 214, 0.72);
+  background: linear-gradient(180deg, rgba(46, 36, 58, 0.95), rgba(28, 24, 34, 0.95));
+}
+
+.ability.slot-ability .transformed-mark {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  color: #c4a2e2;
+  font-size: 0.44rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.ability.skill-ability.empty {
+  border-style: dashed;
+  opacity: 0.72;
 }
 
 .ability.block-ability.active {
@@ -4029,7 +4277,8 @@ kbd {
   .action-dock.action-dock-v2 {
     grid-template-columns: 74px minmax(280px, 1fr) minmax(280px, 1fr);
   }
-  .action-dock-v2 > .combat-v2 { grid-column: 3; }
+  .action-dock-v2 > .mouse-cluster { grid-column: 2; grid-row: 1; }
+  .action-dock-v2 > .ability-cluster { grid-column: 3; grid-row: 1; }
   .action-dock-v2 > .archetype-cluster { grid-column: 2 / 4; grid-row: 3; }
   .action-dock-v2 > .consumable-belt { grid-column: 2 / 4; grid-row: 2; }
   .action-dock-v2 > .menu-cluster { grid-column: 1 / 4; grid-row: 4; }
@@ -4050,8 +4299,8 @@ kbd {
     grid-template-columns: 64px 1fr 64px;
   }
   .combat-cluster { grid-column: 2; grid-template-columns: repeat(2, 1fr); }
-  .action-dock-v2 > .combat-cluster:not(.combat-v2) { grid-column: 2; grid-row: 1; }
-  .action-dock-v2 > .combat-v2 { grid-column: 1 / -1; grid-row: 2; }
+  .action-dock-v2 > .mouse-cluster { grid-column: 2; grid-row: 1; }
+  .action-dock-v2 > .ability-cluster { grid-column: 1 / -1; grid-row: 2; }
   .action-dock-v2 > .consumable-belt { grid-column: 1 / -1; grid-row: 3; }
   .action-dock-v2 > .archetype-cluster { grid-column: 1 / -1; grid-row: 4; }
   .action-dock-v2 > .experience-orb { grid-column: 3; grid-row: 1; }
@@ -4357,7 +4606,7 @@ kbd {
 
   .realtime-shell .action-dock.action-dock-v2 {
     grid-template-columns: 108px minmax(0, 1fr) minmax(0, 1.15fr) 108px;
-    grid-template-rows: auto;
+    grid-template-rows: auto auto;
     align-items: center;
     gap: 14px;
     padding: 10px 16px 14px;
@@ -4371,13 +4620,16 @@ kbd {
   }
 
   /* Сферы по краям — крупные, как в PoE, но в стальной обойме. */
-  .realtime-shell .action-dock-v2 > .health-orb { grid-column: 1; grid-row: 1; }
-  .realtime-shell .action-dock-v2 > .consumable-belt { grid-column: 2; grid-row: 1; }
-  .realtime-shell .action-dock-v2 > .combat-cluster:not(.combat-v2),
-  .realtime-shell .action-dock-v2 > .combat-v2 { grid-column: 3; grid-row: 1; }
-  .realtime-shell .action-dock-v2 > .combat-v2 { align-self: end; }
-  .realtime-shell .action-dock-v2 > .combat-cluster:not(.combat-v2) { align-self: start; }
-  .realtime-shell .action-dock-v2 > .experience-orb { grid-column: 4; grid-row: 1; }
+  .realtime-shell .action-dock-v2 > .health-orb { grid-column: 1; grid-row: 1 / 3; }
+  .realtime-shell .action-dock-v2 > .consumable-belt { grid-column: 2; grid-row: 1 / 3; }
+  /*
+    Мышь и ячейки способностей стоят двумя рядами в одной колонке, а не одна
+    поверх другой: раньше обе занимали одну ячейку сетки и верхний ряд
+    перекрывал нижний, из-за чего до слота Shift нельзя было дотянуться мышью.
+  */
+  .realtime-shell .action-dock-v2 > .mouse-cluster { grid-column: 3; grid-row: 1; }
+  .realtime-shell .action-dock-v2 > .ability-cluster { grid-column: 3; grid-row: 2; }
+  .realtime-shell .action-dock-v2 > .experience-orb { grid-column: 4; grid-row: 1 / 3; }
 
   .realtime-shell .action-dock-v2 .health-orb,
   .realtime-shell .action-dock-v2 .experience-orb {
@@ -4422,6 +4674,19 @@ kbd {
     display: flex;
     gap: 6px;
     padding: 6px 8px;
+  }
+
+  /*
+    Карточка осмотра встаёт над панелью направления, а не поверх неё: панель
+    висит над доком слева, и при прежней привязке к нижнему краю карточка
+    накрывала её нижней третью.
+  */
+  .realtime-shell .map-hover-card {
+    bottom: 132px;
+  }
+
+  .realtime-shell .map-hover-card .inspect-card {
+    max-height: 50vh;
   }
 
   .realtime-shell .action-dock-v2 .ability { min-height: 50px; }
@@ -4513,3 +4778,1285 @@ kbd {
   font-size: 0.64rem;
   line-height: 1.3;
 }
+
+/* ==========================================================================
+   ИНТЕРФЕЙС SAMOSBOR — БОЕВОЙ ЭКРАН
+   ==========================================================================
+   Язык интерфейса: советская ведомственная аппаратура. Крашеный металл,
+   эмаль, стекло приборов, бакелит, техническая маркировка. Не неоновый
+   sci-fi, не мобильные карточки, не веб-дашборд — служебное оборудование,
+   которое давно стоит на посту и заметно изношено.
+
+   Главное правило композиции: мир занимает весь кадр, интерфейс лежит на нём
+   тонким слоем по краям. Плотное место ровно одно — нижняя панель.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --sam-void: #0c0e0b;
+  --sam-steel: #1a1d17;
+  --sam-plate: #23261e;
+  --sam-plate-hi: #2e3227;
+  --sam-line: #4a4f3e;
+  --sam-line-hi: #6d735c;
+  --sam-brass: #c9a45a;
+  --sam-brass-hi: #f0d489;
+  --sam-enamel-red: #a33f34;
+  --sam-enamel-red-hi: #d6685a;
+  --sam-enamel-blue: #3d6d8f;
+  --sam-enamel-blue-hi: #6fa9cd;
+  --sam-text: #d5dacb;
+  --sam-muted: #8b9382;
+  --sam-warn: #d98b4a;
+}
+
+/*
+  Игра — это игровой кадр, а не прокручиваемая страница.
+
+  Оболочка перестаёт быть сеткой: раньше кадр был элементом grid-строки,
+  которая схлопывалась по содержимому, и height:100% внутри неё давал ноль.
+  Теперь кадр просто растянут по оболочке.
+*/
+.game-shell.realtime-shell {
+  display: block;
+  position: relative;
+  width: 100%;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.realtime-shell > .game-layout.realtime-layout {
+  display: block;
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+}
+
+.world-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--sam-void);
+}
+
+.world-view > .map-stage {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+}
+
+.world-view .iso-map {
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Накладки по углам ---------------------------------------------------- */
+
+.hud-locale,
+.hud-objective,
+.hud-log,
+.hud-screens {
+  position: absolute;
+  z-index: 14;
+  pointer-events: none;
+}
+
+.hud-locale > *,
+.hud-objective > *,
+.hud-log > *,
+.hud-screens > * {
+  pointer-events: auto;
+}
+
+/*
+  Табличка места. Так подписывают оборудование: выдавленный шильдик с
+  инвентарным именем узла и временем смены.
+*/
+.hud-locale {
+  top: 14px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(35, 38, 30, 0.9), rgba(16, 18, 14, 0.92));
+  box-shadow: inset 0 1px rgba(240, 212, 137, 0.07), 0 6px 18px rgba(0, 0, 0, 0.5);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hud-locale strong { color: var(--sam-brass); font-weight: 600; }
+.hud-locale span { color: var(--sam-muted); font-variant-numeric: tabular-nums; }
+
+.locale-flag {
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  font-style: normal;
+  font-size: 0.54rem;
+}
+
+.locale-flag.safe { color: #74a58e; }
+.locale-flag.threat { color: var(--sam-enamel-red-hi); }
+.locale-flag.alarm { color: var(--sam-warn); animation: sam-blink 1.3s steps(2, end) infinite; }
+
+@keyframes sam-blink { 50% { opacity: 0.35; } }
+
+/* Задание — распоряжение на бланке: узкая полоса с шапкой и одной строкой. */
+.hud-objective {
+  top: 14px;
+  left: 18px;
+  max-width: min(340px, 30vw);
+  padding: 8px 13px 9px;
+  border: 1px solid var(--sam-line);
+  border-left: 3px solid var(--sam-brass);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(30, 33, 26, 0.9), rgba(14, 16, 12, 0.93));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.hud-objective span {
+  display: block;
+  color: var(--sam-muted);
+  font-size: 0.54rem;
+  letter-spacing: 0.16em;
+}
+
+.hud-objective strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--sam-text);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.34;
+}
+
+/* Журнал: тающие строки у нижнего края, не терминал. */
+/*
+  Журнал стоит в углу и не заезжает под панель: панель по центру занимает
+  примерно тысячу пикселей, поэтому колонка журнала обрезана по её кромке.
+*/
+.hud-log {
+  left: 18px;
+  bottom: 22px;
+  width: min(272px, calc((100vw - 1010px) / 2 - 26px));
+  min-width: 190px;
+}
+
+.hud-log .log-toggle {
+  min-height: 0;
+  line-height: 1.1;
+  padding: 2px 8px;
+  border: 1px solid var(--sam-line);
+  border-radius: 1px;
+  color: var(--sam-muted);
+  background: rgba(16, 18, 14, 0.8);
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
+}
+
+.hud-log .log-toggle:hover { color: var(--sam-brass); border-color: var(--sam-line-hi); }
+
+.hud-log ol {
+  margin: 5px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+
+.hud-log li {
+  color: var(--sam-text);
+  font-size: 0.64rem;
+  line-height: 1.3;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+.hud-log.expanded {
+  bottom: 22px;
+  width: min(420px, 32vw);
+  max-height: 46vh;
+}
+
+.hud-log.expanded ol {
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--sam-line);
+  background: rgba(12, 14, 11, 0.92);
+  flex-direction: column;
+  scrollbar-width: thin;
+}
+
+/*
+  Осмотр: устойчивая зона в правой колонке, под мини-картой. Карточка не
+  бегает за курсором, не закрывает героя в центре кадра и не наезжает на
+  панель — читать её можно, продолжая двигаться.
+*/
+.hud-inspect {
+  position: absolute;
+  z-index: 16;
+  right: 18px;
+  top: 344px;
+  width: 292px;
+  max-height: calc(100vh - 486px);
+  pointer-events: none;
+}
+
+.hud-inspect .inspect-card {
+  max-height: calc(100vh - 486px);
+}
+
+/* --- Нижняя панель --------------------------------------------------------- */
+
+.hud-dock {
+  position: absolute;
+  z-index: 15;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: auto auto auto auto auto;
+  align-items: end;
+  gap: 12px;
+  max-width: calc(100vw - 430px);
+  padding: 11px 20px 14px;
+  border: 1px solid var(--sam-line);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background:
+    linear-gradient(180deg, rgba(46, 50, 39, 0.96), rgba(15, 17, 13, 0.985));
+  box-shadow:
+    inset 0 1px rgba(240, 212, 137, 0.1),
+    0 -12px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Заклёпки по краю панели: она привинчена, а не нарисована. */
+.hud-dock::before,
+.hud-dock::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  bottom: 22px;
+  width: 3px;
+  background:
+    radial-gradient(circle at 50% 6px, rgba(240, 212, 137, 0.32) 0 1.4px, transparent 1.6px),
+    radial-gradient(circle at 50% calc(100% - 6px), rgba(240, 212, 137, 0.32) 0 1.4px, transparent 1.6px);
+}
+
+.hud-dock::before { left: 7px; }
+.hud-dock::after { right: 7px; }
+
+/* Сферы: приборное стекло в стальной обойме. */
+.dock-orb {
+  position: relative;
+  display: grid;
+  place-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  text-align: center;
+  box-shadow:
+    inset 0 0 22px rgba(0, 0, 0, 0.75),
+    0 0 0 3px var(--sam-plate),
+    0 0 0 4px var(--sam-line-hi),
+    0 4px 14px rgba(0, 0, 0, 0.6);
+}
+
+.dock-orb strong {
+  font-size: 1.42rem;
+  line-height: 1;
+  color: #f2ecd8;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+
+.dock-orb small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(232, 226, 205, 0.68);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/*
+  Сфера — приборное стекло с жидкостью: уровень стоит горизонтально и падает
+  сверху вниз. Секторная заливка читалась как диаграмма, а не как запас.
+*/
+.orb-health {
+  background:
+    radial-gradient(circle at 38% 26%, rgba(255, 226, 200, 0.14) 0 22%, transparent 46%),
+    linear-gradient(180deg, #241f1c calc(100% - var(--fill)), var(--sam-enamel-red-hi) calc(100% - var(--fill)), var(--sam-enamel-red) 100%);
+}
+
+.orb-resource {
+  background:
+    radial-gradient(circle at 38% 26%, rgba(214, 238, 255, 0.14) 0 22%, transparent 46%),
+    linear-gradient(180deg, #1a1f24 calc(100% - var(--fill)), var(--sam-enamel-blue-hi) calc(100% - var(--fill)), var(--sam-enamel-blue) 100%);
+}
+
+.orb-resource.warning {
+  background:
+    radial-gradient(circle at 38% 26%, rgba(255, 232, 200, 0.14) 0 22%, transparent 46%),
+    linear-gradient(180deg, #241f1c calc(100% - var(--fill)), #efb173 calc(100% - var(--fill)), var(--sam-warn) 100%);
+}
+
+/* Ячейки: эмалированные пластины с выдавленной маркировкой клавиши. */
+.dock-column {
+  display: flex;
+  gap: 6px;
+}
+
+.dock-quick { flex-direction: row; }
+
+.dock-cell {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 1px;
+  padding: 7px 9px 6px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--sam-plate-hi), var(--sam-steel));
+  box-shadow: inset 0 1px rgba(240, 212, 137, 0.08), inset 0 -8px 14px rgba(0, 0, 0, 0.4);
+  text-align: left;
+  color: var(--sam-text);
+}
+
+.dock-cell kbd {
+  position: absolute;
+  top: 4px;
+  left: 7px;
+  color: var(--sam-brass);
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.dock-cell strong {
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.dock-cell small {
+  color: var(--sam-muted);
+  font-size: 0.52rem;
+  line-height: 1.2;
+}
+
+.control-cell { width: 118px; min-height: 60px; }
+.ability-cell { width: 86px; min-height: 60px; }
+.quick-cell {
+  width: 50px;
+  min-height: 60px;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 4px 6px;
+}
+
+.quick-cell .cell-glyph { font-size: 1.1rem; color: var(--sam-brass-hi); line-height: 1; }
+.quick-cell .cell-charges {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  color: var(--sam-text);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+button.dock-cell:hover:not(:disabled) {
+  border-color: var(--sam-line-hi);
+  background: linear-gradient(180deg, #363b2d, #22261d);
+}
+
+.dock-cell.unavailable,
+.dock-cell:disabled {
+  opacity: 0.42;
+  filter: grayscale(0.4);
+}
+
+.dock-cell.empty { border-style: dashed; }
+
+/*
+  Слот, заменённый талантом, обязан выглядеть иначе: под клавишей теперь другое
+  действие, и это не должно требовать чтения подсказки.
+*/
+.dock-cell.transformed {
+  border-color: #8a6bb0;
+  background: linear-gradient(180deg, #33294099, #1b1722);
+  box-shadow: inset 0 1px rgba(196, 162, 226, 0.18), inset 0 -8px 14px rgba(0, 0, 0, 0.45);
+}
+
+.dock-cell.transformed strong { color: #d9c3f2; }
+
+.cell-mark {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  color: #b18edb;
+  font-size: 0.55rem;
+  font-style: normal;
+}
+
+/* Откат гасит ячейку сверху вниз — прямо на самой ячейке. */
+.cell-cooldown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: rgba(8, 9, 7, 0.68);
+  pointer-events: none;
+}
+
+.cell-charge {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #b3803a, var(--sam-brass-hi));
+}
+
+/* Полосы под панелью: стойка, дыхание, опыт — тонкой лентой. */
+.dock-bars {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.dock-bar {
+  height: 4px;
+  background: rgba(10, 12, 9, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(109, 115, 92, 0.35);
+}
+
+.dock-bar i { display: block; height: 100%; transition: width 120ms linear; }
+.bar-stance i { background: linear-gradient(90deg, #4d7492, #8fb6d4); }
+.bar-stance.warn i { background: linear-gradient(90deg, #9a6b34, #d6a75e); }
+.bar-breath i { background: linear-gradient(90deg, #4f8577, #86bfae); }
+.bar-breath.draining i { background: linear-gradient(90deg, #8a7a45, #c9b26a); }
+.bar-xp { height: 3px; }
+.bar-xp i { background: linear-gradient(90deg, #6c6440, #b9a866); }
+
+/* --- Кнопки экранов -------------------------------------------------------- */
+
+.hud-screens {
+  right: 18px;
+  bottom: 16px;
+  display: flex;
+  gap: 6px;
+}
+
+.hud-screens button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 62px;
+  padding: 7px 4px 6px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  color: var(--sam-muted);
+  background: linear-gradient(180deg, rgba(35, 38, 30, 0.92), rgba(16, 18, 14, 0.94));
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hud-screens button:hover { color: var(--sam-brass); border-color: var(--sam-line-hi); }
+.hud-screens kbd {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--sam-brass);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.hud-screens em {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--sam-enamel-red);
+  color: #f4e6d6;
+  font-size: 0.5rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* --- Мелкое ---------------------------------------------------------------- */
+
+.world-view .dev-profiles {
+  position: absolute;
+  z-index: 20;
+  top: 112px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px dashed #6b5f8a;
+  border-radius: 2px;
+  background: rgba(20, 16, 26, 0.9);
+  color: #a897c4;
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.world-view .dev-profiles select {
+  padding: 2px 4px;
+  border: 1px solid #574c73;
+  background: #171320;
+  color: #cdbfe4;
+  font-size: 0.54rem;
+}
+
+.world-view .mission-complete {
+  position: absolute;
+  z-index: 24;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 8px;
+  padding: 18px 28px;
+  border: 1px solid var(--sam-brass);
+  background: rgba(14, 16, 12, 0.96);
+  text-align: center;
+}
+
+/* Мини-карта: угол кадра, а не четверть экрана. */
+.world-minimap {
+  position: absolute;
+  z-index: 14;
+  top: 54px;
+  right: 18px;
+  left: auto;
+  bottom: auto;
+  width: 208px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(30, 33, 26, 0.92), rgba(13, 15, 11, 0.95));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+/* ==========================================================================
+   ЭКРАНЫ: ПЕРСОНАЖ · СНАРЯЖЕНИЕ · ТАЛАНТЫ · КАРТА
+   ==========================================================================
+   Большие экраны — полноэкранные накладки, а не окна поверх страницы. Рамка
+   и шапка общие: игрок всегда понимает, что он в служебном разделе, а не в
+   бою. Материал тот же — крашеный металл, эмаль, латунная маркировка.
+   -------------------------------------------------------------------------- */
+
+.screen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  padding: 22px clamp(14px, 2.4vw, 40px);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(38, 42, 32, 0.55), rgba(6, 7, 5, 0.93) 68%),
+    rgba(6, 7, 5, 0.9);
+  backdrop-filter: blur(3px);
+}
+
+.screen-window {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border: 1px solid var(--sam-line);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(32, 35, 27, 0.97), rgba(14, 16, 12, 0.98));
+  box-shadow: inset 0 1px rgba(240, 212, 137, 0.08), 0 26px 70px rgba(0, 0, 0, 0.65);
+}
+
+.screen-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--sam-line);
+  background: linear-gradient(180deg, rgba(52, 56, 43, 0.7), rgba(24, 27, 20, 0.7));
+}
+
+.screen-title span {
+  display: block;
+  color: var(--sam-muted);
+  font-size: 0.54rem;
+  letter-spacing: 0.18em;
+}
+
+.screen-title h2 {
+  margin: 2px 0 0;
+  color: var(--sam-brass-hi);
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.screen-tabs { display: flex; gap: 6px; }
+
+.screen-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  color: var(--sam-muted);
+  background: rgba(20, 23, 17, 0.85);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.screen-tabs button:hover { color: var(--sam-text); border-color: var(--sam-line-hi); }
+
+.screen-tabs button.active {
+  color: #1b1d16;
+  background: linear-gradient(180deg, var(--sam-brass-hi), var(--sam-brass));
+  border-color: var(--sam-brass);
+  font-weight: 700;
+}
+
+.screen-tabs kbd {
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  background: none;
+  font-size: 0.5rem;
+  opacity: 0.7;
+}
+
+.screen-close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  color: var(--sam-muted);
+  background: rgba(20, 23, 17, 0.85);
+  font-size: 0.9rem;
+}
+
+.screen-close:hover { color: var(--sam-enamel-red-hi); border-color: var(--sam-enamel-red); }
+
+/* --- Лист персонажа -------------------------------------------------------- */
+
+.sheet-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(260px, 0.75fr) minmax(300px, 1.05fr) minmax(280px, 0.85fr);
+  gap: 14px;
+  min-height: 0;
+  padding: 14px 18px 18px;
+}
+
+.sheet-layout > section,
+.sheet-layout > aside {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.sheet-left { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 10px; }
+
+/* Кукла: две колонки слотов и фигура между ними. */
+.doll-frame {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--sam-line);
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.012) 0 2px, transparent 2px 6px),
+    linear-gradient(180deg, rgba(30, 33, 26, 0.9), rgba(16, 18, 14, 0.9));
+}
+
+.doll-column { display: grid; gap: 6px; }
+
+.doll-slot {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--sam-plate), #16190f);
+  text-align: left;
+}
+
+.doll-slot small { color: var(--sam-muted); font-size: 0.48rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.doll-slot strong { color: var(--sam-text); font-size: 0.68rem; font-weight: 500; overflow-wrap: anywhere; }
+.doll-slot em { position: absolute; right: 6px; top: 5px; font-style: normal; font-size: 0.5rem; }
+.doll-slot.empty strong { color: #5e6455; }
+.doll-slot:hover { border-color: var(--sam-line-hi); }
+.doll-slot.rarity-legendary { border-color: #b58a3c; box-shadow: inset 0 0 12px rgba(200, 150, 60, 0.16); }
+
+.doll-figure { display: grid; justify-items: center; gap: 6px; width: 128px; }
+.doll-figure svg { width: 120px; height: 220px; }
+
+.doll-vitals { display: grid; gap: 3px; width: 100%; }
+.doll-vitals span { display: flex; justify-content: space-between; gap: 8px; font-size: 0.6rem; }
+.doll-vitals small { color: var(--sam-muted); }
+.doll-vitals strong { color: var(--sam-text); font-variant-numeric: tabular-nums; }
+
+/* Руки: пара — не сумма, поэтому она показана как связка, а не как два поля. */
+.hands-panel {
+  padding: 10px 12px;
+  border: 1px solid var(--sam-line);
+  background: linear-gradient(180deg, rgba(30, 33, 26, 0.9), rgba(16, 18, 14, 0.9));
+}
+
+.hands-panel.two-handed { border-color: #8a7a45; }
+
+.hands-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+.hand-side small { display: block; color: var(--sam-muted); font-size: 0.48rem; letter-spacing: 0.12em; }
+.hand-side strong { display: block; margin-top: 2px; color: var(--sam-text); font-size: 0.72rem; }
+.hand-side em { display: block; color: var(--sam-muted); font-size: 0.56rem; font-style: normal; }
+.hand-link { color: var(--sam-brass); font-size: 1rem; }
+
+.hands-result {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(109, 115, 92, 0.3);
+}
+
+.hands-result span { color: var(--sam-muted); font-size: 0.48rem; letter-spacing: 0.14em; }
+.hands-result strong { display: block; color: var(--sam-brass-hi); font-size: 0.82rem; }
+.hands-result p { margin: 3px 0 0; color: var(--sam-text); font-size: 0.6rem; line-height: 1.35; }
+
+.attribute-strip {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--sam-line);
+  background: rgba(16, 18, 14, 0.86);
+}
+
+.attribute-strip span { display: grid; gap: 1px; text-align: center; }
+.attribute-strip small { color: var(--sam-muted); font-size: 0.46rem; letter-spacing: 0.08em; }
+.attribute-strip strong { color: var(--sam-text); font-size: 0.86rem; }
+.attribute-strip em {
+  position: absolute;
+  right: 6px;
+  top: -8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--sam-enamel-red);
+  color: #f4e6d6;
+  font-size: 0.5rem;
+  font-style: normal;
+}
+
+/* Характеристики: четыре смысловые группы, а не таблица всех полей. */
+.sheet-stats { display: grid; align-content: start; gap: 10px; }
+
+.stat-group {
+  padding: 10px 12px;
+  border: 1px solid var(--sam-line);
+  border-left: 3px solid var(--sam-line-hi);
+  background: linear-gradient(180deg, rgba(28, 31, 24, 0.9), rgba(15, 17, 13, 0.9));
+}
+
+.stat-group.group-offence { border-left-color: #b5644d; }
+.stat-group.group-defence { border-left-color: #5c86a8; }
+.stat-group.group-movement { border-left-color: #6fa080; }
+.stat-group.group-build { border-left-color: var(--sam-brass); }
+
+.stat-group h4 {
+  margin: 0 0 6px;
+  color: var(--sam-muted);
+  font-size: 0.54rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.stat-group dl { display: grid; gap: 3px; margin: 0; }
+.stat-group dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
+.stat-group dt { color: var(--sam-muted); font-size: 0.62rem; }
+.stat-group dd { margin: 0; color: var(--sam-text); font-size: 0.66rem; text-align: right; font-variant-numeric: tabular-nums; }
+.stat-group dd i { display: block; color: #6f7666; font-size: 0.52rem; font-style: normal; }
+.group-build dd { text-align: left; font-size: 0.6rem; }
+.group-build dl > div { grid-template-columns: 84px minmax(0, 1fr); }
+
+/* Сумка: сетка ячеек, а не список карточек. */
+.sheet-bag { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 7px; align-content: start; }
+
+.bag-head { display: flex; align-items: baseline; justify-content: space-between; }
+.bag-head span { color: var(--sam-muted); font-size: 0.54rem; letter-spacing: 0.16em; }
+.bag-head strong { color: var(--sam-text); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.bag-head strong.overloaded { color: var(--sam-enamel-red-hi); }
+
+.sheet-bag .carry-meter { height: 4px; background: rgba(10, 12, 9, 0.9); box-shadow: inset 0 0 0 1px rgba(109, 115, 92, 0.35); }
+.sheet-bag .carry-meter i { display: block; height: 100%; background: linear-gradient(90deg, #6c6440, #b9a866); }
+
+.bag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  gap: 4px;
+  align-content: start;
+  padding: 8px;
+  border: 1px solid var(--sam-line);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 54px),
+    rgba(12, 14, 11, 0.85);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.bag-cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-content: center;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--sam-plate), #15180f);
+  color: var(--sam-text);
+}
+
+.bag-cell.empty { border-style: dotted; opacity: 0.4; }
+button.bag-cell:hover { border-color: var(--sam-brass); background: linear-gradient(180deg, #343a2b, #1b1f14); }
+.bag-glyph { font-size: 0.92rem; }
+.bag-cell b { position: absolute; right: 3px; bottom: 1px; font-size: 0.5rem; color: var(--sam-brass-hi); }
+.bag-equipped { position: absolute; left: 3px; top: 3px; width: 5px; height: 5px; border-radius: 50%; background: #8fc39c; }
+.bag-cell.rarity-legendary { border-color: #b58a3c; }
+.bag-cell.rarity-rare { border-color: #5c86a8; }
+.bag-cell.rarity-uncommon { border-color: #6fa080; }
+
+.bag-hint { margin: 0; color: #676e5c; font-size: 0.54rem; }
+
+/* Осмотр и сравнение: правая колонка экрана. */
+.sheet-inspect { display: grid; align-content: start; gap: 10px; }
+
+.inspect-idle {
+  padding: 12px;
+  border: 1px dashed var(--sam-line);
+  color: var(--sam-muted);
+}
+
+.inspect-idle span { display: block; font-size: 0.54rem; letter-spacing: 0.16em; }
+.inspect-idle p { margin: 6px 0 0; font-size: 0.62rem; line-height: 1.4; }
+
+.sheet-inspect .inspect-card { max-height: none; }
+
+.comparison-card {
+  padding: 10px 12px;
+  border: 1px solid var(--sam-line);
+  background: rgba(16, 18, 14, 0.9);
+}
+
+.comparison-card header span { color: var(--sam-muted); font-size: 0.5rem; letter-spacing: 0.16em; }
+.comparison-card header strong { display: block; margin-top: 2px; color: var(--sam-text); font-size: 0.66rem; }
+
+.comparison-combination {
+  margin: 8px 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(176, 139, 214, 0.5);
+  background: rgba(44, 34, 56, 0.5);
+}
+
+.comparison-combination small { color: #a98fc6; font-size: 0.48rem; letter-spacing: 0.12em; }
+.comparison-combination p { display: flex; gap: 6px; flex-wrap: wrap; margin: 3px 0; }
+.comparison-combination s { color: #7d8578; }
+.comparison-combination i { color: #a98fc6; font-style: normal; }
+.comparison-combination b { color: #e2cdf6; }
+.comparison-combination.unchanged { border-color: rgba(109, 115, 92, 0.4); background: rgba(22, 25, 18, 0.6); }
+.comparison-combination.unchanged small,
+.comparison-combination.unchanged b { color: var(--sam-muted); }
+
+.comparison-combination em { color: var(--sam-text); font-size: 0.58rem; font-style: normal; line-height: 1.35; }
+
+.comparison-card table { width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 0.62rem; }
+.comparison-card th { color: var(--sam-muted); font-weight: 400; text-align: left; padding: 2px 0; }
+.comparison-card td { color: var(--sam-text); text-align: right; padding: 2px 0; font-variant-numeric: tabular-nums; }
+.comparison-card td.arrow { color: #5f6656; text-align: center; width: 18px; }
+.comparison-card tr.better td:last-child { color: #a8cf94; }
+.comparison-card tr.worse td:last-child { color: #e0a882; }
+
+/* --- Дерево талантов -------------------------------------------------------- */
+
+.tree-layout {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr) 320px;
+  gap: 14px;
+  min-height: 0;
+  padding: 14px 18px 18px;
+}
+
+.tree-directions,
+.tree-inspector {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.points-plate {
+  display: grid;
+  gap: 1px;
+  padding: 10px 12px;
+  border: 1px solid var(--sam-brass);
+  background: linear-gradient(180deg, rgba(60, 52, 28, 0.55), rgba(20, 22, 15, 0.9));
+}
+
+.points-plate span { color: var(--sam-muted); font-size: 0.5rem; letter-spacing: 0.16em; }
+.points-plate strong { color: var(--sam-brass-hi); font-size: 1.6rem; line-height: 1; }
+.points-plate small { color: var(--sam-muted); font-size: 0.56rem; }
+
+.direction-list { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+
+.direction-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--sam-line);
+  background: rgba(18, 20, 15, 0.8);
+  font-size: 0.64rem;
+}
+
+.direction-row i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.direction-row span { color: var(--sam-text); }
+.direction-row strong { color: var(--sam-brass-hi); font-variant-numeric: tabular-nums; }
+
+.dir-power { color: #d0705a; }
+.dir-guard { color: #5c86a8; }
+.dir-agility { color: #8bb96a; }
+.dir-precision { color: #d8a952; }
+.dir-suppression { color: #b07ad0; }
+.dir-resonance { color: #57b3ad; }
+
+.tree-note { margin: 0; color: #6d7565; font-size: 0.56rem; line-height: 1.45; }
+
+.tree-canvas {
+  min-height: 0;
+  border: 1px solid var(--sam-line);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(36, 40, 30, 0.9), rgba(9, 11, 8, 0.96) 72%);
+  overflow: hidden;
+}
+
+.tree-canvas svg { width: 100%; height: 100%; }
+
+.tree-core-mark { fill: var(--sam-brass); font-size: 22px; }
+
+.tree-link {
+  stroke: rgba(109, 115, 92, 0.32);
+  stroke-width: 1.6;
+}
+
+.tree-link.active { stroke: rgba(240, 212, 137, 0.62); stroke-width: 2.2; }
+
+/*
+  Перемычка между направлениями рисуется иначе, чем ствол луча: именно она
+  доказывает, что дерево одно, а не шесть отдельных классов.
+*/
+.tree-link.cross {
+  stroke: rgba(150, 130, 190, 0.34);
+  stroke-dasharray: 6 5;
+  stroke-width: 1.4;
+}
+
+.tree-link.cross.active { stroke: rgba(196, 162, 226, 0.75); stroke-width: 2; }
+
+.tree-node { cursor: pointer; }
+.tree-node circle,
+.tree-node rect {
+  fill: #1a1d15;
+  stroke: #5b6152;
+  stroke-width: 2;
+  transition: fill 120ms linear, stroke 120ms linear;
+}
+
+.tree-node.available circle,
+.tree-node.available rect { stroke: var(--sam-brass); fill: #262a1c; }
+
+.tree-node.taken circle,
+.tree-node.taken rect { fill: var(--sam-brass); stroke: var(--sam-brass-hi); }
+
+.tree-node.locked circle,
+.tree-node.locked rect { opacity: 0.55; }
+
+.tree-node.scope-hybrid circle { stroke-dasharray: 4 3; stroke: #9a80b8; }
+.tree-node.scope-hybrid.taken circle { fill: #b18edb; stroke: #d9c3f2; stroke-dasharray: none; }
+.tree-node.scope-legendary circle { stroke: #d0a24a; }
+.tree-node.keystone rect { stroke-width: 2.6; }
+
+.tree-node.dir-power circle { stroke: #a8564488; }
+.tree-node.dir-guard circle { stroke: #4a6c8a88; }
+.tree-node.dir-agility circle { stroke: #6f955288; }
+.tree-node.dir-precision circle { stroke: #b08c3f88; }
+.tree-node.dir-suppression circle { stroke: #8d61a888; }
+.tree-node.dir-resonance circle { stroke: #45908b88; }
+.tree-node.taken circle { stroke-opacity: 1; }
+
+.tree-node.selected circle,
+.tree-node.selected rect { stroke: #f4f0dc; stroke-width: 3.4; }
+.tree-node:hover circle,
+.tree-node:hover rect { stroke: #f0d489; }
+
+.node-mark { fill: #14160f; font-size: 12px; pointer-events: none; }
+.tree-node:not(.taken) .node-mark { fill: #b8a06a; }
+
+.tree-direction-label {
+  fill: currentColor;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.tree-direction-label.dir-power { fill: #d0705a; }
+.tree-direction-label.dir-guard { fill: #5c86a8; }
+.tree-direction-label.dir-agility { fill: #8bb96a; }
+.tree-direction-label.dir-precision { fill: #d8a952; }
+.tree-direction-label.dir-suppression { fill: #b07ad0; }
+.tree-direction-label.dir-resonance { fill: #57b3ad; }
+
+.tree-inspector .inspect-card { max-height: none; }
+
+.learn-node {
+  padding: 9px 12px;
+  border: 1px solid var(--sam-brass);
+  border-radius: 2px;
+  color: #1b1d16;
+  background: linear-gradient(180deg, var(--sam-brass-hi), var(--sam-brass));
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.learn-node:disabled { color: #6d7565; background: rgba(24, 27, 20, 0.9); border-color: var(--sam-line); }
+.learn-node.learned { color: #a8cf94; background: rgba(24, 34, 24, 0.9); border-color: #4f7a52; }
+
+.abilities-panel {
+  padding: 10px 12px;
+  border: 1px solid var(--sam-line);
+  background: rgba(16, 18, 14, 0.9);
+}
+
+.abilities-head { display: flex; align-items: baseline; justify-content: space-between; }
+.abilities-head span { color: var(--sam-muted); font-size: 0.5rem; letter-spacing: 0.14em; }
+.abilities-head strong { color: var(--sam-brass-hi); font-size: 0.86rem; }
+
+.abilities-list { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+
+.abilities-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(109, 115, 92, 0.3);
+  background: rgba(22, 25, 18, 0.7);
+}
+
+.abilities-list li.equipped { border-color: var(--sam-brass); }
+.abilities-list strong { display: block; color: var(--sam-text); font-size: 0.64rem; }
+.abilities-list small { color: var(--sam-muted); font-size: 0.52rem; }
+
+.ability-assign { display: flex; gap: 3px; }
+
+.ability-assign button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  color: var(--sam-muted);
+  background: rgba(14, 16, 11, 0.9);
+  font-size: 0.58rem;
+}
+
+.ability-assign button:hover { color: var(--sam-brass); border-color: var(--sam-line-hi); }
+.ability-assign button.active { color: #1b1d16; background: var(--sam-brass); border-color: var(--sam-brass-hi); font-weight: 700; }
+
+.abilities-empty { margin: 8px 0 0; color: #6d7565; font-size: 0.58rem; }
+
+/* --- Мини-карта и экран карты ------------------------------------------------ */
+
+.hud-minimap {
+  position: absolute;
+  z-index: 14;
+  top: 52px;
+  right: 18px;
+  width: 212px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(30, 33, 26, 0.92), rgba(11, 13, 10, 0.95));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.minimap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  color: var(--sam-muted);
+  font-size: 0.5rem;
+  letter-spacing: 0.16em;
+}
+
+.minimap-head kbd { padding: 0 4px; border: 1px solid var(--sam-line); background: none; color: var(--sam-brass); font-size: 0.5rem; }
+
+.minimap-grid,
+.plan-grid { display: grid; gap: 1px; }
+
+.mm { display: block; aspect-ratio: 1; background: #0c0e0a; }
+.mm-dark { background: #0a0c08; }
+.mm-wall { background: #1c1f18; }
+.mm-floor { background: #363b2e; }
+.mm-floor.lit { background: #4d5442; }
+.mm-link { background: #6c7fa0; }
+.mm-loot { background: var(--sam-brass); }
+.mm-npc { background: #75b7a5; }
+.mm-enemy { background: var(--sam-enamel-red-hi); }
+.mm-hero { background: #f4e6a8; box-shadow: 0 0 4px rgba(244, 230, 168, 0.8); }
+
+.map-layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 300px;
+  gap: 14px;
+  min-height: 0;
+  padding: 14px 18px 18px;
+}
+
+.map-side,
+.map-cluster { display: grid; align-content: start; gap: 10px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+
+.map-plate {
+  padding: 9px 11px;
+  border: 1px solid var(--sam-line);
+  border-left: 3px solid var(--sam-brass);
+  background: rgba(18, 20, 15, 0.85);
+}
+
+.map-plate span { color: var(--sam-muted); font-size: 0.5rem; letter-spacing: 0.16em; }
+.map-plate strong { display: block; margin-top: 3px; color: var(--sam-text); font-size: 0.74rem; line-height: 1.3; }
+.map-plate p { margin: 4px 0 0; color: var(--sam-muted); font-size: 0.58rem; line-height: 1.35; }
+
+.map-legend { display: grid; gap: 4px; margin: 0; padding: 9px 11px; list-style: none; border: 1px solid var(--sam-line); background: rgba(14, 16, 11, 0.8); }
+.map-legend li { display: flex; align-items: center; gap: 8px; color: var(--sam-muted); font-size: 0.58rem; }
+.map-legend .mm { width: 10px; height: 10px; aspect-ratio: auto; }
+
+/*
+  План этажа заполняет панель: раньше сетка сжималась в маленький прямоугольник
+  посреди пустого поля. Пропорции клеток держит aspect-ratio из данных карты.
+*/
+.map-plan {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 14px;
+  border: 1px solid var(--sam-line);
+  background: radial-gradient(circle at 50% 45%, rgba(34, 38, 28, 0.9), rgba(9, 11, 8, 0.96) 76%);
+  overflow: hidden;
+}
+
+.plan-grid { width: 100%; max-width: 100%; max-height: 100%; }
+.map-plan .mm { min-width: 3px; }
+
+.cluster-head { display: flex; align-items: baseline; justify-content: space-between; }
+.cluster-head span { color: var(--sam-muted); font-size: 0.5rem; letter-spacing: 0.16em; }
+.cluster-head small { color: var(--sam-brass); font-size: 0.56rem; }
+
+.cluster-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+
+.cluster-node {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--sam-line);
+  border-left: 3px solid var(--sam-line-hi);
+  background: rgba(18, 20, 15, 0.82);
+}
+
+.cluster-node.current { border-left-color: var(--sam-brass); background: rgba(46, 42, 24, 0.6); }
+.cluster-node.unknown { opacity: 0.5; }
+.cluster-node.kind-city { border-left-color: #6fa080; }
+.cluster-node.kind-anomaly { border-left-color: #b07ad0; }
+.cluster-node strong { display: block; color: var(--sam-text); font-size: 0.66rem; }
+.cluster-node small { color: var(--sam-muted); font-size: 0.52rem; }
+
+.cluster-node button {
+  padding: 4px 9px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  color: var(--sam-brass);
+  background: rgba(12, 14, 10, 0.9);
+  font-size: 0.54rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cluster-node button:disabled { color: #5e6455; border-color: rgba(90, 96, 78, 0.5); }
+.cluster-node button:hover:not(:disabled) { border-color: var(--sam-brass); background: rgba(50, 44, 22, 0.8); }
+
+.control-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 1px solid var(--sam-line);
+  background: rgba(16, 18, 14, 0.86);
+}
+
+.control-mode-row small { display: block; color: var(--sam-muted); font-size: 0.48rem; letter-spacing: 0.12em; }
+.control-mode-row strong { color: var(--sam-text); font-size: 0.72rem; }
+
+.control-mode-row button {
+  padding: 5px 10px;
+  border: 1px solid var(--sam-line);
+  border-radius: 2px;
+  color: var(--sam-brass);
+  background: rgba(12, 14, 10, 0.9);
+  font-size: 0.54rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.control-mode-row button:hover { border-color: var(--sam-brass); }

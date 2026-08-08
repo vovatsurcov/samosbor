@@ -15,13 +15,15 @@ import { WEAPON_FAMILIES } from "../app/game-weapon-families.ts";
 import {
   aimedTarget,
   attackMovementAllowance,
-  bufferAbility,
+  bufferStrongAttack,
   createInitialState,
   equipItem,
   setAimPoint,
   setMoveIntent,
   setPrimaryAttack,
-  takeBufferedAbility,
+  takeBufferedStrongAttack,
+  activateSkillSlot,
+  assignActiveSkill,
   tickGame,
 } from "../app/game-engine.ts";
 
@@ -140,16 +142,47 @@ test("буфер ввода короткий и не превращается в
 
   let state = createInitialState();
   state = { ...state, hero: { ...state.hero, attackCooldownMs: 300 } };
-  state = bufferAbility(state, 1);
-  assert.equal(takeBufferedAbility(state).slot, null, "во время восстановления действие ждёт");
+  state = bufferStrongAttack(state);
+  assert.equal(takeBufferedStrongAttack(state).pending, false, "во время восстановления действие ждёт");
 
   const ready = { ...state, hero: { ...state.hero, attackCooldownMs: 0 } };
-  const taken = takeBufferedAbility(ready);
-  assert.equal(taken.slot, 1, "как только можно — выполняется");
+  const taken = takeBufferedStrongAttack(ready);
+  assert.equal(taken.pending, true, "как только можно — выполняется");
   assert.equal(taken.state.hero.bufferedAbilitySlot, null, "буфер очищен, повтора не будет");
 
   const stale = { ...ready, worldTimeMs: ready.worldTimeMs + INPUT_BUFFER_MS + 100 };
-  assert.equal(takeBufferedAbility(stale).slot, null, "устаревшее нажатие не срабатывает");
+  assert.equal(takeBufferedStrongAttack(stale).pending, false, "устаревшее нажатие не срабатывает");
+});
+
+test("способность не ждёт восстановления оружия", () => {
+  // Способности живут на собственных откатах. Пока они шли через оружейный
+  // буфер, нажатие ячейки во время непрерывной атаки молча пропадало: окно
+  // буфера в 220 мс не доживало до конца отката оружия.
+  const base = createInitialState();
+  const withSkill = assignActiveSkill(
+    { ...base, hero: { ...base.hero, talents: [...base.hero.talents, "guard:01"] } },
+    0,
+    "bulwark-brace",
+  );
+  assert.equal(withSkill.hero.activeSkillSlots[0], "bulwark-brace", "ячейка назначена");
+
+  const idle = activateSkillSlot(withSkill, 0);
+  const busy = activateSkillSlot(
+    { ...withSkill, hero: { ...withSkill.hero, attackCooldownMs: 900 } },
+    0,
+  );
+  assert.ok((idle.hero.activeSkillCooldowns["bulwark-brace"] ?? 0) > 0, "способность сработала");
+  assert.equal(
+    busy.hero.activeSkillCooldowns["bulwark-brace"] ?? 0,
+    idle.hero.activeSkillCooldowns["bulwark-brace"] ?? 0,
+    "восстановление оружия на способность не влияет",
+  );
+
+  // Оружейное действие, наоборот, восстановления ждёт — иначе буфер не нужен.
+  const pending = takeBufferedStrongAttack(
+    bufferStrongAttack({ ...withSkill, hero: { ...withSkill.hero, attackCooldownMs: 900 } }),
+  );
+  assert.equal(pending.pending, false, "сильная атака ждёт оружие");
 });
 
 test("вектор нормализуется, а нулевой остаётся нулевым", () => {

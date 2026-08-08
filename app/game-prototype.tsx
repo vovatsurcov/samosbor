@@ -10,37 +10,25 @@ import {
 } from "react";
 import {
   ACTIVE_SKILLS,
-  type ActiveSkillId,
-  type AttributeId,
-  autocastConditionLabel,
   activateEquippedArtifact,
-  allocateAttribute,
   allocateTalent,
-  applyFirstAid,
-  BASE_TALENT_COUNT,
   branchTalentPoints,
   canAllocateTalent,
   cancelHeroAction,
   carryCapacity,
-  cityPopulationCounts,
   commandAttack,
   commandAttackNearest,
   commandCollectLoot,
   commandInteractAt,
   commandMove,
   commandTalkToNpc,
-  combatDirectiveFor,
   consumeInventoryItem,
   createInitialState,
   distance,
-  dropInventoryItem,
-  effectiveAttribute,
-  effectiveInjury,
   Enemy,
   EnemyMode,
   enemyById,
   enemyVisibleToHero,
-  equippedArtifact,
   equippedEntry,
   equipItem,
   formattedWorldTime,
@@ -48,68 +36,51 @@ import {
   GearSlot,
   gridPoint,
   hasLineOfSight,
-  heroAttackCooldown,
-  heroAttackDamage,
   heroAttackRange,
-  heroDefense,
-  heroMoveSpeed,
   interact,
+  commandFastTravel,
   interactionHint,
+  localMapSnapshot,
+  globalMapSnapshot,
   inventoryWeight,
   InventoryEntry,
-  ARCHETYPES,
-  type ArchetypeId,
-  CONTROL_MODE_HINTS,
-  COMBAT_ACTION_LABELS,
-  CONTROL_MODE_LABELS,
   type ControlMode,
-  HEAT_OVERHEAT,
-  COMBAT_STATES,
   MOVE_KEYS,
-  bufferAbility,
-  takeBufferedAbility,
+  bufferStrongAttack,
+  takeBufferedStrongAttack,
+  commandHeavyAttack,
   moveVectorFromKeys,
   setAimPoint,
   setMoveIntent,
+  setMovementAction,
   setPrimaryAttack,
   DEV_PROFILES,
   ENCOUNTERS,
   spawnEncounter,
   applyDevProfile,
   devProfileById,
+  type InspectCard,
+  type ItemKind,
+  type ItemId,
+  type QuickSlotId,
+  heroAbilityShape,
+  inspectQuickSlot,
+  applyQuickSlot,
+  inspectEnemyAt,
+  inspectHeroSlot,
+  inspectInteractive,
+  inspectInventoryItem,
+  inspectNpc,
+  inspectTalentNode,
+  inspectAbility,
+  activateSkillSlot,
+  assignActiveSkill,
   TELEGRAPHS,
   windUpProgress,
   RESONANCE_MAX_STACKS,
-  archetypeFor,
-  archetypeResourceSteps,
   beginCharge,
-  branchPointsByDirection,
-  heroChargeSteps,
-  heroChargeTuning,
-  describeCombination,
-  heroDefenceProfile,
-  inventoryEntryById,
-  heroHandCombination,
-  ruleReadout,
   releaseCharge,
-  canSpendBreath,
-  commandBackstab,
-  commandDesync,
-  commandDodge,
-  commandFinisher,
-  commandFlurry,
-  commandHeavyAttack,
-  commandMarkTarget,
-  commandResonanceChain,
-  commandReverseShadow,
-  commandScout,
-  commandSetUp,
-  commandShieldPush,
-  commandSuppress,
-  commandVentHeat,
   controlModeFor,
-  currentModeAction,
-  heroStanceState,
   isKnown,
   isSamosborLethalPhase,
   isSamosborProtectedAt,
@@ -117,22 +88,15 @@ import {
   isVisible,
   ITEMS,
   mapForZone,
-  maxHeroBreath,
   maxHeroHp,
-  maxHeroStance,
   migrateGameState,
   Npc,
   npcRoleLabel,
-  objectiveFor,
-  populationPressureForZone,
-  populationsForZone,
   Point,
   samosborHighlightsShelters,
-  samosborPhaseHint,
   samosborPhaseIn,
   samosborPhaseLabel,
   setControlMode,
-  SKILL_DESCRIPTIONS,
   SKILL_NAMES,
   SkillBranch,
   SLOT_NAMES,
@@ -140,23 +104,23 @@ import {
   tickGame,
   tileAt,
   WEAPONS,
-  weaponFor,
   unlockedActiveSkills,
-  xpToNextLevel,
 } from "./game-engine";
+import {
+  DIRECTION_ANGLES,
+  attributeLines,
+  availableAbilities,
+  characterGroups,
+  compareItem,
+  handsModel,
+  hudModel,
+  talentTreeView,
+} from "./game-presentation.ts";
 
 const SAVE_KEY = "samosbor-shift-556-stage-5-progression";
 const TILE_WIDTH = 82;
 const TILE_HEIGHT = 41;
 const DESKTOP_FRAME_INTERVAL = 16;
-
-const ATTRIBUTE_OPTIONS: { id: AttributeId; label: string }[] = [
-  { id: "body", label: "Тело" },
-  { id: "reaction", label: "Реакция" },
-  { id: "attention", label: "Внимание" },
-  { id: "technique", label: "Техника" },
-  { id: "will", label: "Воля" },
-];
 
 const TILE_LABELS: Record<string, string> = {
   ".": "Проход",
@@ -173,6 +137,24 @@ const TILE_LABELS: Record<string, string> = {
   A: "Артефактное гнездо",
   B: "Аварийный шкаф",
   N: "Диспетчер Орлова",
+};
+
+/**
+ * Что делает взаимодействие с этой плиткой. Раньше осмотр подставлял сюда
+ * подсказку ближайшего к герою объекта, и карточка диспетчера обещала
+ * «проверить лифт»: описание должно принадлежать тому, на что навели.
+ */
+const TILE_ACTIONS: Record<string, string> = {
+  T: "прочитать журналы и карту",
+  B: "вскрыть шкаф",
+  L: "вызвать лифт",
+  S: "осмотреть датчик",
+  A: "снять артефакт",
+  U: "подняться этажом выше",
+  D: "спуститься этажом ниже",
+  P: "войти в переход",
+  N: "заговорить",
+  H: "пройти через гермодверь",
 };
 
 const TILE_MARKS: Record<string, string> = {
@@ -243,20 +225,14 @@ const NPC_COLORS: Record<Npc["kind"], string> = {
   liquidator: "#c87962",
 };
 
-const GENOME_LABELS = {
-  maintenance: "ремонтный",
-  bureaucratic: "ведомственный",
-  feral: "одичавший",
-  pilgrim: "паломнический",
-  anomalous: "аномальный",
-} as const;
+const COMMUNICATION_LABELS: Record<"offline" | "unstable" | "online", string> = {
+  offline: "нет",
+  unstable: "с помехами",
+  online: "есть",
+};
 
 const SKILL_BRANCHES = Object.keys(SKILL_NAMES) as SkillBranch[];
-type TalentView = "core" | SkillBranch | "hybrid" | "legendary";
-type MenuPanel = "character" | "inventory" | "talents" | null;
-type QuickConsumableCategory = "bandage" | "healing" | "pills" | "booster";
-const PAPERDOLL_SLOTS: GearSlot[] = ["head", "body", "hands", "feet", "back", "weapon", "artifact"];
-
+type MenuPanel = "character" | "inventory" | "talents" | "map" | null;
 function pointsForDiamond(cx: number, cy: number): string {
   return [
     `${cx},${cy}`,
@@ -335,55 +311,65 @@ function tileColor(tile: string, zoneIsVoid: boolean, visible: boolean): string 
   }
 }
 
-function injuryItems(state: GameState): string[] {
-  const result: string[] = [];
-  const suffix = (injury: keyof GameState["injuries"]) =>
-    state.hero.relievedInjury === injury && state.hero.injuryReliefUntilMs > state.worldTimeMs
-      ? " · стабилизировано"
-      : "";
-  if (state.injuries.leg) result.push(`Нога: скорость −${effectiveInjury(state, "leg") * 16}%${suffix("leg")}`);
-  if (state.injuries.arm) result.push(`Рука: точность и урон −${effectiveInjury(state, "arm")}${suffix("arm")}`);
-  if (state.injuries.eye) result.push(`Глаз: обзор и точность −${effectiveInjury(state, "eye")}${suffix("eye")}`);
-  if (state.injuries.head) result.push(`Голова: защита −${effectiveInjury(state, "head")}${suffix("head")}`);
-  if (state.injuries.torso) result.push(`Корпус: максимум ОЗ −${effectiveInjury(state, "torso") * 2}${suffix("torso")}`);
-  return result;
-}
-
-/**
- * Что сейчас наведено на цель и что с этим делать. Игрок не должен уходить за
- * объяснением механики во внешнюю энциклопедию: связка обязана читаться с
- * самой цели.
- */
-function enemyStateNotes(enemy: Enemy, worldTimeMs: number): string[] {
-  const notes: string[] = [];
-  if (enemy.resonanceStacks > 0) {
-    notes.push(
-      `${COMBAT_STATES.resonance.name} ×${enemy.resonanceStacks}: ${COMBAT_STATES.resonance.consumedBy} сорвёт накопленное импульсом по площади.`,
-    );
-  }
-  if ((enemy.exposedUntilMs ?? 0) > worldTimeMs) {
-    notes.push(`${COMBAT_STATES.exposure.name}: броня почти не работает ещё ${((enemy.exposedUntilMs - worldTimeMs) / 1000).toFixed(1)} с.`);
-  }
-  return notes;
-}
-
-function enemyDescription(enemy: Enemy): string {
-  if (enemy.kind === "sentry") {
-    return "Ведомственный автомат. Держит дальнюю дистанцию и передаёт тревогу.";
-  }
-  if (enemy.kind === "stalker") {
-    return "Быстрый обходчик с хорошим слухом. Опасен в непосредственной близости.";
-  }
-  return "Бронированная лабораторная машина, охраняющая старое производство.";
-}
-
 function npcDescription(npc: Npc): string {
   if (npc.kind === "liquidator") return "Участник городского отряда ликвидации последствий Самосбора. Патрулирует кварталы и готовится к выходу за ворота.";
   if (npc.kind === "merchant") return `Городской специалист: ${npcRoleLabel(npc.role)}. Запасы меняются вместе с поставками и состоянием внешних этажей.`;
   return `Житель Города 550: ${npcRoleLabel(npc.role)}. Следует собственному маршруту между кварталами.`;
 }
 
-type HoverInfo = { title: string; description: string; meta?: string };
+/**
+ * Осмотр рисуется одним компонентом для всех сущностей. Карточку собирает
+ * движок (`app/game-inspect.ts`), интерфейс только раскладывает её по разметке:
+ * иначе каждая новая сущность требовала бы собственной подсказки.
+ */
+function InspectCardView({ card }: { card: InspectCard }) {
+  return (
+    <div className={`inspect-card inspect-${card.kind}`} role="status">
+      <header>
+        <div>
+          <strong>{card.title}</strong>
+          {card.subtitle ? <small>{card.subtitle}</small> : null}
+        </div>
+        {card.binding ? <kbd>{card.binding}</kbd> : null}
+      </header>
+
+      {card.blocked ? <p className="inspect-blocked">{card.blocked}</p> : null}
+
+      {card.transform ? (
+        <div className="inspect-transform">
+          <small>{card.transform.binding}</small>
+          <p>
+            <s>{card.transform.from}</s>
+            <i>→</i>
+            <b>{card.transform.to}</b>
+          </p>
+        </div>
+      ) : null}
+
+      {card.bars.map((bar) => (
+        <div key={bar.id} className={`inspect-bar bar-${bar.tone}`}>
+          <span>{bar.label}</span>
+          <i style={{ width: `${Math.max(0, Math.min(100, (bar.value / Math.max(1, bar.max)) * 100))}%` }} />
+          <b>{Math.round(bar.value)} / {Math.round(bar.max)}</b>
+        </div>
+      ))}
+
+      {card.sections.map((part, index) => (
+        <section key={part.title ?? `part-${index}`}>
+          {part.title ? <h5>{part.title}</h5> : null}
+          {part.lines.map((entry, lineIndex) => (
+            <p key={`${entry.label ?? ""}-${lineIndex}`} className={`tone-${entry.tone ?? "neutral"}`}>
+              {entry.label ? <span>{entry.label}</span> : null}
+              {entry.value}
+            </p>
+          ))}
+        </section>
+      ))}
+
+      {card.footer ? <footer>{card.footer}</footer> : null}
+    </div>
+  );
+}
 
 function tileDescription(tile: string, zoneIsVoid: boolean): string {
   const descriptions: Record<string, string> = {
@@ -403,17 +389,6 @@ function tileDescription(tile: string, zoneIsVoid: boolean): string {
   return descriptions[tile] ?? "Часть окружения текущего этажа.";
 }
 
-function branchGlyph(branch: SkillBranch): string {
-  return {
-    power: "С",
-    guard: "Г",
-    agility: "Л",
-    precision: "Т",
-    suppression: "П",
-    resonance: "А",
-  }[branch];
-}
-
 function itemGlyph(entry: InventoryEntry): string {
   const item = ITEMS[entry.itemId];
   if (item.kind === "weapon") return WEAPONS[entry.itemId as keyof typeof WEAPONS].category === "melee" ? "Б" : "О";
@@ -427,37 +402,11 @@ function itemGlyph(entry: InventoryEntry): string {
     feet: "Н",
     back: "С",
     weapon: "О",
+    offhand: "Л",
     artifact: "А",
   }[item.slot ?? "body"];
 }
 
-
-function consumeQuickConsumable(state: GameState, category: QuickConsumableCategory): GameState {
-  const preferredIds = category === "booster"
-    ? ["batteryPack"]
-    : category === "bandage"
-      ? ["bandage"]
-      : category === "healing"
-        ? ["traumaInjector"]
-        : ["painkillers"];
-  const entry = preferredIds
-    .map((itemId) => state.hero.inventory.find((candidate) => candidate.itemId === itemId))
-    .find(Boolean);
-  return entry ? consumeInventoryItem(state, entry.instanceId) : state;
-}
-
-function quickConsumableEntry(state: GameState, category: QuickConsumableCategory): InventoryEntry | null {
-  const preferredIds = category === "booster"
-    ? ["batteryPack"]
-    : category === "bandage"
-      ? ["bandage"]
-      : category === "healing"
-        ? ["traumaInjector"]
-        : ["painkillers"];
-  return preferredIds
-    .map((itemId) => state.hero.inventory.find((candidate) => candidate.itemId === itemId) ?? null)
-    .find((entry): entry is InventoryEntry => Boolean(entry)) ?? null;
-}
 
 function conditionTone(condition: number): string {
   if (condition < 35) return "critical";
@@ -469,9 +418,10 @@ export default function GamePrototype() {
   const [state, setState] = useState<GameState>(() => createInitialState());
   const [saveLoaded, setSaveLoaded] = useState(false);
   const [activePanel, setActivePanel] = useState<MenuPanel>(null);
-  const [talentView, setTalentView] = useState<TalentView>("precision");
   const [selectedTalentId, setSelectedTalentId] = useState<string>("precision:01");
-  const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
+  const [inspected, setInspected] = useState<InspectCard | null>(null);
+  const [logExpanded, setLogExpanded] = useState(false);
+  const [inspectedItemId, setInspectedItemId] = useState<ItemId | null>(null);
   const stateRef = useRef(state);
   const lastFrameRef = useRef(0);
   const gamepadLockRef = useRef(0);
@@ -482,94 +432,56 @@ export default function GamePrototype() {
   const characterOpen = activePanel === "character";
   const inventoryOpen = activePanel === "inventory";
   const talentsOpen = activePanel === "talents";
+  const mapOpen = activePanel === "map";
   const menuOpen = activePanel !== null;
   const map = mapForZone(state.zone);
   const hero = state.hero.positions[state.zone];
-  const weapon = weaponFor(state);
   const target = enemyById(state, state.hero.attackTargetId);
   const heroMaxHp = maxHeroHp(state);
-  const injuries = injuryItems(state);
   const carriedWeight = inventoryWeight(state);
   const weightLimit = carryCapacity(state);
-  const artifact = equippedArtifact(state);
   const hermeticSafe = isSamosborProtectedAt(state, state.zone, hero);
   const samosborPhase = samosborPhaseIn(state, state.zone);
   const samosborLethal = isSamosborLethalPhase(samosborPhase);
   const samosborWarning = isSamosborWarningPhase(samosborPhase);
   const samosborAlarm = samosborLethal || samosborWarning;
   const shelterHighlight = samosborHighlightsShelters(state, state.zone);
-  const samosborExposed = samosborLethal && !hermeticSafe;
-  const heroMaxStance = maxHeroStance(state);
-  const heroMaxBreath = maxHeroBreath(state);
-  const stanceState = heroStanceState(state);
-  const defenceProfile = heroDefenceProfile(state);
-  const handCombination = heroHandCombination(state);
-  const changedRules = ruleReadout(state);
-  const offhandEntry = inventoryEntryById(state, state.hero.equipment.offhand ?? null);
-  const chargeTuningNow = heroChargeTuning(state);
-  const chargeSteps = heroChargeSteps(state);
-  const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
-  const dodgeReady = state.hero.dodgeReadyAtMs <= state.worldTimeMs && canSpendBreath(state, 22);
-  const archetype = archetypeFor(state);
-  const archetypeDefinition = ARCHETYPES[archetype];
-  const resourceSteps = archetypeResourceSteps(state);
-  const resourceShare = archetype === "heavy_gunner"
-    ? Math.min(1, state.hero.heat / HEAT_OVERHEAT)
-    : Math.min(1, resourceSteps / Math.max(1, archetypeDefinition.maxResource));
-  const directionPoints = (Object.entries(branchPointsByDirection(state)) as [SkillBranch, number][])
-    .filter(([, points]) => points > 0)
-    .sort((left, right) => right[1] - left[1]);
-  const BRANCH_ARCHETYPE_LABEL: Record<SkillBranch, string> = {
-    power: ARCHETYPES.power.name,
-    guard: ARCHETYPES.bulwark.name,
-    agility: ARCHETYPES.skirmisher.name,
-    precision: ARCHETYPES.marksman.name,
-    suppression: ARCHETYPES.heavy_gunner.name,
-    resonance: ARCHETYPES.resonance.name,
-  };
-  const controlMode = controlModeFor(state);
-  const suggestedAction = currentModeAction(state);
-  const overheated = state.hero.overheatedUntilMs > state.worldTimeMs;
-  const ARCHETYPE_ACTIONS: Record<ArchetypeId, { primary: string; secondary: string }> = {
-    power: { primary: "Тяжёлый удар", secondary: "Добивание" },
-    bulwark: { primary: "Толчок щитом", secondary: "Блок" },
-    skirmisher: { primary: "Серия", secondary: "Заход за спину" },
-    marksman: { primary: "Метка", secondary: "Разведка" },
-    heavy_gunner: { primary: "Подавление", secondary: state.hero.heat > 40 ? "Сброс тепла" : "Позиция" },
-    resonance: {
-      primary: "Цепь",
-      secondary: target && target.resonanceStacks >= RESONANCE_MAX_STACKS ? "Разрыв" : "Обратная тень",
-    },
-  };
-  const localPopulations = populationsForZone(state);
-  const localPopulationPressure = populationPressureForZone(state);
-  const bandageEntry = quickConsumableEntry(state, "bandage");
-  const healingEntry = quickConsumableEntry(state, "healing");
-  const pillsEntry = quickConsumableEntry(state, "pills");
-  const boosterEntry = quickConsumableEntry(state, "booster");
+  // Интерфейс читает модель представления, а не состояние мира напрямую
+  // (app/game-presentation.ts): правила игры считает движок, экран их рисует.
+  const hud = hudModel(state);
+  const hands = handsModel(state);
+  const minimap = useMemo(() => {
+    const snapshot = localMapSnapshot(state, 9);
+    return {
+      width: snapshot.maxX - snapshot.minX + 1,
+      cells: snapshot.cells,
+    };
+  }, [state]);
+  // Дерево строится только когда экран открыт: раскладка из 125 узлов не
+  // должна пересчитываться каждый кадр боя.
+  const tree = useMemo(() => (talentsOpen ? talentTreeView(state) : null), [talentsOpen, state]);
+  const abilities = useMemo(() => (talentsOpen ? availableAbilities(state) : []), [talentsOpen, state]);
+  const floorPlan = useMemo(() => {
+    if (!mapOpen) return { width: 1, cells: [] as ReturnType<typeof localMapSnapshot>["cells"] };
+    const snapshot = localMapSnapshot(state, 400);
+    return { width: snapshot.maxX - snapshot.minX + 1, cells: snapshot.cells };
+  }, [mapOpen, state]);
+  const cluster = useMemo(() => (mapOpen ? globalMapSnapshot(state) : { nodes: [], connections: [] }), [mapOpen, state]);
+  // Сравнение считается для предмета под курсором: карточка осмотра и таблица
+  // сравнения — две части одного ответа на вопрос «брать или нет».
+  const comparison = inspected?.kind === "item" && inspectedItemId ? compareItem(state, inspectedItemId) : null;
+  const abilityShapeNow = heroAbilityShape(state);
   const visibleLoot = state.groundLoot.filter(
     (loot) => loot.zone === state.zone && isKnown(state, loot.position),
   );
   const sortedInventory = [...state.hero.inventory].sort((a, b) => {
-    const order = { weapon: 0, clothing: 1, artifact: 2, consumable: 3, material: 4 };
+    const order: Record<ItemKind, number> = { weapon: 0, gear: 1, artifact: 2, consumable: 3, material: 4 };
     return order[ITEMS[a.itemId].kind] - order[ITEMS[b.itemId].kind] ||
       ITEMS[a.itemId].name.localeCompare(ITEMS[b.itemId].name, "ru");
   });
-  const equipmentInventory = sortedInventory.filter((entry) => ["weapon", "clothing", "artifact"].includes(ITEMS[entry.itemId].kind));
-  const medicineInventory = sortedInventory.filter((entry) => {
-    const category = ITEMS[entry.itemId].consumableCategory;
-    return category && ["bandage", "healing", "pills", "booster"].includes(category);
-  });
-  const serviceInventory = sortedInventory.filter((entry) => ITEMS[entry.itemId].consumableCategory === "utility");
-  const foodInventory = sortedInventory.filter((entry) => ITEMS[entry.itemId].consumableCategory === "food");
-  const utilityInventory = sortedInventory.filter((entry) => ITEMS[entry.itemId].kind === "material");
   const unlockedSkills = unlockedActiveSkills(state);
-  const combatDirective = combatDirectiveFor(state);
-  const experienceRequired = xpToNextLevel(state);
-  const experienceProgress = experienceRequired > 0 ? (state.hero.xp / experienceRequired) * 100 : 100;
-  const selectedTalents = TALENT_NODES.filter((node) => node.scope === talentView);
-  const selectedTalent = TALENT_NODES.find((node) => node.id === selectedTalentId) ?? selectedTalents[0] ?? null;
-  const talentTiers = [...new Set(selectedTalents.map((node) => node.tier))].sort((left, right) => left - right);
+  // Вкладок направлений больше нет: дерево одно, выбор идёт по узлу на схеме.
+  const selectedTalent = TALENT_NODES.find((node) => node.id === selectedTalentId) ?? null;
   const branchPoints = Object.fromEntries(
     SKILL_BRANCHES.map((branch) => [branch, branchTalentPoints(state, branch)]),
   ) as Record<SkillBranch, number>;
@@ -641,10 +553,8 @@ export default function GamePrototype() {
         setState((current) => {
           const ticked = tickGame(current, delta);
           // Отложенное нажатие выполняется, как только оружие позволило.
-          const taken = takeBufferedAbility(ticked);
-          if (taken.slot === 1) return commandHeavyAttack(taken.state);
-          if (taken.slot === 2) return commandFinisher(taken.state);
-          return taken.state;
+          const taken = takeBufferedStrongAttack(ticked);
+          return taken.pending ? commandHeavyAttack(taken.state) : taken.state;
         });
       }
       frame = window.requestAnimationFrame(animate);
@@ -681,20 +591,42 @@ export default function GamePrototype() {
     setState((current) => interact(current));
   }, []);
 
-  const firstAidNow = useCallback(() => {
-    setState((current) => applyFirstAid(current));
-  }, []);
+  /** Карточка ячейки способности: заполненной или пустой. */
+  const abilityCardFor = (index: number): InspectCard => {
+    const skillId = state.hero.activeSkillSlots[index] ?? null;
+    if (!skillId) {
+      return inspectAbility({
+        name: `Ячейка ${index + 1}`,
+        binding: `${index + 1}`,
+        description: "Дерево талантов определяет, что персонаж знает; панель — что из этого лежит под рукой.",
+        targeting: "назначается в дереве талантов",
+        blocked: unlockedSkills.length ? "Ячейка не назначена" : "Освоенных способностей пока нет",
+      });
+    }
+    const skill = ACTIVE_SKILLS[skillId];
+    const cooldown = state.hero.activeSkillCooldowns[skillId] ?? 0;
+    const known = unlockedSkills.includes(skillId);
+    return inspectAbility({
+      name: skill.name,
+      binding: `${index + 1}`,
+      description: skill.description,
+      targeting: skill.tags.includes("area")
+        ? "область вокруг цели"
+        : skill.tags.includes("device") ? "снаряжение героя" : "выбранная цель",
+      cooldownMs: skill.cooldownMs,
+      cooldownLeftMs: cooldown,
+      applies: skill.tags.includes("mark") ? ["resonance"] : undefined,
+      consumes: skill.role === "spender" ? ["resonance"] : undefined,
+      blocked: !known
+        ? "Направление ещё не набрано"
+        : cooldown > 0 ? `Восстановление: ${(cooldown / 1000).toFixed(1)} с` : undefined,
+      handNote: abilityShapeNow.note,
+    });
+  };
 
-  const healingNow = useCallback(() => {
-    setState((current) => consumeQuickConsumable(current, "healing"));
-  }, []);
-
-  const pillsNow = useCallback(() => {
-    setState((current) => consumeQuickConsumable(current, "pills"));
-  }, []);
-
-  const boosterNow = useCallback(() => {
-    setState((current) => consumeQuickConsumable(current, "booster"));
+  /** Быстрая ячейка: что в ней лежит и готова ли она, решает движок. */
+  const quickSlotNow = useCallback((slot: QuickSlotId) => {
+    setState((current) => applyQuickSlot(current, slot));
   }, []);
 
   const artifactNow = useCallback(() => {
@@ -709,33 +641,18 @@ export default function GamePrototype() {
     setState((current) => beginCharge(current));
   }, []);
 
-  const finishCharge = useCallback(() => {
-    setState((current) => releaseCharge(current));
-  }, []);
-
   /**
-   * Нажатие во время восстановления не теряется: короткий буфер выполнит его,
-   * как только действие станет допустимым. Это буфер, а не очередь команд.
+   * Отпускание ПКМ. Если оружие ещё восстанавливается, нажатие не теряется:
+   * короткий буфер выполнит сильную атаку, как только она станет допустимой.
    */
-  const withBuffer = useCallback((slot: number, run: () => void) => {
-    const current = stateRef.current;
-    if (current.hero.attackCooldownMs > 0 || current.hero.staggeredUntilMs > current.worldTimeMs) {
-      setState((state) => bufferAbility(state, slot));
-      return;
-    }
-    run();
-  }, []);
-
-  const heavyAttackNow = useCallback(() => {
-    withBuffer(1, () => setState((current) => commandHeavyAttack(current)));
-  }, [withBuffer]);
-
-  const finisherNow = useCallback(() => {
-    withBuffer(2, () => setState((current) => commandFinisher(current)));
-  }, [withBuffer]);
-
-  const dodgeNow = useCallback((direction?: { x: number; y: number }) => {
-    setState((current) => commandDodge(current, direction));
+  const finishCharge = useCallback(() => {
+    setState((current) => {
+      if (current.hero.chargingSinceMs <= 0) return current;
+      if (current.hero.attackCooldownMs > 0 || current.hero.staggeredUntilMs > current.worldTimeMs) {
+        return bufferStrongAttack({ ...current, hero: { ...current.hero, chargingSinceMs: 0 } });
+      }
+      return releaseCharge(current);
+    });
   }, []);
 
   const cycleControlMode = useCallback(() => {
@@ -746,36 +663,13 @@ export default function GamePrototype() {
     });
   }, []);
 
-  /** Ключевое действие текущего архетипа: у каждого своё. */
-  const archetypeActionNow = useCallback(() => {
-    setState((current) => {
-      const archetype = archetypeFor(current);
-      if (archetype === "power") return commandHeavyAttack(current);
-      if (archetype === "marksman") return commandMarkTarget(current);
-      if (archetype === "bulwark") return commandShieldPush(current);
-      if (archetype === "skirmisher") return commandFlurry(current);
-      if (archetype === "heavy_gunner") return commandSuppress(current);
-      return commandResonanceChain(current);
-    });
-  }, []);
-
-  /** Второе действие архетипа: разведка, заход за спину, позиция, разрыв. */
-  const archetypeSecondaryNow = useCallback(() => {
-    setState((current) => {
-      const archetype = archetypeFor(current);
-      if (archetype === "power") return commandFinisher(current);
-      if (archetype === "marksman") return commandScout(current);
-      if (archetype === "bulwark") return commandBlock(current, current.hero.blockingSinceMs === 0);
-      if (archetype === "skirmisher") return commandBackstab(current);
-      if (archetype === "heavy_gunner") {
-        return current.hero.heat > 40 ? commandVentHeat(current) : commandSetUp(current);
-      }
-      // Резонанс: набранная цель — разрыв, иначе уход в обратную тень.
-      const marked = current.enemies.find((enemy) => enemy.id === current.hero.attackTargetId);
-      return marked && marked.resonanceStacks >= RESONANCE_MAX_STACKS
-        ? commandDesync(current)
-        : commandReverseShadow(current);
-    });
+  /**
+   * Ячейки 1 · 2 · 3. Дерево талантов определяет, что персонаж **знает**,
+   * панель — что из этого лежит под рукой. Классов нет: в ячейку ложится любая
+   * освоенная способность любого направления.
+   */
+  const activateAbilitySlot = useCallback((slot: number) => {
+    setState((current) => activateSkillSlot(current, slot));
   }, []);
 
   useEffect(() => {
@@ -828,6 +722,11 @@ export default function GamePrototype() {
         setActivePanel((panel) => panel === "talents" ? null : "talents");
         return;
       }
+      if (key === "m") {
+        event.preventDefault();
+        setActivePanel((panel) => panel === "map" ? null : "map");
+        return;
+      }
       if (key === "k") {
         event.preventDefault();
         return;
@@ -853,49 +752,29 @@ export default function GamePrototype() {
         }
         return;
       }
-      if (key === "2") {
+      // Контракт управления Gate 4.5: 1 · 2 · 3 — способности, Q · E —
+      // расходники, Shift — действие перемещения. Атака живёт на мыши.
+      if (key === "1" || key === "2" || key === "3") {
         event.preventDefault();
-        healingNow();
-      } else if (key === "3") {
+        if (!event.repeat) activateAbilitySlot(Number(key) - 1);
+      } else if (key === "q") {
         event.preventDefault();
-        pillsNow();
-      } else if (key === "4") {
+        if (!event.repeat) quickSlotNow("q");
+      } else if (key === "e") {
         event.preventDefault();
-        boosterNow();
-      } else if (key === "1" || key === "f") {
+        if (!event.repeat) quickSlotNow("e");
+      } else if (key === "f") {
         event.preventDefault();
-        // Удержание команды атаки заряжает удар, отпускание его выполняет.
-        if (!event.repeat) startCharge();
+        interactNow();
       } else if (key === "x") {
         event.preventDefault();
         cancelAction();
-      } else if (key === "e") {
-        event.preventDefault();
-        interactNow();
-      } else if (key === "q") {
-        event.preventDefault();
-        firstAidNow();
       } else if (key === "r") {
         event.preventDefault();
         artifactNow();
-      } else if (key === "z") {
-        event.preventDefault();
-        heavyAttackNow();
-      } else if (key === "b") {
-        event.preventDefault();
-        finisherNow();
-      } else if (key === "g") {
-        event.preventDefault();
-        archetypeActionNow();
-      } else if (key === "h") {
-        event.preventDefault();
-        archetypeSecondaryNow();
-      } else if (key === "m") {
-        event.preventDefault();
-        cycleControlMode();
       } else if (key === "shift") {
         event.preventDefault();
-        if (!event.repeat) dodgeNow();
+        if (!event.repeat) setState((current) => setMovementAction(current, true));
       } else if (MOVE_KEYS[key]) {
         // Браузерный адаптер: клавиша превращается в намерение движения, а не
         // в маршрут. Боевая логика про клавиши ничего не знает.
@@ -909,14 +788,14 @@ export default function GamePrototype() {
     };
     const onKeyUp = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (key === "shift") {
+        event.preventDefault();
+        setState((current) => setMovementAction(current, false));
+        return;
+      }
       if (MOVE_KEYS[key] && heldKeysRef.current.delete(key)) {
         event.preventDefault();
         setState((current) => setMoveIntent(current, moveVectorFromKeys(heldKeysRef.current)));
-        return;
-      }
-      if (key === "1" || key === "f") {
-        event.preventDefault();
-        finishCharge();
         return;
       }
       if (key !== "enter" && key !== " ") return;
@@ -935,7 +814,7 @@ export default function GamePrototype() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [archetypeActionNow, archetypeSecondaryNow, artifactNow, attackNearest, finishCharge, startCharge, boosterNow, cancelAction, cycleControlMode, dodgeNow, finisherNow, firstAidNow, healingNow, heavyAttackNow, interactNow, menuOpen, moveTo, pillsNow]);
+  }, [artifactNow, attackNearest, cancelAction, cycleControlMode, interactNow, menuOpen, moveTo, quickSlotNow, activateAbilitySlot]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -988,28 +867,43 @@ export default function GamePrototype() {
         (left.position.x - heroPoint.x) ** 2 + (left.position.y - heroPoint.y) ** 2 -
         ((right.position.x - heroPoint.x) ** 2 + (right.position.y - heroPoint.y) ** 2),
     )[0]?.id ?? null;
-  const cityCounts = cityPopulationCounts(state);
   const visibleEnemies = state.enemies.filter((enemy) => enemyVisibleToHero(state, enemy));
-  const activeThreats = state.enemies.filter(
-    (enemy) =>
-      enemy.zone === state.zone &&
-      enemy.hp > 0 &&
-      ["suspicious", "hunting", "combat"].includes(enemy.mode),
-  );
+
+  // Что сейчас под курсором. Дружественное и интерактивное перехватывает
+  // ЛКМ/ПКМ: атака остаётся только для враждебного и пустого пространства.
+  //
+  // Считается здесь, а не выше по файлу: `visibleNpcs` объявлен рядом, и при
+  // чтении его раньше объявления первое же движение мыши по карте роняло
+  // экран с ReferenceError.
+  const contextualUnderCursor = (() => {
+    const aim = state.hero.aimPoint;
+    if (!aim) return null;
+    const npc = visibleNpcs.find((entry) => distance(entry.position, aim) <= 1.2);
+    if (npc) return { kind: "npc" as const, name: npc.name };
+    const loot = (state.groundLoot ?? []).find(
+      (entry) => entry.zone === state.zone && distance(entry.position, aim) <= 1.2,
+    );
+    if (loot) return { kind: "loot" as const, name: ITEMS[loot.itemId].shortName };
+    return null;
+  })();
   const svgWidth = ((map.rows[0].length + map.rows.length) * TILE_WIDTH) / 2 + 96;
   const svgHeight = ((map.rows[0].length + map.rows.length) * TILE_HEIGHT) / 2 + 108;
   const originX = (map.rows.length * TILE_WIDTH) / 2 + 48;
   const originY = 28;
   const heroIso = toIso(hero, originX, originY);
-  const cameraWidth = Math.min(svgWidth, 1120);
-  const cameraHeight = Math.min(svgHeight, 700);
-  const cameraX = Math.max(0, Math.min(svgWidth - cameraWidth, heroIso.x - cameraWidth / 2));
-  const cameraY = Math.max(0, Math.min(svgHeight - cameraHeight, heroIso.y - cameraHeight / 2));
-  const cooldownPercent = Math.min(
-    100,
-    (state.hero.attackCooldownMs / heroAttackCooldown(state)) * 100,
-  );
-
+  // Камера: постоянный зум, соотношение кадра, слежение за героем. Раньше
+  // границы зажимались в [0, размер − окно]; на карте меньше окна это
+  // выражение отрицательное, и мир прижимался к левому верхнему углу вместо
+  // того, чтобы встать по центру кадра.
+  // Зум ограничен сверху, но маленький этаж не оставляет пустых полей: если
+  // карта меньше окна, окно сжимается до карты, а preserveAspectRatio="slice"
+  // растягивает её на весь кадр.
+  const cameraHeight = Math.min(760, svgHeight);
+  const cameraWidth = Math.min(Math.round((cameraHeight * 16) / 9), svgWidth);
+  const centreCamera = (wanted: number, span: number, total: number) =>
+    total <= span ? (total - span) / 2 : Math.max(0, Math.min(total - span, wanted));
+  const cameraX = centreCamera(heroIso.x - cameraWidth / 2, cameraWidth, svgWidth);
+  const cameraY = centreCamera(heroIso.y - cameraHeight / 2, cameraHeight, svgHeight);
   const resetGame = () => {
     const fresh = createInitialState();
     setState(fresh);
@@ -1017,97 +911,52 @@ export default function GamePrototype() {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(fresh));
   };
 
-  const chooseTalentView = (view: TalentView) => {
-    setTalentView(view);
-    const first = TALENT_NODES.find((node) => node.scope === view);
-    if (first) setSelectedTalentId(first.id);
+  /** Клетка мини-карты: что важно, то и красится. */
+  const minimapClass = (cell: { known: boolean; visible: boolean; hero: boolean; npc: boolean; enemy: boolean; loot: boolean; tile: string }) => {
+    if (!cell.known) return "mm mm-dark";
+    if (cell.hero) return "mm mm-hero";
+    if (cell.enemy) return "mm mm-enemy";
+    if (cell.npc) return "mm mm-npc";
+    if (cell.loot) return "mm mm-loot";
+    if (cell.tile === "#") return "mm mm-wall";
+    if ("UDPL".includes(cell.tile)) return "mm mm-link";
+    return `mm mm-floor${cell.visible ? " lit" : ""}`;
   };
 
+  /** Осмотр предмета: карточка и сравнение показывают одно и то же. */
+  const inspectItemNow = (itemId: ItemId, quantity?: number, condition?: number) => {
+    setInspectedItemId(itemId);
+    setInspected(inspectInventoryItem(state, itemId, { quantity, condition }));
+  };
+  const clearInspect = () => {
+    setInspectedItemId(null);
+    setInspected(null);
+  };
 
-  const renderInventoryCard = (entry: InventoryEntry, compact = false) => {
-    const item = ITEMS[entry.itemId];
-    const equipped = Object.values(state.hero.equipment).includes(entry.instanceId);
-    const weaponStats = item.kind === "weapon" ? WEAPONS[entry.itemId as keyof typeof WEAPONS] : null;
-    const currentEntry = item.slot ? equippedEntry(state, item.slot) : null;
-    const currentItem = currentEntry ? ITEMS[currentEntry.itemId] : null;
-    const currentWeapon = currentEntry && currentItem?.kind === "weapon"
-      ? WEAPONS[currentEntry.itemId as keyof typeof WEAPONS]
-      : null;
-    const comparison = weaponStats && currentWeapon
-      ? weaponStats.damage - currentWeapon.damage
-      : (item.stats?.armor ?? 0) - (currentItem?.stats?.armor ?? 0);
+  /** Ячейка снаряжения на кукле: одна разметка на все слоты. */
+  const renderGearSlot = (slot: GearSlot) => {
+    const entry = equippedEntry(state, slot);
+    const item = entry ? ITEMS[entry.itemId] : null;
     return (
-      <article key={entry.instanceId} className={`inventory-item inventory-grid-item kind-${item.kind} rarity-${item.rarity ?? "common"} ${equipped ? "equipped" : ""} ${compact ? "compact" : ""}`}>
-        <span className="item-glyph">{itemGlyph(entry)}</span>
-        <div className="item-copy">
-          <h4>{item.rarity === "legendary" ? <em className="rarity-label">ЛЕГЕНДАРНОЕ</em> : null}{item.name}{entry.quantity > 1 ? ` ×${entry.quantity}` : ""}</h4>
-          {!compact ? <p>{item.description}</p> : null}
-          <div className="item-facts">
-            <span>{(item.weight * entry.quantity).toFixed(1)} кг</span>
-            {!item.stackable ? <span className={conditionTone(entry.condition)}>состояние {Math.round(entry.condition)}%</span> : null}
-            {weaponStats ? <><span>{weaponStats.damage} урон</span><span>{weaponStats.range.toFixed(1)} кл.</span></> : null}
-            {item.stats?.armor ? <span>броня +{item.stats.armor}</span> : null}
-            {item.stats?.maxHp ? <span>ОЗ +{item.stats.maxHp}</span> : null}
-            {item.slot && currentEntry && currentEntry.instanceId !== entry.instanceId && comparison !== 0 ? (
-              <span className={`item-comparison ${comparison > 0 ? "positive" : "negative"}`}>{comparison > 0 ? "+" : ""}{comparison} к ключевому параметру</span>
-            ) : null}
-            {item.grantedTalents?.map((talentId) => <span key={talentId} className="legendary-fact">узел: {TALENT_NODES.find((node) => node.id === talentId)?.name}</span>)}
-          </div>
-        </div>
-        <div className="item-actions">
-          {equipped ? <span className="equipped-label">Экипировано</span> : item.slot ? (
-            <button type="button" onClick={() => setState((current) => equipItem(current, entry.instanceId))}>Надеть</button>
-          ) : item.kind === "consumable" ? (
-            <button type="button" onClick={() => setState((current) => consumeInventoryItem(current, entry.instanceId))}>{item.useLabel ?? "Использовать"}</button>
-          ) : <span className="stored-label">В сумке</span>}
-          {!equipped ? <button type="button" className="drop-item" onClick={() => setState((current) => dropInventoryItem(current, entry.instanceId))}>Выложить</button> : null}
-        </div>
-      </article>
+      <button
+        key={slot}
+        type="button"
+        className={`doll-slot ${entry ? "filled" : "empty"} rarity-${item?.rarity ?? "common"}`}
+        onPointerEnter={() => entry && inspectItemNow(entry.itemId, entry.quantity, entry.condition)}
+        onPointerLeave={() => clearInspect()}
+      >
+        <small>{SLOT_NAMES[slot]}</small>
+        <strong>{item?.shortName ?? "—"}</strong>
+        {entry ? <em className={conditionTone(entry.condition)}>{Math.round(entry.condition)}%</em> : null}
+      </button>
     );
   };
 
+
   return (
     <main className={`game-shell realtime-shell ${state.hero.evadeMode ? "evade-mode" : ""}`}>
-      <section className="world-strip compact-strip" aria-label="Положение в мире">
-        <div className={state.zone === "floor557" ? "strip-current" : ""}><span className="strip-label">Выше</span><strong>Этаж 557</strong><small>жилой контур</small></div>
-        <span className="strip-connector">⇅</span>
-        <div className={state.zone === "floor556" ? "strip-current" : ""}><span className="strip-label">Опорный</span><strong>Этаж 556</strong><small>технический пояс</small></div>
-        <span className="strip-connector">⇅</span>
-        <div className={state.zone === "floor555" ? "strip-current" : ""}><span className="strip-label">Подступы</span><strong>Этаж 555</strong><small>ремонтный пояс</small></div>
-        <span className="strip-connector">⇅</span>
-        <div className={state.zone === "floor554" ? "strip-current" : ""}><span className="strip-label">Защищённый хаб</span><strong>Город 550</strong><small>единая карта кварталов 554–551</small></div>
-        <span className="strip-connector">⇅</span>
-        <div className={state.zone === "floor550" ? "strip-current" : ""}><span className="strip-label">Ниже города</span><strong>Этаж 550</strong><small>нижний выход</small></div>
-        <span className="strip-connector">⇄</span>
-        <div className={state.zone === "voidLab" ? "strip-current void" : ""}><span className="strip-label">Межэтажье</span><strong>ВЖ-7</strong><small>лабораторный слой</small></div>
-      </section>
-
       <section className="game-layout realtime-layout">
-        <div className={`map-card realtime-map-card ${state.zone === "voidLab" ? "void-card" : ""} ${samosborLethal ? "samosbor-active" : samosborWarning ? "samosbor-warning" : ""}`}>
-          <div className="map-heading realtime-heading">
-            <div>
-              <p className="map-kicker">ТЕКУЩАЯ ЛОКАЦИЯ</p>
-              <h2>{map.name}</h2>
-              <p>{map.subtitle}</p>
-            </div>
-            <div className="realtime-readout">
-              <span>Время смены</span>
-              <strong>{formattedWorldTime(state)}</strong>
-              <small>Скорость {heroMoveSpeed(state).toFixed(1)} кл/с</small>
-              <small className={`safe-room-state ${hermeticSafe ? "active" : ""}`}>
-                {hermeticSafe ? "ГЕРМОКОНТУР · БЕЗОПАСНО" : "ГЕРМОКОНТУР · СНАРУЖИ"}
-              </small>
-              {samosborAlarm ? (
-                <small
-                  className={`samosbor-state phase-${samosborPhase} ${samosborExposed ? "exposed" : ""}`}
-                  title={samosborPhaseHint(samosborPhase)}
-                >
-                  {`САМОСБОР · ${samosborPhaseLabel(samosborPhase)}`}
-                </small>
-              ) : null}
-            </div>
-          </div>
-
+        <div className={`world-view ${state.zone === "voidLab" ? "void-view" : ""} ${samosborLethal ? "samosbor-active" : samosborWarning ? "samosbor-warning" : ""}`}>
           <div className="map-stage realtime-stage">
             <svg
               className="iso-map realtime-map"
@@ -1132,12 +981,32 @@ export default function GamePrototype() {
                 };
                 setState((current) => setAimPoint(current, fromIso(local, originX, originY)));
               }}
+              onContextMenu={(event) => event.preventDefault()}
               onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                setState((current) => setPrimaryAttack(current, true));
+                // Курсор над дружественным или интерактивным объектом означает
+                // взаимодействие, а не атаку: игрока нельзя заставлять бить
+                // NPC только потому, что ЛКМ назначена на атаку.
+                if (contextualUnderCursor) {
+                  event.preventDefault();
+                  interactNow();
+                  return;
+                }
+                if (event.button === 0) setState((current) => setPrimaryAttack(current, true));
+                // ПКМ — слот сильной атаки. Короткое нажатие бьёт сразу,
+                // удержание копит заряд: отдельной кнопки заряда нет.
+                if (event.button === 2) {
+                  event.preventDefault();
+                  startCharge();
+                }
               }}
-              onPointerUp={() => setState((current) => setPrimaryAttack(current, false))}
-              onPointerLeave={() => setState((current) => setPrimaryAttack(current, false))}
+              onPointerUp={(event) => {
+                if (event.button === 2) finishCharge();
+                else setState((current) => setPrimaryAttack(current, false));
+              }}
+              onPointerLeave={() => {
+                setState((current) => setPrimaryAttack(current, false));
+                if (stateRef.current.hero.chargingSinceMs > 0) finishCharge();
+              }}
             >
               <defs>
                 <filter id="void-glow" x="-60%" y="-60%" width="220%" height="220%">
@@ -1194,8 +1063,13 @@ export default function GamePrototype() {
                     key={`${point.x}-${point.y}`}
                     className={`iso-tile ${known ? "known" : "unknown"} ${shelterMarked ? "shelter-marked" : ""}`}
                     onPointerDown={() => known && !isWall && interactAtPoint(point)}
-                    onPointerEnter={() => known && !isWall && setHoverInfo({ title: TILE_LABELS[tile] ?? "Объект", description: tileDescription(tile, state.zone === "voidLab"), meta: `Координаты ${point.x}:${point.y}` })}
-                    onPointerLeave={() => setHoverInfo(null)}
+                    onPointerEnter={() => known && !isWall && setInspected(inspectInteractive({
+                      name: TILE_LABELS[tile] ?? "Объект",
+                      description: tileDescription(tile, state.zone === "voidLab"),
+                      interaction: TILE_ACTIONS[tile],
+                      coordinates: point,
+                    }))}
+                    onPointerLeave={() => setInspected(null)}
                     role={known && !isWall ? "button" : undefined}
                     aria-label={known ? TILE_LABELS[tile] : undefined}
                   >
@@ -1272,9 +1146,14 @@ export default function GamePrototype() {
                       event.stopPropagation();
                       collectLoot(loot.id);
                     }}
-                    onPointerEnter={() => setHoverInfo({ title: item.name, description: item.description, meta: `Количество: ${loot.quantity} · состояние ${Math.round(loot.condition)}%` })}
-                    onPointerLeave={() => setHoverInfo(null)}
+                    onPointerEnter={() => setInspected(inspectInventoryItem(state, loot.itemId, {
+                      quantity: loot.quantity,
+                      condition: loot.condition,
+                      binding: "ЛКМ",
+                    }))}
+                    onPointerLeave={() => setInspected(null)}
                   >
+                    <rect className="actor-hit" x="-14" y="-12" width="28" height="26" fill="transparent" />
                     <path d="M -9 3 L -6 -7 L 7 -7 L 10 3 L 0 9 Z" fill="#39372a" stroke="#e1c86d" strokeWidth="2" />
                     <text x="0" y="2" textAnchor="middle" fill="#f2dfa0">{item.kind === "artifact" ? "◈" : "•"}</text>
                   </g>
@@ -1296,17 +1175,23 @@ export default function GamePrototype() {
                       event.stopPropagation();
                       talkToNpc(npc.id);
                     }}
-                    onPointerEnter={() => setHoverInfo({
-                      title: npc.name,
+                    onPointerEnter={() => setInspected(inspectNpc({
+                      name: npc.name,
+                      roleLabel: npcRoleLabel(npc.role),
+                      kindLabel: npc.kind === "liquidator" ? "отряд ликвидации" : npc.kind === "merchant" ? "торговая точка" : "городской маршрут",
                       description: npcDescription(npc),
-                      meta: `${npcRoleLabel(npc.role)} · ${npc.kind === "liquidator" ? "отряд ликвидации" : npc.kind === "merchant" ? "торговая точка" : "городской маршрут"}`,
-                    })}
-                    onPointerLeave={() => setHoverInfo(null)}
+                      interaction: npc.kind === "merchant" ? "открыть обмен" : "заговорить",
+                      offers: npc.vendorStock?.length
+                        ? npc.vendorStock.map((itemId) => ITEMS[itemId].shortName).join(", ")
+                        : undefined,
+                    }))}
+                    onPointerLeave={() => setInspected(null)}
                     role="button"
                     aria-label={`${npc.name}, ${npcRoleLabel(npc.role)}`}
                     filter="url(#actor-shadow)"
                   >
                     <ellipse cx={iso.x} cy={iso.y + 8} rx="15" ry="6" fill="#11130f" opacity="0.55" />
+                    <rect className="actor-hit" x={iso.x - 15} y={iso.y - 32} width="30" height="42" fill="transparent" />
                     {/*
                       Жители различаются занятием и снаряжением, а не цветом:
                       перекрашенный дубль — не новый персонаж. Торговца выдаёт
@@ -1329,7 +1214,7 @@ export default function GamePrototype() {
                     {npc.id === speakingNpcId ? (
                       <g className="npc-speech" transform={`translate(${iso.x - 74} ${iso.y - 62})`}>
                         <rect width="148" height="30" rx="6" fill="#171a16" stroke={color} strokeWidth="1.5" />
-                        <text x="74" y="19" textAnchor="middle" fill="#e7eadf">{npc.speech.length > 42 ? `${npc.speech.slice(0, 42)}…` : npc.speech}</text>
+                        <text x="74" y="19" textAnchor="middle" fill="#e7eadf">{(npc.speech ?? "").length > 42 ? `${npc.speech?.slice(0, 42)}…` : npc.speech}</text>
                       </g>
                     ) : null}
                   </g>
@@ -1375,16 +1260,26 @@ export default function GamePrototype() {
                       event.stopPropagation();
                       attackEnemy(enemy.id);
                     }}
-                    onPointerEnter={() => setHoverInfo({
-                      title: enemy.name,
-                      description: [enemyDescription(enemy), ...enemyStateNotes(enemy, state.worldTimeMs)].join(" "),
-                      meta: `${MODE_LABELS[enemy.mode]} · ОЗ ${enemy.hp}/${enemy.maxHp} · агро ${enemy.aggroRadius.toFixed(1)}`,
-                    })}
-                    onPointerLeave={() => setHoverInfo(null)}
+                    onPointerEnter={() => setInspected(inspectEnemyAt(state, enemy))}
+                    onPointerLeave={() => setInspected(null)}
                     role="button"
                     aria-label={`${enemy.name}, ${MODE_LABELS[enemy.mode]}`}
                     filter="url(#actor-shadow)"
                   >
+                    {/*
+                      Зона наведения. Силуэт — тонкая фигура с просветами, и
+                      курсор между её линиями попадал в пол под ней: осмотр
+                      показывал плитку вместо противника. Прозрачная область
+                      закрывает весь след фигуры.
+                    */}
+                    <rect
+                      className="actor-hit"
+                      x={iso.x - 17}
+                      y={iso.y - 34}
+                      width="34"
+                      height="44"
+                      fill="transparent"
+                    />
                     {selected ? <circle cx={iso.x} cy={iso.y + 1} r="24" fill="none" stroke="#efcf68" strokeWidth="2" strokeDasharray="5 4" /> : null}
                     {/*
                       Замах видно заранее — иначе на него нельзя ответить.
@@ -1510,11 +1405,43 @@ export default function GamePrototype() {
               </g>
             </svg>
 
-            {hoverInfo ? (
-              <div className="map-hover-card" role="status">
-                <strong>{hoverInfo.title}</strong>
-                <p>{hoverInfo.description}</p>
-                {hoverInfo.meta ? <small>{hoverInfo.meta}</small> : null}
+            {/*
+              Накладки лежат по углам кадра тонким слоем. Мир — главное
+              изображение: интерфейс не отрезает от него колонку и не
+              превращается в приборную панель.
+            */}
+            <div className="hud-locale">
+              <strong>{map.name}</strong>
+              <span>{formattedWorldTime(state)}</span>
+              {hermeticSafe ? <i className="locale-flag safe">ГЕРМОКОНТУР</i> : null}
+              {samosborAlarm ? (
+                <i className={`locale-flag alarm phase-${samosborPhase}`}>{`САМОСБОР · ${samosborPhaseLabel(samosborPhase)}`}</i>
+              ) : null}
+              {hud.threats > 0 ? <i className="locale-flag threat">{`УГРОЗ: ${hud.threats}`}</i> : null}
+            </div>
+
+            <div className="hud-objective">
+              <span>ЗАДАНИЕ</span>
+              <strong>{hud.objective.title}</strong>
+            </div>
+
+            {/*
+              Мини-карта — часть игрового кадра, а не отдельный компонент,
+              перечитывающий сохранение: раньше она жила своей жизнью и
+              показывала состояние с задержкой.
+            */}
+            <div className="hud-minimap" aria-label="Мини-карта">
+              <div className="minimap-head"><span>СЕКТОР</span><kbd>M</kbd></div>
+              <div className="minimap-grid" style={{ gridTemplateColumns: `repeat(${minimap.width}, 1fr)` }}>
+                {minimap.cells.map((cell) => (
+                  <i key={`${cell.x}:${cell.y}`} className={minimapClass(cell)} />
+                ))}
+              </div>
+            </div>
+
+            {inspected ? (
+              <div className="hud-inspect">
+                <InspectCardView card={inspected} />
               </div>
             ) : null}
 
@@ -1558,8 +1485,6 @@ export default function GamePrototype() {
               </div>
             ) : null}
 
-            <div className="map-instruction"><strong>МЫШЬ · КЛАВИАТУРА</strong><span>клик по предмету или NPC: подойти и взаимодействовать</span><i />Движение в бою включает отступление</div>
-
             {state.missionComplete ? (
               <div className="mission-complete" role="status">
                 <span>ДИРЕКТИВА ВЫПОЛНЕНА</span>
@@ -1569,481 +1494,598 @@ export default function GamePrototype() {
             ) : null}
           </div>
 
-          <div className={`anomaly-line ${state.mutated || activeThreats.length ? "active" : ""}`}>
-            <span>{activeThreats.length ? "ТРЕВОГА" : state.mutated ? "АНОМАЛИЯ" : "КОНТРОЛЬ"}</span>
-            <strong>{state.zone === "voidLab" ? `Стабильность: ${Math.ceil(state.voidStabilityMs / 1000)} сек.` : activeThreats.length ? `Активных угроз: ${activeThreats.length}` : "Сектор наблюдается в реальном времени"}</strong>
-            {state.noise?.ttlMs ? <small>Шум: {state.noise.label} · {state.noise.radius.toFixed(1)}</small> : null}
+        </div>
+
+        {/*
+          Журнал боя остаётся: механики SAMOSBOR без него не читаются. Но он
+          вторичен — последние строки тают у нижнего края и не претендуют на
+          место мира. Полный журнал открывается по нажатию.
+        */}
+        <div className={`hud-log ${logExpanded ? "expanded" : ""}`} aria-live="polite">
+          <button type="button" className="log-toggle" onClick={() => setLogExpanded((open) => !open)}>
+            {logExpanded ? "СВЕРНУТЬ ЖУРНАЛ" : "ЖУРНАЛ"}
+          </button>
+          <ol>
+            {(logExpanded ? state.log : hud.log).map((item, index) => (
+              <li key={`${item}-${index}`} style={{ opacity: logExpanded ? 1 : Math.max(0.28, 1 - index * 0.19) }}>{item}</li>
+            ))}
+          </ol>
+        </div>
+
+        {/*
+          Нижняя панель — единственное плотное место интерфейса. Слева сфера
+          здоровья, справа сфера ресурса направления, между ними ровно то, чем
+          игрок управляет: мышь, перемещение, способности и расходники.
+        */}
+        <section className="hud-dock" aria-label="Панель управления">
+          <div className="dock-orb orb-health" style={{ "--fill": `${hud.health.share * 100}%` } as CSSProperties}>
+            <strong>{hud.health.value}</strong>
+            <small>{hud.health.max}</small>
           </div>
-        </div>
 
-        <aside className="side-panel realtime-side">
-          <section className="panel-card objective-card">
-            <p className="panel-label">ТЕКУЩАЯ ДИРЕКТИВА</p>
-            <h2>{objectiveFor(state)}</h2>
-            <p>Перемещайтесь кликом мыши, WASD или стрелками. Текущий автоконтур: <strong>{combatDirective === "mobileFire" ? "мобильный огонь" : combatDirective === "splashGuard" ? "силовой периметр" : "адаптивная ротация"}</strong>.</p>
-          </section>
-
-          <section className="panel-card population-card">
-            <div className="population-heading">
-              <div>
-                <p className="panel-label">{state.zone === "floor554" ? "ЖИВОЙ ГОРОД" : "ЖИВОЙ ЭТАЖ"}</p>
-                <h3>{state.zone === "floor554" ? `${cityCounts.residents} жителей · ${cityCounts.liquidators} ликвидаторов` : `Давление популяций: ${localPopulationPressure}`}</h3>
-              </div>
-              <span className={`population-pressure ${localPopulationPressure >= 25 ? "high" : ""}`}>{state.zone === "floor554" ? cityCounts.residents + cityCounts.liquidators : localPopulations.length}</span>
-            </div>
-            {state.zone === "floor554" ? (
-              <p>Жители ходят между кварталами, торговыми точками и службами. Три отряда ликвидаторов несут дежурство и готовятся к выходам после Самосбора.</p>
-            ) : localPopulations.length ? (
-              <ul className="population-list">
-                {localPopulations.map((population) => (
-                  <li key={population.id}>
-                    <div><strong>{population.name}</strong><small>{GENOME_LABELS[population.genome]} геном · цель: {population.goal}</small></div>
-                    <span><b>{population.count}</b><small>{Math.round(population.agitation)}% тревоги</small></span>
-                  </li>
-                ))}
-              </ul>
-            ) : <p>В зоне не зафиксировано устойчивых групп.</p>}
-          </section>
-
-          <section className="panel-card hero-card">
-            <div className="hero-card-head">
-              <div><p className="panel-label">СОТРУДНИК 556-04</p><h3>{classTitle}</h3></div>
-              <div className="hero-menu-shortcuts">
-                <button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button>
-                <button type="button" onClick={() => setActivePanel("inventory")}>Инвентарь <kbd>I</kbd></button>
-                <button type="button" onClick={() => setActivePanel("talents")}>Таланты <kbd>T</kbd></button>
-              </div>
-            </div>
-            <div className="stat-row"><span>Здоровье</span><strong>{state.hero.hp} / {heroMaxHp}</strong></div>
-            <div className="meter health-meter"><i style={{ width: `${(state.hero.hp / heroMaxHp) * 100}%` }} /></div>
-            <div className="stat-row compact">
-              <span>Стойка</span>
-              <strong className={`stance-value stance-${stanceState}`}>
-                {Math.round(state.hero.stance)} / {heroMaxStance}
-                {staggered ? " · ОШЕЛОМЛЕНИЕ" : stanceState === "shaken" ? " · пошатнулся" : ""}
-              </strong>
-            </div>
-            <div className={`meter stance-meter ${stanceState}`}>
-              <i style={{ width: `${(state.hero.stance / heroMaxStance) * 100}%` }} />
-            </div>
-            <div className="stat-row compact"><span>Дыхание</span><strong>{Math.round(state.hero.breath)} / {heroMaxBreath}</strong></div>
-            <div className={`meter breath-meter `}>
-              <i style={{ width: `${(state.hero.breath / heroMaxBreath) * 100}%` }} />
-            </div>
-            <div className="stat-row compact"><span>Квалификация</span><strong>{state.hero.level} / 50</strong></div>
-            <div className="meter xp-meter"><i style={{ width: `${experienceProgress}%` }} /></div>
-            <div className="xp-caption"><span>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} опыта` : "Основной предел достигнут"}</span><strong>{state.hero.generalPoints} общ. · {state.hero.skillPoints} проф.</strong></div>
-            <div className="stat-row compact"><span>Правая рука</span><strong>{weapon.shortName} · {weapon.range.toFixed(1)} кл.</strong></div>
-            {/*
-              Обе руки видны сразу, и рядом — что даёт именно сочетание, а не
-              второй предмет сам по себе: пара меняет ритм и стиль, а не только
-              сумму характеристик.
-            */}
-            <div className="stat-row compact"><span>Левая рука</span><strong>{offhandEntry ? ITEMS[offhandEntry.itemId].shortName : "свободна"}</strong></div>
-            <div className="hand-combination" title={describeCombination(handCombination)}>
-              <strong>{handCombination.name}</strong>
-              <small>{handCombination.verb}</small>
-            </div>
-            {/*
-              Изменённые правила видно на листе персонажа: если механика больше
-              не работает как обычно, профиль не должен выглядеть прежним.
-              Цена правила показывается рядом с выигрышем и не прячется.
-            */}
-            {changedRules.length ? (
-              <div className="rule-readout" aria-label="Изменённые правила">
-                {changedRules.map((rule) => (
-                  <div key={rule.name}>
-                    <strong>{rule.name}</strong>
-                    <small>{rule.line}</small>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <div className="stat-row compact"><span>Защита</span><strong>{heroDefense(state)}</strong></div>
-            <div className="survival-stats">
-              <span className={carriedWeight > weightLimit ? "danger" : ""}><small>Груз</small><strong>{carriedWeight.toFixed(1)} / {weightLimit.toFixed(0)} кг</strong></span>
-              <span className={state.hero.stress >= 60 ? "danger" : ""}><small>Стресс</small><strong>{Math.round(state.hero.stress)}%</strong></span>
-              <span className={state.hero.contamination >= 40 ? "danger" : ""}><small>Заражение</small><strong>{Math.round(state.hero.contamination)}%</strong></span>
-            </div>
-            {injuries.length ? <ul className="injury-list">{injuries.map((item) => <li key={item}>{item}</li>)}</ul> : null}
-          </section>
-
-          <section className={`panel-card target-card ${target ? "has-target" : ""}`}>
-            <p className="panel-label">БОЕВАЯ ЦЕЛЬ</p>
-            {target ? (
-              <>
-                <div className="target-title"><h3>{target.name}</h3><span className={`mode-badge mode-${target.mode}`}>{MODE_LABELS[target.mode]}</span></div>
-                {target.stunnedUntilMs > state.worldTimeMs ? <div className="cast-status interrupted">МИКРООГЛУШЕНИЕ · команда сорвана</div> : target.castUntilMs > state.worldTimeMs ? <div className="cast-status">ПОДГОТОВКА АТАКИ · {Math.max(0, target.castUntilMs - state.worldTimeMs).toFixed(0)} мс</div> : null}
-                <div className="stat-row"><span>Состояние</span><strong>{target.hp} / {target.maxHp} ОЗ</strong></div>
-                <div className="meter enemy-meter"><i style={{ width: `${(target.hp / target.maxHp) * 100}%`, background: MODE_COLORS[target.mode] }} /></div>
-                <p>{enemyDescription(target)}</p>
-                <div className="target-data">
-                  <span><small>До цели</small><strong>{distance(hero, target.position).toFixed(1)}</strong></span>
-                  <span><small>Ваш радиус</small><strong>{heroAttackRange(state).toFixed(1)}</strong></span>
-                  <span><small>Агро</small><strong>{target.aggroRadius.toFixed(1)}</strong></span>
-                </div>
-                <button type="button" className={`cancel-target ${state.hero.evadeMode ? "active" : ""}`} onClick={cancelAction}>Отступить и разорвать бой <kbd>Esc</kbd></button>
-              </>
-            ) : (
-              <>
-                <p>{state.hero.evadeMode ? "Режим отступления активен. Герой не будет автоматически атаковать, пока вы сами не выберете цель." : "Кликните по противнику. Герой сам подойдёт на дистанцию экипированного оружия и начнёт атаковать."}</p>
-                {state.hero.evadeMode ? <button type="button" className="cancel-target active" onClick={attackNearest}>Вернуться в бой <kbd>1</kbd></button> : null}
-              </>
-            )}
-          </section>
-
-          <section className="panel-card threats-card">
-            <p className="panel-label">ВИДИМЫЕ УГРОЗЫ</p>
-            {visibleEnemies.length ? (
-              <div className="threat-list">
-                {visibleEnemies.map((enemy) => (
-                  <button key={enemy.id} type="button" onClick={() => attackEnemy(enemy.id)} className={target?.id === enemy.id ? "selected-threat" : ""}>
-                    <i style={{ background: MODE_COLORS[enemy.mode] }} />
-                    <span><strong>{enemy.name}</strong><small>{MODE_LABELS[enemy.mode]} · {distance(hero, enemy.position).toFixed(1)} кл.</small></span>
-                  </button>
-                ))}
-              </div>
-            ) : <p>Контактов нет. Шум может изменить ситуацию за несколько секунд.</p>}
-          </section>
-
-          <section className="panel-card log-card" aria-live="polite">
-            <p className="panel-label">ЖУРНАЛ СОБЫТИЙ</p>
-            <ol>{state.log.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ol>
-          </section>
-        </aside>
-      </section>
-
-      <section className="action-dock action-dock-v2" aria-label="Управление героем">
-        <div className="health-orb" style={{ "--health": `${(state.hero.hp / heroMaxHp) * 100}%` } as CSSProperties}>
-          <strong>{state.hero.hp}</strong><span>ОЗ</span><small>{heroMaxHp} максимум</small>
-        </div>
-
-        <div className="combat-cluster" aria-label="Боевые действия">
-          <button
-            type="button"
-            className={`ability attack-ability ${chargeSteps > 0 ? "charging" : ""}`}
-            onPointerDown={startCharge}
-            onPointerUp={finishCharge}
-            onPointerLeave={() => state.hero.chargingSinceMs > 0 && finishCharge()}
-          >
-            <span className="ability-key">1</span><strong>{weapon.shortName}</strong>
-            <small>
-              {chargeSteps > 0
-                ? `заряд ${chargeSteps}/${chargeTuningNow.maxSteps}`
-                : `${heroAttackDamage(state)} урон · удержать для заряда`}
-            </small>
-            <i className="cooldown-mask" style={{ height: `${cooldownPercent}%` }} />
-            {chargeSteps > 0 ? (
-              <i className="charge-fill" style={{ width: `${(chargeSteps / chargeTuningNow.maxSteps) * 100}%` }} />
-            ) : null}
-          </button>
-          <button type="button" className={`ability retreat-ability ${state.hero.evadeMode ? "active" : ""}`} onClick={cancelAction}>
-            <span className="ability-key">X</span><strong>{state.hero.evadeMode ? "Отступление" : "Убежать"}</strong><small>{state.hero.evadeMode ? "автоатака отключена" : "разорвать бой"}</small>
-          </button>
-          <button type="button" className="ability interact-ability" onClick={interactNow}>
-            <span className="ability-key">E</span><strong>Использовать</strong><small>{interactionHint(state)}</small>
-          </button>
-          <button type="button" className="ability artifact-ability" onClick={artifactNow} disabled={!artifact}>
-            <span className="ability-key">R</span><strong>{artifact ? ITEMS[artifact.itemId].shortName : "Артефакт"}</strong><small>{artifact ? ITEMS[artifact.itemId].useLabel : "Не экипирован"}</small>
-            <i className="cooldown-mask artifact-cooldown" style={{ height: `${Math.min(100, (state.hero.artifactCooldownMs / 30000) * 100)}%` }} />
-          </button>
-        </div>
-
-        <div className="combat-cluster combat-v2" aria-label="Стойка, дыхание и приёмы">
-          <button
-            type="button"
-            className="ability heavy-ability"
-            onClick={heavyAttackNow}
-            disabled={staggered || overheated || !canSpendBreath(state, 25)}
-          >
-            <span className="ability-key">Z</span><strong>Тяжёлый удар</strong>
-            <small>ломает стойку · 25 дых.</small>
-          </button>
-          {/*
-            Блока-кнопки больше нет: блок, парирование и уклонение — свойства
-            сборки, а не нажатия. Вместо кнопки показывается защитный профиль,
-            собранный деревом и экипировкой.
-          */}
-          <div className="ability defence-readout" aria-label="Защитный профиль">
-            <strong>Защита</strong>
-            <small>
-              {`броня ${defenceProfile.armour}`}
-              {defenceProfile.blockChance > 0 ? ` · блок ${Math.round(defenceProfile.blockChance * 100)}%` : ""}
-              {defenceProfile.parryChance > 0 ? ` · парир. ${Math.round(defenceProfile.parryChance * 100)}%` : ""}
-              {defenceProfile.evasion > 0 ? ` · уклон. ${Math.round(defenceProfile.evasion * 100)}%` : ""}
-            </small>
-          </div>
-          <button
-            type="button"
-            className="ability dodge-ability"
-            onClick={() => dodgeNow()}
-            disabled={!dodgeReady}
-          >
-            <span className="ability-key">⇧</span><strong>Уклонение</strong>
-            <small>{dodgeReady ? "300 мс неуязвимости" : "восстановление"}</small>
-          </button>
-          <button
-            type="button"
-            className="ability finisher-ability"
-            onClick={finisherNow}
-            disabled={!target || target.stunnedUntilMs <= state.worldTimeMs}
-          >
-            <span className="ability-key">B</span><strong>Добивание</strong>
-            <small>{target && target.stunnedUntilMs > state.worldTimeMs ? "цель ошеломлена" : "нужна ошеломлённая цель"}</small>
-          </button>
-        </div>
-
-        <div className="archetype-cluster" aria-label="Архетип и режим управления">
-          <div className="archetype-head">
-            <div>
-              <p className="panel-label">{archetypeDefinition.name.toUpperCase()}</p>
-              <small>{archetypeDefinition.resourceName}</small>
-            </div>
-            <div className="mode-controls">
-              <button type="button" className={`control-mode-chip mode-${controlMode}`} onClick={cycleControlMode} title={CONTROL_MODE_HINTS[controlMode]}>
-                <kbd>M</kbd>{CONTROL_MODE_LABELS[controlMode]}
+          <div className="dock-column dock-quick" aria-label="Быстрые ячейки">
+            {hud.quick.map((slot) => (
+              <button
+                key={slot.id}
+                type="button"
+                className={`dock-cell quick-cell ${slot.ready ? "" : "unavailable"}`}
+                onClick={() => quickSlotNow(slot.id)}
+                disabled={!slot.ready}
+                onPointerEnter={() => setInspected(inspectQuickSlot(state, slot.id))}
+                onPointerLeave={() => setInspected(null)}
+              >
+                <kbd>{slot.binding}</kbd>
+                <span className="cell-glyph">{slot.id === "q" ? "✚" : "⚡"}</span>
+                <b className="cell-charges">{slot.charges}</b>
+                {slot.cooldownShare > 0 ? <i className="cell-cooldown" style={{ height: `${slot.cooldownShare * 100}%` }} /> : null}
               </button>
+            ))}
+          </div>
+
+          <div className="dock-column dock-controls" aria-label="Мышь и перемещение">
+            {hud.slots.map((slot) => (
+              <div
+                key={slot.slot}
+                className={`dock-cell control-cell ${slot.transformed ? "transformed" : ""} ${slot.disabled ? "unavailable" : ""}`}
+                onPointerEnter={() => setInspected(inspectHeroSlot(state, slot.slot))}
+                onPointerLeave={() => setInspected(null)}
+              >
+                <kbd>{slot.binding}</kbd>
+                <strong>{slot.name}</strong>
+                <small>{slot.detail}</small>
+                {slot.cooldownShare > 0 ? <i className="cell-cooldown" style={{ height: `${slot.cooldownShare * 100}%` }} /> : null}
+                {slot.chargeShare > 0 ? <i className="cell-charge" style={{ width: `${slot.chargeShare * 100}%` }} /> : null}
+                {slot.transformed ? <em className="cell-mark" title="Действие заменено сборкой">◆</em> : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="dock-column dock-abilities" aria-label="Способности">
+            {hud.abilities.map((slot) => (
+              <button
+                key={slot.index}
+                type="button"
+                className={`dock-cell ability-cell ${slot.empty ? "empty" : ""} ${slot.ready ? "" : "unavailable"}`}
+                onClick={() => activateAbilitySlot(slot.index)}
+                disabled={!slot.ready}
+                onPointerEnter={() => setInspected(abilityCardFor(slot.index))}
+                onPointerLeave={() => setInspected(null)}
+              >
+                <kbd>{slot.binding}</kbd>
+                <strong>{slot.name}</strong>
+                <small>{slot.detail}</small>
+                {slot.cooldownShare > 0 ? <i className="cell-cooldown" style={{ height: `${slot.cooldownShare * 100}%` }} /> : null}
+              </button>
+            ))}
+          </div>
+
+          {/*
+            Правая сфера показывает ресурс ведущего направления, а пока сборка
+            пуста — дыхание. Приборной доски из шести шкал здесь не будет: на
+            экране только то, чем игрок платит прямо сейчас.
+          */}
+          <div
+            className={`dock-orb orb-resource ${hud.resource.warning ? "warning" : ""}`}
+            style={{ "--fill": `${(hud.resource.visible ? hud.resource.share : hud.breath.share) * 100}%` } as CSSProperties}
+            title={hud.resource.visible ? hud.resource.name : hud.breath.label}
+          >
+            <strong>{hud.resource.visible ? hud.resource.value : hud.breath.value}</strong>
+            <small>{hud.resource.visible ? hud.resource.name : "дых."}</small>
+          </div>
+
+          <div className="dock-bars">
+            <div className={`dock-bar bar-stance ${hud.stance.note ? "warn" : ""}`} title={`Стойка ${hud.stance.value} / ${hud.stance.max}`}>
+              <i style={{ width: `${hud.stance.share * 100}%` }} />
+            </div>
+            {/*
+              Дыхание показывается, только когда сборка им платит: заменённый
+              талантом Shift перестаёт его тратить, и полоса уходит с экрана.
+            */}
+            {hud.breath.relevant ? (
+              <div className={`dock-bar bar-breath ${hud.breath.active ? "draining" : ""}`} title={`Дыхание ${hud.breath.value} / ${hud.breath.max}`}>
+                <i style={{ width: `${hud.breath.share * 100}%` }} />
+              </div>
+            ) : null}
+            <div className="dock-bar bar-xp" title={`Опыт ${hud.experience.value} / ${hud.experience.max}`}>
+              <i style={{ width: `${hud.experience.share * 100}%` }} />
             </div>
           </div>
-          <div className={`meter resource-meter resource-${archetypeDefinition.resourceId} ${overheated ? "overheated" : ""}`}>
-            <i style={{ width: `${resourceShare * 100}%` }} />
-          </div>
-          <div className="resource-caption">
-            <span>
-              {archetype === "heavy_gunner"
-                ? `${Math.round(state.hero.heat)} / ${HEAT_OVERHEAT}${overheated ? " · ПЕРЕГРЕВ" : ""}`
-                : `${resourceSteps} / ${archetypeDefinition.maxResource}`}
-            </span>
-            <small>
-              {controlMode === "manual"
-                ? "ручное управление"
-                : suggestedAction
-                  ? `автоконтур ведёт: ${COMBAT_ACTION_LABELS[suggestedAction]}`
-                  : "режим ждёт условия"}
-            </small>
-          </div>
-          <div className="archetype-abilities">
-            <button type="button" className="ability archetype-ability" onClick={archetypeActionNow} disabled={staggered}>
-              <span className="ability-key">G</span><strong>{ARCHETYPE_ACTIONS[archetype].primary}</strong>
-            </button>
-            <button type="button" className="ability archetype-ability" onClick={archetypeSecondaryNow} disabled={staggered}>
-              <span className="ability-key">H</span><strong>{ARCHETYPE_ACTIONS[archetype].secondary}</strong>
-            </button>
-          </div>
-          <div className="direction-readout" aria-label="Направление билда">
-            {directionPoints.length ? (
-              <ul>
-                {directionPoints.map(([branch, points]) => (
-                  <li key={branch} className={BRANCH_ARCHETYPE_LABEL[branch] === archetypeDefinition.name ? "leading" : ""}>
-                    <span>{SKILL_NAMES[branch]}</span><strong>{points}</strong>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>Очки ещё не вложены: направление определится по дереву талантов.</p>
-            )}
-          </div>
-        </div>
+        </section>
 
-        <div className="consumable-belt" aria-label="Пояс активных расходников">
-          <div className="belt-heading"><span>ПОЛЕВОЙ ПОЯС</span><small>еда остаётся в сумке</small></div>
-          <div className="belt-slots">
-            <button type="button" className="quick-consumable bandage-slot" onClick={firstAidNow} disabled={!bandageEntry}>
-              <kbd>Q</kbd><span className="quick-icon">П</span><strong>Перевязка</strong><small>{bandageEntry ? `${ITEMS[bandageEntry.itemId].shortName} ×${bandageEntry.quantity}` : "пусто"}</small>
-            </button>
-            <button type="button" className="quick-consumable healing-slot" onClick={healingNow} disabled={!healingEntry}>
-              <kbd>2</kbd><span className="quick-icon">+</span><strong>Исцеление</strong><small>{healingEntry ? `${ITEMS[healingEntry.itemId].shortName} ×${healingEntry.quantity}` : "пусто"}</small>
-            </button>
-            <button type="button" className="quick-consumable pills-slot" onClick={pillsNow} disabled={!pillsEntry}>
-              <kbd>3</kbd><span className="quick-icon">●</span><strong>Таблетки</strong><small>{pillsEntry ? `${ITEMS[pillsEntry.itemId].shortName} ×${pillsEntry.quantity}` : "пусто"}</small>
-            </button>
-            <button type="button" className="quick-consumable booster-slot" onClick={boosterNow} disabled={!boosterEntry}>
-              <kbd>4</kbd><span className="quick-icon">↯</span><strong>Бустер</strong><small>{boosterEntry ? `${ITEMS[boosterEntry.itemId].shortName} ×${boosterEntry.quantity}` : "пусто"}</small>
-            </button>
-          </div>
-        </div>
-
-        <div className="menu-cluster" aria-label="Меню персонажа">
-          <button type="button" onClick={() => setActivePanel("character")}><kbd>C</kbd><strong>Персонаж</strong><small>характеристики</small></button>
-          <button type="button" onClick={() => setActivePanel("inventory")}><kbd>I</kbd><strong>Инвентарь</strong><small>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)} кг</small></button>
-          <button type="button" onClick={() => setActivePanel("talents")}><kbd>T</kbd><strong>Таланты</strong><small>{state.hero.generalPoints + state.hero.skillPoints} очк.</small></button>
-        </div>
-
-        <div className="experience-orb" style={{ "--experience": `${experienceProgress}%` } as CSSProperties}>
-          <strong>{state.hero.level}</strong><span>УР.</span><small>{experienceRequired > 0 ? `${state.hero.xp}/${experienceRequired}` : "MAX"}</small>
-        </div>
+        <nav className="hud-screens" aria-label="Экраны">
+          <button type="button" onClick={() => setActivePanel("character")} title="Персонаж"><kbd>C</kbd><span>Персонаж</span></button>
+          <button type="button" onClick={() => setActivePanel("inventory")} title="Инвентарь"><kbd>I</kbd><span>Инвентарь</span></button>
+          <button type="button" onClick={() => setActivePanel("talents")} title="Таланты"><kbd>T</kbd><span>Таланты</span>{state.hero.generalPoints + state.hero.skillPoints > 0 ? <em>{state.hero.generalPoints + state.hero.skillPoints}</em> : null}</button>
+          <button type="button" onClick={() => setActivePanel("map")} title="Карта"><kbd>M</kbd><span>Карта</span></button>
+        </nav>
       </section>
 
-      {characterOpen ? (
-        <div className="game-menu-overlay character-overlay" role="dialog" aria-modal="false" aria-label="Меню персонажа">
-          <div className="character-window character-sheet-window">
-            <header className="menu-window-header">
-              <div><p className="eyebrow">ЛИЧНОЕ ДЕЛО · 556-04</p><h2>Персонаж</h2><p>Сводка характеристик и экипированного комплекта. Мир продолжает жить.</p></div>
-              <nav className="menu-window-tabs"><button type="button" className="active">Персонаж <kbd>C</kbd></button><button type="button" onClick={() => setActivePanel("inventory")}>Инвентарь <kbd>I</kbd></button><button type="button" onClick={() => setActivePanel("talents")}>Таланты <kbd>T</kbd></button></nav>
-              <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть меню">×</button>
+      {/*
+        Персонаж и сумка — один экран. Игрок не должен прыгать между окнами,
+        чтобы увидеть героя и предмет: слева комплект и лист, справа сумка.
+        Клавиши C и I ведут в один и тот же экран, отличается только фокус.
+      */}
+      {characterOpen || inventoryOpen ? (
+        <div className="screen-overlay" role="dialog" aria-modal="false" aria-label="Персонаж и снаряжение">
+          <div className="screen-window">
+            <header className="screen-header">
+              <div className="screen-title">
+                <span>ЛИЧНОЕ ДЕЛО · СБ/556-04</span>
+                <h2>{classTitle}</h2>
+              </div>
+              <nav className="screen-tabs">
+                <button type="button" className="active">Персонаж</button>
+                <button type="button" onClick={() => setActivePanel("talents")}>Таланты<kbd>T</kbd></button>
+                <button type="button" onClick={() => setActivePanel("map")}>Карта<kbd>M</kbd></button>
+              </nav>
+              <button type="button" className="screen-close" onClick={() => setActivePanel(null)} aria-label="Закрыть">✕</button>
             </header>
 
-            <div className="character-sheet-layout">
-              <section className="paperdoll-section character-paperdoll">
-                <div className="sheet-title"><p className="panel-label">ЭКИПИРОВАНО</p><h3>{classTitle}</h3><small>Сотрудник 556-04 · уровень {state.hero.level}</small></div>
-                <div className="paperdoll">
-                  <div className="doll-silhouette"><i className="doll-head" /><i className="doll-body" /><i className="doll-arm left" /><i className="doll-arm right" /><i className="doll-leg left" /><i className="doll-leg right" /></div>
-                  {PAPERDOLL_SLOTS.map((slot) => {
-                    const entry = equippedEntry(state, slot);
-                    const item = entry ? ITEMS[entry.itemId] : null;
+            <div className="sheet-layout">
+              {/* --- Левая колонка: кто это и что на нём надето ------------- */}
+              <section className="sheet-left">
+                <div className="doll-frame">
+                  <div className="doll-column">
+                    {(["head", "body", "hands", "feet"] as GearSlot[]).map((slot) => renderGearSlot(slot))}
+                  </div>
+                  <div className="doll-figure">
+                    {/*
+                      Фигура — тот же снаряжённый обходчик, что и в мире:
+                      капюшон, ремни, рюкзак. Контурная, а не залитая: это
+                      схема снаряжения, а не портрет.
+                    */}
+                    <svg viewBox="0 0 120 220" aria-hidden="true">
+                      <ellipse cx="60" cy="206" rx="30" ry="8" fill="#0d0f0b" opacity="0.7" />
+                      <g fill="none" stroke="#8d9680" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round">
+                        <path d="M 60 30 Q 46 32 46 46 L 46 56 Q 60 64 74 56 L 74 46 Q 74 32 60 30 Z" />
+                        <path d="M 60 22 Q 44 24 43 42" strokeWidth="2.2" stroke="#a8b298" />
+                        <path d="M 60 22 Q 76 24 77 42" strokeWidth="2.2" stroke="#a8b298" />
+                        <path d="M 46 60 L 38 74 L 34 128 L 44 128 L 46 96" />
+                        <path d="M 74 60 L 82 74 L 86 128 L 76 128 L 74 96" />
+                        <rect x="45" y="60" width="30" height="66" rx="4" />
+                        <path d="M 45 88 L 75 88" stroke="#c9a45a" strokeWidth="2.4" />
+                        <path d="M 50 96 L 50 104 M 70 96 L 70 104" stroke="#c9a45a" strokeWidth="1.4" />
+                        <path d="M 48 126 L 46 176 L 44 196 L 56 196 L 58 150" />
+                        <path d="M 72 126 L 74 176 L 76 196 L 64 196 L 62 150" />
+                        <path d="M 78 62 L 90 68 L 92 104 L 80 100 Z" stroke="#6f7a66" />
+                      </g>
+                    </svg>
+                    <div className="doll-vitals">
+                      <span><small>ОЗ</small><strong>{hud.health.value} / {hud.health.max}</strong></span>
+                      <span><small>Уровень</small><strong>{state.hero.level}</strong></span>
+                    </div>
+                  </div>
+                  <div className="doll-column">
+                    {(["weapon", "offhand", "back", "artifact"] as GearSlot[]).map((slot) => renderGearSlot(slot))}
+                  </div>
+                </div>
+
+                {/*
+                  Руки показываются отдельно и всегда: пара — не сумма двух
+                  предметов, а способ работы. Двуручное занимает оба слота
+                  явно, а не молча блокирует второй.
+                */}
+                <div className={`hands-panel ${hands.twoHanded ? "two-handed" : ""}`}>
+                  <div className="hands-row">
+                    <div className="hand-side">
+                      <small>ПРАВАЯ РУКА</small>
+                      <strong>{hands.primary?.name ?? "пусто"}</strong>
+                      <em>{hands.primary?.detail ?? "—"}</em>
+                    </div>
+                    <div className="hand-link">{hands.twoHanded ? "⟷" : "+"}</div>
+                    <div className="hand-side">
+                      <small>ЛЕВАЯ РУКА</small>
+                      <strong>{hands.twoHanded ? "занята двуручным" : hands.secondary?.name ?? "свободна"}</strong>
+                      <em>{hands.twoHanded ? "оба слота на одном оружии" : hands.secondary?.detail ?? "слот простаивает"}</em>
+                    </div>
+                  </div>
+                  <div className="hands-result">
+                    <span>СОЧЕТАНИЕ</span>
+                    <strong>{hands.combination.name}</strong>
+                    <p>{hands.combination.summary}</p>
+                  </div>
+                </div>
+
+                {/*
+                  Режим управления — свойство сборки, а не боевая кнопка: на
+                  HUD ему места нет, но и выкидывать работающую механику
+                  нельзя. Переключатель живёт здесь, рядом с характеристиками.
+                */}
+                <div className="control-mode-row">
+                  <div>
+                    <small>РЕЖИМ УПРАВЛЕНИЯ</small>
+                    <strong>{controlModeFor(state) === "manual" ? "Ручной" : "Автоконтур"}</strong>
+                  </div>
+                  <button type="button" onClick={cycleControlMode}>переключить</button>
+                </div>
+
+                <div className="attribute-strip">
+                  {attributeLines(state).map((line) => (
+                    <span key={line.label}><small>{line.label}</small><strong>{line.value}</strong></span>
+                  ))}
+                  {state.hero.attributePoints > 0 ? <em>{state.hero.attributePoints} очк.</em> : null}
+                </div>
+              </section>
+
+              {/* --- Средняя колонка: лист персонажа ------------------------ */}
+              <section className="sheet-stats">
+                {characterGroups(state).map((group) => (
+                  <div key={group.id} className={`stat-group group-${group.id}`}>
+                    <h4>{group.title}</h4>
+                    <dl>
+                      {group.lines.map((line, index) => (
+                        <div key={`${line.label}-${index}`}>
+                          <dt>{line.label}</dt>
+                          <dd>{line.value}{line.note ? <i>{line.note}</i> : null}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+              </section>
+
+              {/* --- Правая колонка: сумка --------------------------------- */}
+              <section className="sheet-bag">
+                <div className="bag-head">
+                  <span>СУМКА</span>
+                  <strong className={carriedWeight > weightLimit ? "overloaded" : ""}>
+                    {carriedWeight.toFixed(1)} / {weightLimit.toFixed(0)} кг
+                  </strong>
+                </div>
+                <div className="carry-meter"><i style={{ width: `${Math.min(100, (carriedWeight / weightLimit) * 100)}%` }} /></div>
+                <div className="bag-grid">
+                  {sortedInventory.map((entry) => {
+                    const item = ITEMS[entry.itemId];
+                    const equipped = Object.values(state.hero.equipment).includes(entry.instanceId);
                     return (
-                      <button key={slot} type="button" className={`gear-slot slot-${slot} ${entry ? "filled" : "empty"} ${item?.rarity === "legendary" ? "legendary" : ""}`} onClick={() => setActivePanel("inventory")}>
-                        <small>{SLOT_NAMES[slot]}</small><strong>{item?.shortName ?? "Пусто"}</strong>{entry ? <em className={conditionTone(entry.condition)}>{Math.round(entry.condition)}%</em> : null}
+                      <button
+                        key={entry.instanceId}
+                        type="button"
+                        className={`bag-cell rarity-${item.rarity ?? "common"} ${equipped ? "equipped" : ""}`}
+                        onClick={() => setState((current) => (item.slot
+                          ? equipItem(current, entry.instanceId)
+                          : item.kind === "consumable" ? consumeInventoryItem(current, entry.instanceId) : current))}
+                        onPointerEnter={() => inspectItemNow(entry.itemId, entry.quantity, entry.condition)}
+                        onPointerLeave={() => clearInspect()}
+                      >
+                        <span className="bag-glyph">{itemGlyph(entry)}</span>
+                        {entry.quantity > 1 ? <b>{entry.quantity}</b> : null}
+                        {equipped ? <i className="bag-equipped" title="Надето" /> : null}
                       </button>
                     );
                   })}
-                  <div className={`gear-slot slot-drone ${branchPoints.suppression >= 1 ? "unlocked" : ""}`}><small>Спутник</small><strong>{branchPoints.suppression >= 1 ? "Рембот Р-3" : "Не допущен"}</strong></div>
-                </div>
-              </section>
-
-              <section className="character-ledger">
-                <div className="identity-banner">
-                  <div className="qualification-ring"><strong>{state.hero.level}</strong><span>уровень</span></div>
-                  <div><p className="panel-label">ТЕКУЩИЙ АРХЕТИП</p><h3>{classTitle}</h3><span>{combatDirective === "mobileFire" ? "Мобильный огонь" : combatDirective === "splashGuard" ? "Силовой периметр" : "Адаптивный автоконтур"}</span></div>
-                  <div className="point-wallets compact-wallets"><span><small>Общие</small><strong>{state.hero.generalPoints}</strong></span><span><small>Проф.</small><strong>{state.hero.skillPoints}</strong></span><span><small>Атрибуты</small><strong>{state.hero.attributePoints}</strong></span></div>
-                </div>
-
-                <div className="ledger-columns">
-                  <div className="stat-ledger-card offense"><p className="panel-label">НАСТУПЛЕНИЕ</p><dl><div><dt>Урон</dt><dd>{heroAttackDamage(state)}</dd></div><div><dt>Дальность</dt><dd>{heroAttackRange(state).toFixed(1)}</dd></div><div><dt>Интервал атаки</dt><dd>{(heroAttackCooldown(state) / 1000).toFixed(2)} с</dd></div><div><dt>Оружие</dt><dd>{weapon.shortName}</dd></div></dl></div>
-                  <div className="stat-ledger-card defense"><p className="panel-label">ЗАЩИТА</p><dl><div><dt>Здоровье</dt><dd>{state.hero.hp}/{heroMaxHp}</dd></div><div><dt>Защита</dt><dd>{heroDefense(state)}</dd></div><div><dt>Скорость</dt><dd>{heroMoveSpeed(state).toFixed(1)}</dd></div><div><dt>Гермоконтур</dt><dd>{hermeticSafe ? "внутри" : "снаружи"}</dd></div><div><dt>Самосбор</dt><dd>{samosborPhaseLabel(samosborPhase).toLowerCase()}</dd></div></dl></div>
-                  <div className="stat-ledger-card survival"><p className="panel-label">СОСТОЯНИЕ</p><dl><div><dt>Стресс</dt><dd>{Math.round(state.hero.stress)}%</dd></div><div><dt>Заражение</dt><dd>{Math.round(state.hero.contamination)}%</dd></div><div><dt>Груз</dt><dd>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)}</dd></div><div><dt>Автопротоколы</dt><dd>{unlockedSkills.length}</dd></div></dl></div>
-                </div>
-
-                <section className="attribute-ledger">
-                  <div className="section-heading-inline"><div><p className="panel-label">БАЗОВЫЕ ХАРАКТЕРИСТИКИ</p><h3>Распределение атрибутов</h3></div><strong>{state.hero.attributePoints} свободно</strong></div>
-                  <div className="attribute-row character-attributes">
-                    {ATTRIBUTE_OPTIONS.map(({ id, label }) => (
-                      <span key={id}><small>{label}</small><strong>{effectiveAttribute(state, id)}</strong><em>база {state.hero.attributes[id]}</em><button type="button" disabled={state.hero.attributePoints <= 0} onClick={() => setState((current) => allocateAttribute(current, id))}>+</button></span>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="condition-ledger">
-                  <div><p className="panel-label">ТРАВМЫ И ЭФФЕКТЫ</p>{injuries.length ? <ul className="character-injuries">{injuries.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="clean-status">Критических повреждений нет.</p>}</div>
-                  <div className="qualification-track"><div><span>Стажёр</span><span>Специалист</span><span>Доктрина</span><span>Главный</span><span>50</span></div><i><b style={{ width: `${Math.min(100, (state.hero.level / 50) * 100)}%` }} /></i><small>{experienceRequired > 0 ? `${state.hero.xp} / ${experienceRequired} опыта` : "Основная квалификация завершена"}</small></div>
-                </section>
-              </section>
-            </div>
-            <footer><button type="button" className="reset-character" onClick={resetGame}>Сбросить прототип</button><button type="button" className="close-main" onClick={() => setActivePanel(null)}>Вернуться в локацию</button></footer>
-          </div>
-        </div>
-      ) : null}
-
-      {inventoryOpen ? (
-        <div className="game-menu-overlay character-overlay" role="dialog" aria-modal="false" aria-label="Инвентарь">
-          <div className="character-window inventory-window-v2">
-            <header className="menu-window-header">
-              <div><p className="eyebrow">СНАБЖЕНИЕ · РД-54</p><h2>Инвентарь</h2><p>Экипировка, медицинские подсумки, провиант и служебный груз.</p></div>
-              <nav className="menu-window-tabs"><button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button><button type="button" className="active">Инвентарь <kbd>I</kbd></button><button type="button" onClick={() => setActivePanel("talents")}>Таланты <kbd>T</kbd></button></nav>
-              <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть инвентарь">×</button>
-            </header>
-
-            <div className="inventory-layout-v2">
-              <section className="inventory-loadout-panel">
-                <div className="section-heading-inline"><div><p className="panel-label">КОМПЛЕКТ</p><h3>Надето на персонажа</h3></div><button type="button" onClick={() => setActivePanel("character")}>Характеристики</button></div>
-                <div className="paperdoll inventory-paperdoll">
-                  <div className="doll-silhouette"><i className="doll-head" /><i className="doll-body" /><i className="doll-arm left" /><i className="doll-arm right" /><i className="doll-leg left" /><i className="doll-leg right" /></div>
-                  {PAPERDOLL_SLOTS.map((slot) => {
-                    const entry = equippedEntry(state, slot);
-                    const item = entry ? ITEMS[entry.itemId] : null;
-                    return <div key={slot} className={`gear-slot slot-${slot} ${entry ? "filled" : "empty"} ${item?.rarity === "legendary" ? "legendary" : ""}`}><small>{SLOT_NAMES[slot]}</small><strong>{item?.shortName ?? "Пусто"}</strong>{entry ? <em className={conditionTone(entry.condition)}>{Math.round(entry.condition)}%</em> : null}</div>;
-                  })}
-                </div>
-                <div className="loadout-summary"><span><small>Урон</small><strong>{heroAttackDamage(state)}</strong></span><span><small>Защита</small><strong>{heroDefense(state)}</strong></span><span><small>ОЗ</small><strong>{heroMaxHp}</strong></span><span><small>Груз</small><strong>{carriedWeight.toFixed(1)}/{weightLimit.toFixed(0)}</strong></span></div>
-              </section>
-
-              <section className="backpack-panel">
-                <div className="inventory-heading"><div><p className="panel-label">СУМКА</p><h3>Рюкзак и добыча</h3></div><strong className={carriedWeight > weightLimit ? "overloaded" : ""}>{carriedWeight.toFixed(1)} / {weightLimit.toFixed(1)} кг</strong></div>
-                <div className="carry-meter"><i style={{ width: `${Math.min(100, (carriedWeight / weightLimit) * 100)}%` }} /></div>
-
-                <div className="inventory-compartments">
-                  <section className="bag-compartment equipment-compartment"><div className="compartment-title"><span>СНАРЯЖЕНИЕ</span><small>{equipmentInventory.length} предметов</small></div><div className="inventory-grid-v2">{equipmentInventory.length ? equipmentInventory.map((entry) => renderInventoryCard(entry)) : <p className="empty-compartment">Отсек пуст.</p>}</div></section>
-
-                  <section className="bag-compartment medical-compartment"><div className="compartment-title"><span>МЕДИЦИНСКИЙ ПОДСУМОК</span><small>быстрые ячейки Q · 2 · 3 · 4</small></div><div className="pouch-grid">{medicineInventory.length ? medicineInventory.map((entry) => renderInventoryCard(entry, true)) : <p className="empty-compartment">Медицинские запасы израсходованы.</p>}</div></section>
-
-                  <section className="bag-compartment food-compartment"><div className="compartment-title"><span>ПРОВИАНТ</span><small>хранится в сумке, не занимает активный пояс</small></div><div className="pouch-grid food-grid">{foodInventory.length ? foodInventory.map((entry) => renderInventoryCard(entry, true)) : <p className="empty-compartment">Провианта нет.</p>}</div></section>
-
-                  <section className="bag-compartment service-compartment"><div className="compartment-title"><span>СЕРВИС И МАТЕРИАЛЫ</span><small>{serviceInventory.length + utilityInventory.length} позиций</small></div><div className="pouch-grid">{[...serviceInventory, ...utilityInventory].length ? [...serviceInventory, ...utilityInventory].map((entry) => renderInventoryCard(entry, true)) : <p className="empty-compartment">Служебный отсек пуст.</p>}</div></section>
-                </div>
-              </section>
-            </div>
-            <footer><button type="button" className="reset-character" onClick={resetGame}>Сбросить прототип</button><button type="button" className="close-main" onClick={() => setActivePanel(null)}>Вернуться в локацию</button></footer>
-          </div>
-        </div>
-      ) : null}
-
-
-      {talentsOpen ? (
-        <div className="game-menu-overlay character-overlay talent-overlay" role="dialog" aria-modal="false" aria-label="Панель талантов">
-          <div className="character-window talent-window-wow">
-            <header className="menu-window-header">
-              <div><p className="eyebrow">КВАЛИФИКАЦИОННАЯ СЕТКА</p><h2>Таланты и направления</h2><p>Общее дерево без классов: направления слева, ранги по центру, подробности справа. Специализация проявляется из вложенных очков.</p></div>
-              <nav className="menu-window-tabs"><button type="button" onClick={() => setActivePanel("character")}>Персонаж <kbd>C</kbd></button><button type="button" onClick={() => setActivePanel("inventory")}>Инвентарь <kbd>I</kbd></button><button type="button" className="active">Таланты <kbd>T</kbd></button></nav>
-              <button type="button" className="close-character" onClick={() => setActivePanel(null)} aria-label="Закрыть таланты">×</button>
-            </header>
-
-            <div className="wow-talent-layout">
-              <aside className="talent-branch-rail">
-                <div className="talent-wallet"><span><small>Общий контур</small><strong>{state.hero.generalPoints}</strong></span><span><small>Профессиональный</small><strong>{state.hero.skillPoints}</strong></span></div>
-                <button type="button" className={talentView === "core" ? "active" : ""} onClick={() => chooseTalentView("core")}><span>•</span><div><strong>Общий контур</strong><small>выживание и логистика</small></div></button>
-                {SKILL_BRANCHES.map((branch) => <button key={branch} type="button" className={`${talentView === branch ? "active" : ""} branch-${branch}`} onClick={() => chooseTalentView(branch)}><span>{branchGlyph(branch)}</span><div><strong>{SKILL_NAMES[branch]}</strong><small>{branchPoints[branch]} вложено</small></div></button>)}
-                <button type="button" className={talentView === "hybrid" ? "active" : ""} onClick={() => chooseTalentView("hybrid")}><span>×</span><div><strong>Совмещённые</strong><small>связки двух ветвей</small></div></button>
-                <button type="button" className={`${talentView === "legendary" ? "active" : ""} legendary-tab`} onClick={() => chooseTalentView("legendary")}><span>✦</span><div><strong>Легендарные</strong><small>{state.hero.discoveredTalents.length}/4 открыто</small></div></button>
-              </aside>
-
-              <section className={`wow-tree-panel branch-surface-${talentView}`}>
-                <div className="wow-tree-heading">
-                  <div><p className="panel-label">{talentView === "core" ? "ОБЩИЙ КОНТУР" : talentView === "hybrid" ? "СОВМЕЩЁННЫЕ ДОПУСКИ" : talentView === "legendary" ? "ВНЕШНЕЕ КОЛЬЦО" : SKILL_NAMES[talentView as SkillBranch]}</p><h3>{talentView === "core" ? "Базовая подготовка" : talentView === "hybrid" ? "Пересечение специализаций" : talentView === "legendary" ? "Уникальные протоколы" : SKILL_DESCRIPTIONS[talentView as SkillBranch]}</h3></div>
-                  <div className="archetype-readout"><small>Автоконтур</small><strong>{combatDirective === "mobileFire" ? "Мобильный огонь" : combatDirective === "splashGuard" ? "Силовой периметр" : "Адаптивный"}</strong><span>{unlockedSkills.length} активных протоколов</span></div>
-                </div>
-
-                {SKILL_BRANCHES.includes(talentView as SkillBranch) ? <div className="wow-thresholds"><span className={branchPoints[talentView as SkillBranch] >= 1 ? "reached" : ""}>Навык · 1</span><span className={branchPoints[talentView as SkillBranch] >= 4 ? "reached" : ""}>Связка · 4</span><span className={branchPoints[talentView as SkillBranch] >= 8 ? "reached" : ""}>Гибрид · 8</span><span className={branchPoints[talentView as SkillBranch] >= 12 ? "reached" : ""}>Доктрина · 12</span><span className={branchPoints[talentView as SkillBranch] >= 16 ? "reached" : ""}>Ключ · 16</span></div> : null}
-
-                <div className="wow-tier-list">
-                  {talentTiers.map((tier) => (
-                    <section key={tier} className="wow-tier-row">
-                      <div className="tier-label"><small>РАНГ</small><strong>{tier}</strong></div>
-                      <div className="tier-node-grid">
-                        {selectedTalents.filter((node) => node.tier === tier).map((node) => {
-                          const active = state.hero.talents.includes(node.id);
-                          const discovered = node.scope !== "legendary" || state.hero.discoveredTalents.includes(node.id);
-                          const available = canAllocateTalent(state, node.id);
-                          return (
-                            <button key={node.id} type="button" className={`wow-talent-node kind-${node.kind} ${active ? "active" : ""} ${available ? "available" : ""} ${selectedTalent?.id === node.id ? "selected" : ""} ${!discovered ? "undiscovered" : ""}`} onClick={() => setSelectedTalentId(node.id)}>
-                              <span className="wow-node-glyph">{node.scope === "legendary" ? "✦" : node.scope === "hybrid" ? "×" : node.scope === "core" ? "•" : branchGlyph(node.scope)}</span>
-                              <div><small>{active ? "ОСВОЕНО" : !discovered ? "НЕИЗВЕСТНО" : `${node.kind} · ${node.cost} очк.`}</small><strong>{discovered ? node.name : "Запись отсутствует"}</strong><p>{discovered ? node.description : "Источник протокола ещё не обнаружен."}</p></div>
-                              <i>{active ? "✓" : available ? "+" : "·"}</i>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
+                  {Array.from({ length: Math.max(0, 40 - sortedInventory.length) }).map((_, index) => (
+                    <span key={`empty-${index}`} className="bag-cell empty" />
                   ))}
                 </div>
+                <p className="bag-hint">ЛКМ по предмету — надеть или применить. Наведение — свойства и сравнение.</p>
               </section>
 
-              <aside className="talent-inspector">
-                {selectedTalent ? (() => {
-                  const active = state.hero.talents.includes(selectedTalent.id);
-                  const discovered = selectedTalent.scope !== "legendary" || state.hero.discoveredTalents.includes(selectedTalent.id);
-                  const available = canAllocateTalent(state, selectedTalent.id);
-                  return <>
-                    <div className="inspector-glyph">{selectedTalent.scope === "legendary" ? "✦" : selectedTalent.scope === "hybrid" ? "×" : selectedTalent.scope === "core" ? "•" : branchGlyph(selectedTalent.scope)}</div>
-                    <p className="panel-label">ВЫБРАННЫЙ ТАЛАНТ</p><h3>{discovered ? selectedTalent.name : "Неизвестный протокол"}</h3><p>{discovered ? selectedTalent.description : "Запись появится после сюжетной награды, редкого босса или легендарного предмета."}</p>
-                    <dl><div><dt>Тип</dt><dd>{selectedTalent.kind}</dd></div><div><dt>Ранг</dt><dd>{selectedTalent.tier}</dd></div><div><dt>Стоимость</dt><dd>{selectedTalent.cost}</dd></div>{selectedTalent.requiredBranchPoints ? <div><dt>Требование</dt><dd>{selectedTalent.requiredBranchPoints} очк. ветви</dd></div> : null}{selectedTalent.pair ? <div><dt>Гибрид</dt><dd>{SKILL_NAMES[selectedTalent.pair[0]]} + {SKILL_NAMES[selectedTalent.pair[1]]}</dd></div> : null}</dl>
-                    <button type="button" className={`learn-talent ${active ? "learned" : ""}`} disabled={!available} onClick={() => setState((current) => allocateTalent(current, selectedTalent.id))}>{active ? "Освоено" : available ? `Освоить за ${selectedTalent.cost}` : "Недостаточный допуск"}</button>
-                  </>;
-                })() : <p>Выберите узел дерева.</p>}
-
-                <section className="autocast-mini-panel"><div><p className="panel-label">АВТОМАТИЧЕСКИЕ НАВЫКИ</p><strong>{unlockedSkills.length} / {Object.keys(ACTIVE_SKILLS).length}</strong></div><ul>{unlockedSkills.slice(0, 6).map((skillId) => <li key={skillId}><span>{branchGlyph(ACTIVE_SKILLS[skillId].branch)}</span><div><strong>{ACTIVE_SKILLS[skillId].name}</strong><small>{autocastConditionLabel(skillId)}</small></div></li>)}</ul>{unlockedSkills.length > 6 ? <small>Ещё {unlockedSkills.length - 6} протоколов работают в фоне.</small> : null}</section>
+              {/* --- Сравнение: то, ради чего вообще открывают сумку -------- */}
+              <aside className="sheet-inspect">
+                {inspected ? <InspectCardView card={inspected} /> : (
+                  <div className="inspect-idle">
+                    <span>ОСМОТР</span>
+                    <p>Наведите на предмет, чтобы увидеть его свойства, сравнение с надетым и то, как изменится связка рук.</p>
+                  </div>
+                )}
+                {comparison ? (
+                  <div className="comparison-card">
+                    <header>
+                      <span>СРАВНЕНИЕ</span>
+                      <strong>{comparison.currentName ?? "пустой слот"} → {comparison.candidateName}</strong>
+                    </header>
+                    {comparison.combination ? (
+                      <div className={`comparison-combination ${comparison.combination.from === comparison.combination.to ? "unchanged" : ""}`}>
+                        <small>СОЧЕТАНИЕ РУК</small>
+                        {comparison.combination.from === comparison.combination.to ? (
+                          <p><b>{comparison.combination.to}</b> — не меняется</p>
+                        ) : (
+                          <p><s>{comparison.combination.from}</s> <i>→</i> <b>{comparison.combination.to}</b></p>
+                        )}
+                        <em>{comparison.combination.note}</em>
+                      </div>
+                    ) : null}
+                    <table>
+                      <tbody>
+                        {comparison.rows.map((row) => (
+                          <tr key={row.label} className={row.direction > 0 ? "better" : row.direction < 0 ? "worse" : ""}>
+                            <th>{row.label}</th>
+                            <td>{row.current}</td>
+                            <td className="arrow">→</td>
+                            <td>{row.candidate}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
               </aside>
             </div>
-            <footer><span>{state.hero.talents.length} / {BASE_TALENT_COUNT + 4} узлов освоено</span><button type="button" className="close-main" onClick={() => setActivePanel(null)}>Вернуться в локацию</button></footer>
+          </div>
+        </div>
+      ) : null}
+
+      {/*
+        Дерево талантов: ОДНО дерево с шестью направлениями, а не выбор класса.
+        Ядро в центре, лучи расходятся от него, между соседними лучами стоят
+        гибридные узлы, физически связанные с обоими направлениями. Перемычки
+        нарисованы отдельным цветом: именно они делают дерево одним.
+      */}
+      {/*
+        Карта: план текущего этажа и вертикальная сводка кластера. Раньше
+        навигация по этажам жила полосой поверх боевого экрана и отъедала у
+        мира верхнюю кромку — теперь у неё собственный экран.
+      */}
+      {mapOpen ? (
+        <div className="screen-overlay" role="dialog" aria-modal="false" aria-label="Карта">
+          <div className="screen-window">
+            <header className="screen-header">
+              <div className="screen-title">
+                <span>НАВИГАЦИЯ · ГИГАХРУЩЁВКА</span>
+                <h2>{map.name}</h2>
+              </div>
+              <nav className="screen-tabs">
+                <button type="button" onClick={() => setActivePanel("character")}>Персонаж<kbd>C</kbd></button>
+                <button type="button" onClick={() => setActivePanel("talents")}>Таланты<kbd>T</kbd></button>
+                <button type="button" className="active">Карта</button>
+              </nav>
+              <button type="button" className="screen-close" onClick={() => setActivePanel(null)} aria-label="Закрыть">✕</button>
+            </header>
+
+            <div className="map-layout">
+              <aside className="map-side">
+                <div className="map-plate">
+                  <span>ТЕКУЩИЙ СЕКТОР</span>
+                  <strong>{map.name}</strong>
+                  <p>{map.subtitle}</p>
+                </div>
+                <div className="map-plate">
+                  <span>ЗАДАНИЕ</span>
+                  <strong>{hud.objective.title}</strong>
+                </div>
+                <ul className="map-legend">
+                  <li><i className="mm mm-hero" /> герой</li>
+                  <li><i className="mm mm-enemy" /> противник</li>
+                  <li><i className="mm mm-npc" /> житель</li>
+                  <li><i className="mm mm-loot" /> добыча</li>
+                  <li><i className="mm mm-link" /> переход</li>
+                  <li><i className="mm mm-dark" /> не разведано</li>
+                </ul>
+              </aside>
+
+              <div className="map-plan">
+                <div
+                  className="plan-grid"
+                  style={{
+                    gridTemplateColumns: `repeat(${floorPlan.width}, 1fr)`,
+                    aspectRatio: `${floorPlan.width} / ${Math.max(1, Math.ceil(floorPlan.cells.length / Math.max(1, floorPlan.width)))}`,
+                  }}
+                >
+                  {floorPlan.cells.map((cell) => (
+                    <i key={`${cell.x}:${cell.y}`} className={minimapClass(cell)} title={`${cell.x}:${cell.y}`} />
+                  ))}
+                </div>
+              </div>
+
+              <aside className="map-cluster">
+                <div className="cluster-head"><span>КЛАСТЕР</span><small>{cluster.nodes.filter((node) => node.discovered).length} / {cluster.nodes.length} открыто</small></div>
+                <ul className="cluster-list">
+                  {cluster.nodes.map((node) => (
+                    <li key={node.id} className={`cluster-node ${node.current ? "current" : ""} ${node.discovered ? "" : "unknown"} kind-${node.kind}`}>
+                      <div>
+                        <strong>{node.discovered ? node.label : "Сектор не разведан"}</strong>
+                        <small>
+                          {node.current
+                            ? "вы здесь"
+                            : node.communication
+                              ? `связь: ${COMMUNICATION_LABELS[node.communication]}`
+                              : "нет узла перемещения"}
+                        </small>
+                      </div>
+                      {node.travelNodeId ? (
+                        <button
+                          type="button"
+                          disabled={!node.travelAvailable || node.current}
+                          title={node.travelReason}
+                          onClick={() => setState((current) => commandFastTravel(current, node.travelNodeId!))}
+                        >
+                          {node.current ? "здесь" : "перейти"}
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                <p className="tree-note">
+                  Быстрое перемещение работает только между разведанными узлами
+                  с исправной связью. Мир продолжает жить, пока карта открыта.
+                </p>
+              </aside>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {talentsOpen && tree ? (
+        <div className="screen-overlay" role="dialog" aria-modal="false" aria-label="Дерево талантов">
+          <div className="screen-window">
+            <header className="screen-header">
+              <div className="screen-title">
+                <span>ОБЩЕЕ ДЕРЕВО · КЛАССОВ НЕТ</span>
+                <h2>Таланты</h2>
+              </div>
+              <nav className="screen-tabs">
+                <button type="button" onClick={() => setActivePanel("character")}>Персонаж<kbd>C</kbd></button>
+                <button type="button" className="active">Таланты</button>
+                <button type="button" onClick={() => setActivePanel("map")}>Карта<kbd>M</kbd></button>
+              </nav>
+              <button type="button" className="screen-close" onClick={() => setActivePanel(null)} aria-label="Закрыть">✕</button>
+            </header>
+
+            <div className="tree-layout">
+              <aside className="tree-directions">
+                <div className="points-plate">
+                  <span>ОЧКИ</span>
+                  <strong>{state.hero.generalPoints + state.hero.skillPoints}</strong>
+                  <small>{state.hero.talents.length} узлов освоено</small>
+                </div>
+                <ul className="direction-list">
+                  {(Object.keys(DIRECTION_ANGLES) as SkillBranch[]).map((branch) => (
+                    <li key={branch} className={`direction-row dir-${branch}`}>
+                      <i />
+                      <span>{SKILL_NAMES[branch]}</span>
+                      <strong>{branchPoints[branch] ?? 0}</strong>
+                    </li>
+                  ))}
+                </ul>
+                <p className="tree-note">
+                  Архетип не выбирается: он читается по тому, куда вложено больше очков.
+                  Перемычки между направлениями открывают гибридные узлы.
+                </p>
+              </aside>
+
+              <div className="tree-canvas">
+                <svg viewBox={`0 0 ${tree.size} ${tree.size}`} role="img" aria-label="Дерево талантов">
+                  <defs>
+                    <radialGradient id="tree-core-glow">
+                      <stop offset="0%" stopColor="rgba(240, 212, 137, 0.22)" />
+                      <stop offset="100%" stopColor="rgba(240, 212, 137, 0)" />
+                    </radialGradient>
+                  </defs>
+                  <circle cx={tree.size / 2} cy={tree.size / 2} r={230} fill="url(#tree-core-glow)" />
+                  <circle cx={tree.size / 2} cy={tree.size / 2} r={34} fill="#1b1e16" stroke="#c9a45a" strokeWidth="2" />
+                  <text x={tree.size / 2} y={tree.size / 2 + 5} textAnchor="middle" className="tree-core-mark">✶</text>
+
+                  {tree.links.map((edge) => (
+                    <line
+                      key={edge.id}
+                      className={`tree-link ${edge.active ? "active" : ""} ${edge.cross ? "cross" : ""}`}
+                      x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2}
+                    />
+                  ))}
+
+                  {(Object.keys(DIRECTION_ANGLES) as SkillBranch[]).map((branch) => {
+                    const angle = (DIRECTION_ANGLES[branch] * Math.PI) / 180;
+                    const x = tree.size / 2 + Math.cos(angle) * 476;
+                    const y = tree.size / 2 + Math.sin(angle) * 476;
+                    return (
+                      <text key={branch} x={x} y={y} textAnchor="middle" className={`tree-direction-label dir-${branch}`}>
+                        {SKILL_NAMES[branch].toUpperCase()}
+                      </text>
+                    );
+                  })}
+
+                  {tree.nodes.map((node) => (
+                    <g
+                      key={node.id}
+                      className={`tree-node scope-${node.scope} ${node.branch ? `dir-${node.branch}` : ""} ${node.taken ? "taken" : node.available ? "available" : "locked"} ${selectedTalentId === node.id ? "selected" : ""} ${node.keystone ? "keystone" : ""} ${node.transforms ? "transforms" : ""}`}
+                      onClick={() => setSelectedTalentId(node.id)}
+                      onPointerEnter={() => setInspected(inspectTalentNode(state, node.id))}
+                      onPointerLeave={() => setInspected(null)}
+                      role="button"
+                      aria-label={node.discovered ? node.name : "Неизвестный протокол"}
+                    >
+                      {node.keystone ? (
+                        <rect x={node.x - 15} y={node.y - 15} width="30" height="30" transform={`rotate(45 ${node.x} ${node.y})`} />
+                      ) : (
+                        <circle cx={node.x} cy={node.y} r={node.scope === "hybrid" ? 13 : node.scope === "legendary" ? 14 : node.tier >= 3 ? 12 : 10} />
+                      )}
+                      {node.transforms ? <text x={node.x} y={node.y + 4} textAnchor="middle" className="node-mark">◆</text> : null}
+                      {node.keystone ? <text x={node.x} y={node.y + 4} textAnchor="middle" className="node-mark">✶</text> : null}
+                    </g>
+                  ))}
+                </svg>
+              </div>
+
+              <aside className="tree-inspector">
+                {selectedTalent ? (() => {
+                  const card = inspectTalentNode(state, selectedTalent.id);
+                  const active = state.hero.talents.includes(selectedTalent.id);
+                  const available = canAllocateTalent(state, selectedTalent.id);
+                  return (
+                    <>
+                      {card ? <InspectCardView card={card} /> : null}
+                      <button
+                        type="button"
+                        className={`learn-node ${active ? "learned" : ""}`}
+                        disabled={!available}
+                        onClick={() => setState((current) => allocateTalent(current, selectedTalent.id))}
+                      >
+                        {active ? "Освоено" : available ? `Освоить за ${selectedTalent.cost}` : "Недостаточный допуск"}
+                      </button>
+                    </>
+                  );
+                })() : <div className="inspect-idle"><span>УЗЕЛ</span><p>Выберите узел дерева.</p></div>}
+
+                {/*
+                  Модель простая: дерево открывает способность, здесь она
+                  становится известной, а панель 1 · 2 · 3 определяет, что из
+                  известного лежит под рукой.
+                */}
+                <section className="abilities-panel">
+                  <div className="abilities-head">
+                    <span>ОСВОЕННЫЕ СПОСОБНОСТИ</span>
+                    <strong>{abilities.length}</strong>
+                  </div>
+                  {abilities.length ? (
+                    <ul className="abilities-list">
+                      {abilities.map((ability) => (
+                        <li
+                          key={ability.id}
+                          className={ability.equippedSlot !== null ? "equipped" : ""}
+                          onPointerEnter={() => setInspected(inspectAbility({
+                            name: ability.name,
+                            binding: ability.equippedSlot !== null ? `${ability.equippedSlot + 1}` : "не назначена",
+                            description: ACTIVE_SKILLS[ability.id].description,
+                            targeting: "выбранная цель",
+                            cooldownMs: ability.cooldownMs,
+                          }))}
+                          onPointerLeave={() => setInspected(null)}
+                        >
+                          <div><strong>{ability.name}</strong><small>{ability.branch}</small></div>
+                          <div className="ability-assign">
+                            {[0, 1, 2].map((slot) => (
+                              <button
+                                key={slot}
+                                type="button"
+                                className={ability.equippedSlot === slot ? "active" : ""}
+                                onClick={() => setState((current) => assignActiveSkill(
+                                  current,
+                                  slot,
+                                  ability.equippedSlot === slot ? null : ability.id,
+                                ))}
+                              >
+                                {slot + 1}
+                              </button>
+                            ))}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="abilities-empty">Способности открываются вложениями в направления.</p>}
+                </section>
+              </aside>
+            </div>
           </div>
         </div>
       ) : null}

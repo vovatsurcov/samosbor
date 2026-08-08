@@ -1,6 +1,8 @@
 import {
   type AttributeId,
+  type ConsumableCategory,
   type GearSlot,
+  type ItemKind,
   type ItemDefinition,
   type ItemId,
   ITEMS,
@@ -9,9 +11,9 @@ import {
   WEAPONS,
 } from "./game-items.ts";
 import {
+  ENEMY_DEFINITIONS,
   type EnemyDefinition,
   type EnemyRole,
-  ENCOUNTERS,
   definitionById,
   encounterById,
 } from "./game-enemy-roster.ts";
@@ -36,6 +38,62 @@ export {
   keystoneByFlag,
 } from "./game-rules.ts";
 export type { Keystone, RuleFlag, RuleInfo } from "./game-rules.ts";
+import {
+  BASE_ACTIONS,
+  type ActionSlot,
+  isTransformed,
+  resolveSlot,
+} from "./game-actions.ts";
+export {
+  BASE_ACTIONS,
+  SLOT_LABELS,
+  isTransformed,
+  resolveSlot,
+  transformationsFor,
+} from "./game-actions.ts";
+export type { ActionDefinition, ActionSlot } from "./game-actions.ts";
+import {
+  type ActiveState,
+  type InspectCard,
+  type InspectLine,
+  bonusLines,
+  inspectActionSlot,
+  inspectEnemy,
+  inspectItem,
+  inspectTalent,
+  line,
+  talentTransform,
+} from "./game-inspect.ts";
+export {
+  bonusLines,
+  inspectAbility,
+  inspectActionSlot,
+  inspectEnemy,
+  inspectInteractive,
+  inspectItem,
+  inspectNpc,
+  inspectTalent,
+  line,
+  ruleLines,
+  section,
+  stateLines,
+  talentTransform,
+} from "./game-inspect.ts";
+export type {
+  ActiveState,
+  AbilitySubject,
+  EnemySubject,
+  InspectBar,
+  InspectCard,
+  InspectKind,
+  InspectLine,
+  InspectSection,
+  InspectTransform,
+  ItemSubject,
+  LineTone,
+  NpcSubject,
+  TalentSubject,
+} from "./game-inspect.ts";
 import {
   type Vector,
   bufferIsFresh,
@@ -73,6 +131,7 @@ import {
   TELEGRAPHS,
   type TelegraphTier,
   telegraphDamage,
+  windUpProgress,
 } from "./game-telegraph.ts";
 export {
   TELEGRAPHS,
@@ -88,6 +147,7 @@ import {
   type HandItem,
   abilityShape,
   combineHands,
+  describeCombination,
 } from "./game-hands.ts";
 export {
   abilityShape,
@@ -147,6 +207,7 @@ import {
   type ActiveSkillId,
   branchForTalent,
   type SkillBranch,
+  SKILL_NAMES,
   TALENT_BY_ID,
   TALENT_NODES,
   type TalentBonusKey,
@@ -204,6 +265,8 @@ import {
   UNDEPLOYED_DAMAGE_PENALTY,
   chainDamageAt,
   desyncReady,
+  FOOTING_DECAY_MS,
+  FOOTING_STEP_MS,
   footingStepsFor,
   spinUpFactor,
   tempoDamageBonus,
@@ -237,9 +300,9 @@ import {
   chargeStepsFor,
   chargeTuning,
   tunedChargeMultipliers,
-  BLOCK,
   BREATH_COSTS,
   CRITICAL_EFFECT_PROFILE,
+  type DamageType,
   DODGE,
 } from "./game-combat-model.ts";
 import {
@@ -276,6 +339,7 @@ export type { ArchetypeAbility, ArchetypeAbilityId, ArchetypeId } from "./game-a
 export {
   BLOCK,
   BOSS,
+  CHARGE_MAX_STEPS,
   DODGE,
   BREATH_COSTS,
   armorMitigation,
@@ -322,9 +386,11 @@ export {
 } from "./game-skills.ts";
 export type {
   AttributeId,
+  ConsumableCategory,
   GearSlot,
   ItemDefinition,
   ItemId,
+  ItemKind,
   WeaponDefinition,
   WeaponId,
 } from "./game-items.ts";
@@ -475,8 +541,6 @@ export type Hero = {
   /** Полоса дыхания: тратится на рывки, блок, уклонение и тяжёлые атаки. */
   breath: number;
   breathIdleMs: number;
-  blockingSinceMs: number;
-  blockBrokenUntilMs: number;
   dodgeInvulnerableUntilMs: number;
   dodgeReadyAtMs: number;
   /** Пока идёт восстановление после удара, защита открыта — если руки заняты. */
@@ -495,6 +559,8 @@ export type Hero = {
   aimPoint: Point | null;
   /** Удерживается ли основная атака. */
   primaryHeld: boolean;
+  /** Удерживается ли действие перемещения (Shift). */
+  movementHeld: boolean;
   /** Отложенное нажатие: короткий буфер, а не очередь команд. */
   bufferedAbilitySlot: number | null;
   bufferedAtMs: number;
@@ -552,6 +618,8 @@ export type Hero = {
   contamination: number;
   stress: number;
   artifactCooldownMs: number;
+  /** Общий откат быстрых ячеек Q · E. */
+  quickSlotCooldownMs: number;
   relievedInjury: keyof Injuries | null;
   injuryReliefUntilMs: number;
 };
@@ -2105,6 +2173,7 @@ export function heroMoveSpeed(state: GameState): number {
       injuryFactor *
       overloadFactor *
       weaponDrag *
+      sprintMultiplier(state) *
       deployed,
   );
 }
@@ -2670,22 +2739,38 @@ export function setPrimaryAttack(state: GameState, held: boolean): GameState {
  * Короткий буфер, а не очередь: слэшер должен быть отзывчивым, но игрок не
  * выстраивает последовательность заранее.
  */
-export function takeBufferedAbility(state: GameState): { state: GameState; slot: number | null } {
-  const slot = state.hero.bufferedAbilitySlot;
-  if (slot === null) return { state, slot: null };
-  const buffered = { intent: { kind: "ability" as const, slot }, atMs: state.hero.bufferedAtMs };
-  if (!bufferIsFresh(buffered, state.worldTimeMs)) {
-    return { state: { ...state, hero: { ...state.hero, bufferedAbilitySlot: null } }, slot: null };
-  }
-  if (state.hero.attackCooldownMs > 0 || state.hero.staggeredUntilMs > state.worldTimeMs) {
-    return { state, slot: null };
-  }
-  return { state: { ...state, hero: { ...state.hero, bufferedAbilitySlot: null } }, slot };
+/**
+ * Буфер сильной атаки.
+ *
+ * Буферизуется именно оружейное действие: только оно ждёт восстановления
+ * оружия. Способности живут на собственных откатах и через этот буфер не
+ * ходят — иначе нажатие ячейки, сделанное во время непрерывной атаки, молча
+ * пропадало бы, не дождавшись окна в 220 мс.
+ *
+ * Буфер один и хранит не очередь, а одно нажатие: заранее выстроить
+ * последовательность команд игрок не может.
+ */
+const STRONG_ATTACK_BUFFER = 0;
+
+export function bufferStrongAttack(state: GameState): GameState {
+  return {
+    ...state,
+    hero: { ...state.hero, bufferedAbilitySlot: STRONG_ATTACK_BUFFER, bufferedAtMs: state.worldTimeMs },
+  };
 }
 
-/** Запоминает нажатие способности на короткое время. */
-export function bufferAbility(state: GameState, slot: number): GameState {
-  return { ...state, hero: { ...state.hero, bufferedAbilitySlot: slot, bufferedAtMs: state.worldTimeMs } };
+export function takeBufferedStrongAttack(state: GameState): { state: GameState; pending: boolean } {
+  if (state.hero.bufferedAbilitySlot === null) return { state, pending: false };
+  const buffered = {
+    intent: { kind: "ability" as const, slot: STRONG_ATTACK_BUFFER },
+    atMs: state.hero.bufferedAtMs,
+  };
+  const cleared: GameState = { ...state, hero: { ...state.hero, bufferedAbilitySlot: null } };
+  if (!bufferIsFresh(buffered, state.worldTimeMs)) return { state: cleared, pending: false };
+  if (state.hero.attackCooldownMs > 0 || state.hero.staggeredUntilMs > state.worldTimeMs) {
+    return { state, pending: false };
+  }
+  return { state: cleared, pending: true };
 }
 
 /**
@@ -2958,6 +3043,85 @@ export function equipItem(state: GameState, instanceId: string): GameState {
 export function equipWeapon(state: GameState, weapon: WeaponId): GameState {
   const entry = state.hero.inventory.find((item) => item.itemId === weapon);
   return entry ? equipItem(state, entry.instanceId) : state;
+}
+
+// --- Быстрые ячейки Q · E ----------------------------------------------------
+//
+// Контракт Gate 4.5: две ячейки под рукой, у каждой заряды, общий откат и
+// внятный отказ. Что именно лежит в ячейке, выводится из сумки по категории
+// расходника — игрок не раскладывает предметы по слотам вручную, а ячейка
+// никогда не оказывается «занята пустотой».
+
+export type QuickSlotId = "q" | "e";
+
+export type QuickSlotDefinition = {
+  id: QuickSlotId;
+  name: string;
+  /** Категории по приоритету: берётся первая, что есть в сумке. */
+  categories: ConsumableCategory[];
+  description: string;
+};
+
+export const QUICK_SLOTS: Record<QuickSlotId, QuickSlotDefinition> = {
+  q: {
+    id: "q",
+    name: "Медицина",
+    categories: ["bandage", "healing"],
+    description: "Перевязка или инъектор: восстанавливает здоровье и ослабляет травму.",
+  },
+  e: {
+    id: "e",
+    name: "Стимулятор",
+    categories: ["pills", "booster"],
+    description: "Таблетки или батарея: снимает стресс и подстёгивает работу снаряжения.",
+  },
+};
+
+/** Общий откат ячеек: расходники не спамятся, но и не требуют учёта секунд. */
+export const QUICK_SLOT_COOLDOWN_MS = 1400;
+
+export function quickSlotEntry(state: GameState, slot: QuickSlotId): InventoryEntry | null {
+  for (const category of QUICK_SLOTS[slot].categories) {
+    const entry = state.hero.inventory.find(
+      (candidate) => ITEMS[candidate.itemId].consumableCategory === category,
+    );
+    if (entry) return entry;
+  }
+  return null;
+}
+
+/** Сколько применений осталось в ячейке. Ноль — ячейка пуста. */
+export function quickSlotCharges(state: GameState, slot: QuickSlotId): number {
+  return QUICK_SLOTS[slot].categories.reduce(
+    (total, category) =>
+      total +
+      state.hero.inventory
+        .filter((entry) => ITEMS[entry.itemId].consumableCategory === category)
+        .reduce((sum, entry) => sum + entry.quantity, 0),
+    0,
+  );
+}
+
+export function quickSlotReady(state: GameState, slot: QuickSlotId): boolean {
+  return quickSlotCharges(state, slot) > 0 && (state.hero.quickSlotCooldownMs ?? 0) <= 0;
+}
+
+/**
+ * Применить ячейку. Отказ всегда объясняется: пустая ячейка и ячейка на откате
+ * — разные вещи, и игрок должен видеть какая именно.
+ */
+export function applyQuickSlot(state: GameState, slot: QuickSlotId): GameState {
+  const definition = QUICK_SLOTS[slot];
+  if ((state.hero.quickSlotCooldownMs ?? 0) > 0) {
+    return appendLog(state, `${definition.name}: ещё не готово.`);
+  }
+  const entry = quickSlotEntry(state, slot);
+  if (!entry) return appendLog(state, `${definition.name}: ячейка пуста.`);
+  const next = consumeInventoryItem(state, entry.instanceId);
+  // Отказ самого предмета («перевязка сейчас не требуется») откат не запускает:
+  // ячейка не должна блокироваться за несделанное действие.
+  if (next.hero.inventory === state.hero.inventory) return next;
+  return { ...next, hero: { ...next.hero, quickSlotCooldownMs: QUICK_SLOT_COOLDOWN_MS } };
 }
 
 export function consumeInventoryItem(state: GameState, instanceId: string): GameState {
@@ -3980,47 +4144,27 @@ function tickEnemyStance(state: GameState, deltaMs: number): GameState {
 function tickHeroBars(state: GameState, deltaMs: number): GameState {
   const maxStance = maxHeroStance(state);
   const maxBreath = maxHeroBreath(state);
-  const blocking = isDefending(state);
   const staggered = state.hero.staggeredUntilMs > state.worldTimeMs;
 
   const breathIdle = state.hero.breathIdleMs + deltaMs;
-  const breathRegen =
-    !blocking && breathIdle >= 700 ? (heroBreathRegen(state) * deltaMs) / 1000 : 0;
-  const blockDrain = blocking ? (heroDefenceTuning(state).holdCostPerSecond * deltaMs) / 1000 : 0;
-  const breath = Math.max(0, Math.min(maxBreath, state.hero.breath + breathRegen - blockDrain));
+  const breathRegen = breathIdle >= 700 ? (heroBreathRegen(state) * deltaMs) / 1000 : 0;
+  const breath = Math.max(0, Math.min(maxBreath, state.hero.breath + breathRegen));
 
   const stanceIdle = state.hero.stanceIdleMs + deltaMs;
   const stanceRegen =
     !staggered && stanceIdle >= 1600 ? (maxStance * 0.12 * deltaMs) / 1000 : 0;
   const stance = Math.min(maxStance, state.hero.stance + stanceRegen);
 
-  let next: GameState = {
+  return {
     ...state,
     hero: {
       ...state.hero,
       breath,
-      breathIdleMs: blocking ? 0 : breathIdle,
+      breathIdleMs: breathIdle,
       stance,
       stanceIdleMs: stanceIdle,
     },
   };
-
-  // Срыв защиты: блок при нулевом дыхании ломается вместе со стойкой.
-  if (blocking && breath <= 0) {
-    next = appendLog(
-      {
-        ...next,
-        hero: {
-          ...next.hero,
-          blockingSinceMs: 0,
-          stance: Math.max(0, next.hero.stance - maxStance * BLOCK.breakStanceLoss),
-          blockBrokenUntilMs: next.worldTimeMs + BLOCK.breakVulnerableMs,
-        },
-      },
-      "Дыхание кончилось: защита сорвана.",
-    );
-  }
-  return next;
 }
 
 /** Направление дерева → боевое направление механик. Классов в игре нет. */
@@ -4136,8 +4280,10 @@ function tickArchetypeResource(state: GameState, deltaMs: number, movedTowardTar
     return aimMs === state.hero.aimMs ? state : { ...state, hero: { ...state.hero, aimMs } };
   }
   if (archetype === "bulwark") {
-    // Опора копится удержанием блока и рассыпается, как только блок опущен.
-    const footingMs = state.hero.blockingSinceMs > 0 ? state.hero.footingMs + deltaMs : 0;
+    // Опора набирается сработавшими блоками (см. resolveHeroDefence), а здесь
+    // только тает: без входящего давления удержать её нечем.
+    const decay = (state.hero.footingMs * deltaMs) / FOOTING_DECAY_MS;
+    const footingMs = Math.max(0, state.hero.footingMs - decay);
     return footingMs === state.hero.footingMs ? state : { ...state, hero: { ...state.hero, footingMs } };
   }
   if (archetype === "skirmisher") {
@@ -4600,7 +4746,9 @@ export function beginCharge(state: GameState): GameState {
 export function releaseCharge(state: GameState): GameState {
   const steps = heroChargeSteps(state);
   const cleared: GameState = { ...state, hero: { ...state.hero, chargingSinceMs: 0 } };
-  if (steps <= 0) return commandAttackNearest(cleared);
+  // Заряд живёт на слоте сильной атаки: короткое нажатие — обычный тяжёлый
+  // удар, удержание — заряженный. Отдельной кнопки заряда нет.
+  if (steps <= 0) return commandHeavyAttack(cleared);
 
   // Если цель не захвачена, заряд не пропадает: берём ближайшую видимую, как
   // это делает обычная команда атаки.
@@ -4672,35 +4820,349 @@ function spendBreath(state: GameState, cost: number): GameState {
 }
 
 /** Поднять или опустить блок. Идеальное окно считается от момента подъёма. */
-export function commandBlock(state: GameState, holding: boolean): GameState {
-  if (!holding) {
-    return state.hero.blockingSinceMs === 0
-      ? state
-      : { ...state, hero: { ...state.hero, blockingSinceMs: 0 } };
-  }
-  if (state.hero.blockingSinceMs > 0) return state;
-  if (state.hero.blockBrokenUntilMs > state.worldTimeMs) {
-    return appendLog(state, "Защита ещё не восстановлена после срыва.");
-  }
-  if (state.hero.staggeredUntilMs > state.worldTimeMs) return state;
-  return {
-    ...state,
-    hero: { ...state.hero, blockingSinceMs: Math.max(1, state.worldTimeMs), path: [], destination: null },
-  };
+
+/** Уклонение: кадры неуязвимости, смещение и запрет повтора на время восстановления. */
+
+/** Какая версия слота действий активна у текущей сборки. */
+export function heroAction(state: GameState, slot: ActionSlot) {
+  return resolveSlot(slot, state.hero.talents);
+}
+
+/** Заменено ли действие слота талантом. */
+export function heroActionTransformed(state: GameState, slot: ActionSlot): boolean {
+  return isTransformed(slot, state.hero.talents);
 }
 
 /**
- * Держится ли защита прямо сейчас. Без пассива удержания короткий блок сам
- * опадает через `briefMs`: базовое действие остаётся мгновенным.
+ * Карточка осмотра слота управления. Собирается движком, а не интерфейсом:
+ * что стоит под ЛКМ и заменено ли оно — факт игры, а не оформление.
  */
-export function isDefending(state: GameState): boolean {
-  if (state.hero.blockingSinceMs <= 0) return false;
-  const tuning = heroDefenceTuning(state);
-  if (tuning.canHold) return true;
-  return state.worldTimeMs - state.hero.blockingSinceMs <= tuning.briefMs;
+export function inspectHeroSlot(state: GameState, slot: ActionSlot): InspectCard {
+  const active = heroAction(state, slot);
+  const blocked =
+    slot === "movement" && active.sustained && state.hero.breath <= 4
+      ? "Дыхания не хватает: ускорение выдохлось."
+      : slot === "movement" && !active.sustained && state.hero.dodgeReadyAtMs > state.worldTimeMs
+        ? `Восстановление: ${((state.hero.dodgeReadyAtMs - state.worldTimeMs) / 1000).toFixed(1)} с`
+        : state.hero.staggeredUntilMs > state.worldTimeMs
+          ? "Ошеломление: действия недоступны."
+          : undefined;
+  return inspectActionSlot(slot, active, BASE_ACTIONS[slot], {
+    blocked,
+    handNote: heroHandCombination(state).verb,
+  });
 }
 
-/** Уклонение: кадры неуязвимости, смещение и запрет повтора на время восстановления. */
+/** Наведённые состояния цели в общем виде: интерфейс их не перечисляет сам. */
+export function enemyActiveStates(state: GameState, enemy: Enemy): ActiveState[] {
+  const states: ActiveState[] = [];
+  if (enemy.resonanceStacks > 0) {
+    states.push({ id: "resonance", stacks: enemy.resonanceStacks });
+  }
+  if (enemy.exposedUntilMs > state.worldTimeMs) {
+    states.push({ id: "exposure", remainingMs: enemy.exposedUntilMs - state.worldTimeMs });
+  }
+  if (enemy.overloadedUntilMs > state.worldTimeMs) {
+    states.push({ id: "overload", remainingMs: enemy.overloadedUntilMs - state.worldTimeMs });
+  }
+  return states;
+}
+
+const ENEMY_MODE_LABELS: Record<EnemyMode, string> = {
+  patrol: "идёт по маршруту",
+  suspicious: "что-то услышал",
+  hunting: "ищет героя",
+  combat: "в бою",
+  retreat: "отходит",
+  disabled: "выведен из строя",
+};
+
+export function inspectEnemyAt(state: GameState, enemy: Enemy): InspectCard {
+  const definition = enemy.role ? nearestDefinitionForRole(enemy) : null;
+  const windUp =
+    enemy.castUntilMs > state.worldTimeMs
+      ? {
+          heavy: enemy.castTier === "heavy",
+          progress: windUpProgress(enemy.castStartedMs, state.worldTimeMs, enemy.castTier),
+        }
+      : null;
+  return inspectEnemy({
+    name: enemy.name,
+    role: enemy.role,
+    rank: enemy.rank ?? "common",
+    hp: enemy.hp,
+    maxHp: enemy.maxHp,
+    stance: Math.round(enemy.stance),
+    maxStance: Math.round(enemy.maxStance),
+    armour: enemy.armor,
+    damage: enemy.damage,
+    attackRange: enemy.attackRange,
+    modeLabel: ENEMY_MODE_LABELS[enemy.mode],
+    origin: definition?.origin,
+    stateAffinity: definition?.stateAffinity,
+    dangerous: Boolean(enemy.dangerous),
+    states: enemyActiveStates(state, enemy),
+    windUp,
+  });
+}
+
+/**
+ * Противник на поле мог быть создан и не из реестра (старые сохранения,
+ * популяции этажа). Описание берётся по совпадению имени, а при промахе
+ * карточка просто обходится без него — без этого осмотр падал бы на всём, что
+ * появилось до Gate 4.
+ */
+function nearestDefinitionForRole(enemy: Enemy): EnemyDefinition | null {
+  return (
+    Object.values(ENEMY_DEFINITIONS).find((candidate) => candidate.name === enemy.name) ?? null
+  );
+}
+
+const ITEM_KIND_LABELS: Record<ItemKind, string> = {
+  weapon: "оружие",
+  gear: "снаряжение",
+  consumable: "расходник",
+  material: "материал",
+  artifact: "артефакт",
+};
+
+const RARITY_LABELS: Record<string, string> = {
+  common: "обычное",
+  uncommon: "необычное",
+  rare: "редкое",
+  legendary: "легендарное",
+};
+
+/**
+ * Как изменится сочетание рук, если взять этот предмет.
+ *
+ * Пара рук — не сумма характеристик, поэтому предмет обязан отвечать не «что
+ * прибавится», а «во что превратится связка». Ответ считается тем же
+ * `combineHands`, что и в бою: осмотр не может обещать одно, а бой делать другое.
+ */
+export function handChangeFor(state: GameState, itemId: ItemId): {
+  from: string;
+  to: string;
+  note: string;
+} | null {
+  const definition = ITEMS[itemId];
+  if (definition.slot !== "weapon" && definition.slot !== "offhand") return null;
+  const { primary, secondary } = handItems(state);
+  const current = combineHands(primary, secondary);
+
+  const candidate: HandItem =
+    definition.slot === "weapon"
+      ? {
+          id: itemId,
+          name: definition.shortName,
+          capabilities: [...FAMILY_CAPABILITIES[familyOf(itemId as WeaponId).id]],
+        }
+      : {
+          id: itemId,
+          name: definition.shortName,
+          capabilities: OFFHAND_CAPABILITIES[itemId] ?? ["one_handed", "defensive"],
+        };
+
+  const next =
+    definition.slot === "weapon"
+      ? combineHands(candidate, secondary)
+      : combineHands(primary, candidate);
+
+  if (next.id === current.id) {
+    return { from: current.name, to: next.name, note: `Связка не меняется: ${next.verb}.` };
+  }
+  return { from: current.name, to: next.name, note: describeCombination(next) };
+}
+
+export function inspectInventoryItem(
+  state: GameState,
+  itemId: ItemId,
+  extra: {
+    quantity?: number;
+    condition?: number;
+    binding?: string;
+    blocked?: string;
+    charges?: { value: number; max: number };
+  } = {},
+): InspectCard {
+  const definition = ITEMS[itemId];
+  const weapon = definition.kind === "weapon" ? WEAPONS[itemId as WeaponId] : null;
+  const family = weapon ? familyOf(itemId as WeaponId) : null;
+
+  const stats: InspectLine[] = [
+    ...(weapon
+      ? [
+          line(`${weapon.damage}`, "Урон"),
+          line(`${weapon.range.toFixed(1)} кл.`, "Дистанция"),
+          line(`${weapon.stanceDamage}`, "По стойке"),
+          family ? line(`${family.name}: ${family.verb}`, "Семейство") : null,
+        ].filter((candidate): candidate is InspectLine => Boolean(candidate))
+      : []),
+    ...bonusLines((definition.stats ?? {}) as Record<string, number | undefined>),
+    ...(definition.useLabel ? [line(definition.useLabel, "Применение")] : []),
+  ];
+
+  return inspectItem({
+    name: definition.name,
+    kindLabel: ITEM_KIND_LABELS[definition.kind] ?? definition.kind,
+    rarityLabel: definition.rarity ? RARITY_LABELS[definition.rarity] : undefined,
+    description: definition.description,
+    weight: definition.weight,
+    quantity: extra.quantity,
+    condition: extra.condition,
+    stats,
+    rules: rulesFromTalents(definition.grantedTalents ?? []),
+    binding: extra.binding,
+    blocked: extra.blocked,
+    handChange: handChangeFor(state, itemId) ?? undefined,
+    charges: extra.charges,
+  });
+}
+
+/** Какие правила несут перечисленные узлы. */
+function rulesFromTalents(talentIds: string[]): RuleFlag[] {
+  return KEYSTONES.filter((keystone) => talentIds.includes(keystone.id)).map(
+    (keystone) => keystone.flag,
+  );
+}
+
+/**
+ * Карточка быстрой ячейки. Пустая ячейка описывает **себя**, а не предмет,
+ * которого в ней нет: иначе игрок читает название того, чего у него не осталось.
+ */
+export function inspectQuickSlot(state: GameState, slot: QuickSlotId): InspectCard {
+  const definition = QUICK_SLOTS[slot];
+  const entry = quickSlotEntry(state, slot);
+  const charges = quickSlotCharges(state, slot);
+  const cooldown = state.hero.quickSlotCooldownMs ?? 0;
+  const blocked = charges === 0
+    ? "Ячейка пуста: подходящих расходников в сумке нет."
+    : cooldown > 0
+      ? `Ещё не готово: ${(cooldown / 1000).toFixed(1)} с`
+      : undefined;
+
+  if (!entry) {
+    return inspectItem({
+      name: definition.name,
+      kindLabel: "быстрая ячейка",
+      description: definition.description,
+      stats: [],
+      rules: [],
+      binding: slot.toUpperCase(),
+      blocked,
+      charges: { value: 0, max: 1 },
+    });
+  }
+
+  return inspectInventoryItem(state, entry.itemId, {
+    quantity: charges,
+    condition: entry.condition,
+    binding: slot.toUpperCase(),
+    blocked,
+    charges: { value: charges, max: Math.max(charges, 1) },
+  });
+}
+
+export function inspectTalentNode(state: GameState, nodeId: string): InspectCard | null {
+  const node = TALENT_NODES.find((candidate) => candidate.id === nodeId);
+  if (!node) return null;
+  const keystone = KEYSTONES.find((candidate) => candidate.id === node.id) ?? null;
+  const taken = state.hero.talents.includes(node.id);
+  const branch = branchForTalent(node);
+  return inspectTalent({
+    name: node.name,
+    kindLabel: node.kind,
+    branchLabel: branch ? SKILL_NAMES[branch] : node.scope,
+    description: node.description,
+    bonuses: bonusLines(node.bonuses),
+    rules: keystone ? [keystone.flag] : [],
+    transform: talentTransform(node.id),
+    cost: node.cost,
+    taken,
+    blocked:
+      taken || canAllocateTalent(state, node.id)
+        ? undefined
+        : node.requiredBranchPoints
+          ? `Нужно ${node.requiredBranchPoints} очк. направления`
+          : "Недостаточно очков",
+    flavour: keystone?.flavour,
+  });
+}
+
+/**
+ * Действие перемещения. Базовая версия — удерживаемое ускорение за счёт
+ * дыхания; таланты заменяют её целиком (перенос, рывок), и тогда удержание
+ * не расходует дыхание на бег.
+ */
+export function setMovementAction(state: GameState, held: boolean): GameState {
+  const action = heroAction(state, "movement");
+  if (!action.sustained) {
+    // Заменённое действие — разовое: нажатие исполняется, удержание ничего
+    // не копит.
+    return held ? triggerMovementAction(state) : state;
+  }
+  if (state.hero.movementHeld === held) return state;
+  return { ...state, hero: { ...state.hero, movementHeld: held } };
+}
+
+/** Разовое действие перемещения из заменённого слота. */
+function triggerMovementAction(state: GameState): GameState {
+  const action = heroAction(state, "movement");
+  if (state.hero.dodgeReadyAtMs > state.worldTimeMs) return state;
+  if (action.breathCost && !canSpendBreath(state, action.breathCost)) {
+    return appendLog(state, `Не хватает дыхания: ${action.name.toLowerCase()}.`);
+  }
+
+  // Направление берётся из прицела, а при его отсутствии — из движения.
+  // Раньше при отсутствии направления действие уходило строго на юг и
+  // упиралось в первую же стену: это и выглядело как перенос к стене.
+  const from = state.hero.positions[state.zone];
+  const aim = state.hero.aimPoint;
+  const heading = aim && distance(aim, from) > 0.2
+    ? normalise({ x: aim.x - from.x, y: aim.y - from.y })
+    : !isIdle(state.hero.moveIntent)
+      ? state.hero.moveIntent
+      : null;
+  if (!heading) return appendLog(state, "Некуда: направление не задано.");
+
+  const reach = action.id === "resonance:shift" ? 10 : DODGE.distance;
+  let landing = { ...from };
+  for (let travelled = 0.5; travelled <= reach; travelled += 0.5) {
+    const candidate = { x: from.x + heading.x * travelled, y: from.y + heading.y * travelled };
+    if (!isWalkable(state, gridPoint(candidate))) break;
+    landing = candidate;
+  }
+  if (distance(landing, from) < 0.4) return appendLog(state, "Некуда: проход перекрыт.");
+
+  let next = action.breathCost ? spendBreath(state, action.breathCost) : state;
+  next = {
+    ...next,
+    hero: {
+      ...next.hero,
+      positions: { ...next.hero.positions, [next.zone]: landing },
+      path: [],
+      destination: null,
+      dodgeInvulnerableUntilMs:
+        action.id === "agility:shift" ? next.worldTimeMs + DODGE.invulnerableMs : next.hero.dodgeInvulnerableUntilMs,
+      dodgeReadyAtMs: next.worldTimeMs + (action.cooldownMs ?? DODGE.recoveryMs),
+      // Перенос сквозь пространство платит заражением, а не дыханием.
+      contamination:
+        action.id === "resonance:shift"
+          ? Math.min(100, next.hero.contamination + 4)
+          : next.hero.contamination,
+    },
+  };
+  return appendLog(next, `${action.name}.`);
+}
+
+/** Множитель скорости от удерживаемого ускорения. */
+export function sprintMultiplier(state: GameState): number {
+  const action = heroAction(state, "movement");
+  if (!action.sustained || !state.hero.movementHeld) return 1;
+  // На исходе дыхания ускорение выдыхается само: держать его постоянно нельзя.
+  return state.hero.breath > 4 ? 1.42 : 1;
+}
+
 export function commandDodge(state: GameState, direction?: Point): GameState {
   if (state.hero.dodgeReadyAtMs > state.worldTimeMs) return state;
   if (!canSpendBreath(state, BREATH_COSTS.dodge)) {
@@ -4727,7 +5189,6 @@ export function commandDodge(state: GameState, direction?: Point): GameState {
       positions: { ...next.hero.positions, [next.zone]: landing },
       path: [],
       destination: null,
-      blockingSinceMs: 0,
       dodgeInvulnerableUntilMs: next.worldTimeMs + DODGE.invulnerableMs,
       // Обращение зависит от того, чем заняты руки: со свободной рукой герой
       // собирается быстрее, со щитом — медленнее.
@@ -4740,6 +5201,12 @@ export function commandDodge(state: GameState, direction?: Point): GameState {
 export function commandHeavyAttack(state: GameState): GameState {
   const target = enemyById(state, state.hero.attackTargetId) ?? skillTarget(state);
   if (!target) return appendLog(state, "Для тяжёлого удара нет цели.");
+  // Добивание — не отдельная кнопка, а то, во что тяжёлый удар превращается
+  // сам по ошеломлённой цели. Игрок не запоминает вторую клавишу ради окна,
+  // которое и так надо было заметить.
+  if (target.stunnedUntilMs > state.worldTimeMs && canSpendBreath(state, BREATH_COSTS.finisher)) {
+    return commandFinisher(state);
+  }
   const riposte = state.hero.riposteUntilMs > state.worldTimeMs;
   if (!riposte && !canSpendBreath(state, BREATH_COSTS.heavyAttack)) {
     return appendLog(state, "Не хватает дыхания на тяжёлый удар.");
@@ -5662,6 +6129,10 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
   // «Контур обмена»: блок перестаёт быть защитой и становится источником
   // разгона. Урон при этом проходит почти целиком.
   const blocked = outcome.steps.some((step) => step.id === "block" && step.applied);
+  // Опора копится тем, ради чего её собирают: принятыми на защиту ударами.
+  if (blocked) {
+    next = { ...next, hero: { ...next.hero, footingMs: next.hero.footingMs + FOOTING_STEP_MS } };
+  }
   if (blocked && hasRule(next, "block:converts_to_surge")) {
     next = {
       ...next,
@@ -6533,8 +7004,6 @@ export function createInitialState(): GameState {
       staggerImmuneUntilMs: 0,
       breath: 111,
       breathIdleMs: 0,
-      blockingSinceMs: 0,
-      blockBrokenUntilMs: 0,
       dodgeInvulnerableUntilMs: 0,
       dodgeReadyAtMs: 0,
       guardDownUntilMs: 0,
@@ -6546,6 +7015,7 @@ export function createInitialState(): GameState {
     moveIntent: { x: 0, y: 0 },
     aimPoint: null,
     primaryHeld: false,
+    movementHeld: false,
     bufferedAbilitySlot: null,
     bufferedAtMs: 0,
     primaryAmmo: -1,
@@ -6617,12 +7087,14 @@ export function createInitialState(): GameState {
         feet: "itm-4",
         back: "itm-5",
         weapon: "itm-6",
+        offhand: null,
         artifact: null,
       },
       itemCounter: 9,
       contamination: 0,
       stress: 0,
       artifactCooldownMs: 0,
+      quickSlotCooldownMs: 0,
       relievedInjury: null,
       injuryReliefUntilMs: 0,
     },
@@ -6758,8 +7230,6 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
           breathIdleMs: 0,
           staggeredUntilMs: 0,
           staggerImmuneUntilMs: 0,
-          blockingSinceMs: 0,
-          blockBrokenUntilMs: 0,
           dodgeInvulnerableUntilMs: 0,
           dodgeReadyAtMs: 0,
           perfectDodgeUntilMs: 0,
@@ -6775,7 +7245,18 @@ export function migrateGameState(raw: Partial<GameState>): GameState {
           breath: Math.min(migrated.hero.breath, maxHeroBreath(migrated)),
         },
       };
-  return reveal(reconcilePopulationEnemies(rescaled, rescaled.populationCycle));
+  // Поля, появившиеся позже сохранения, приводятся к рабочему виду здесь:
+  // отсутствующее значение не должно доезжать до боевого кода.
+  const normalised: GameState = {
+    ...rescaled,
+    hero: {
+      ...rescaled.hero,
+      quickSlotCooldownMs: rescaled.hero.quickSlotCooldownMs ?? 0,
+      movementHeld: rescaled.hero.movementHeld ?? false,
+      footingMs: rescaled.hero.footingMs ?? 0,
+    },
+  };
+  return reveal(reconcilePopulationEnemies(normalised, normalised.populationCycle));
 }
 
 function ejectHermeticIntrusions(state: GameState): GameState {
@@ -6858,6 +7339,7 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
       stepNoiseCooldownMs: Math.max(0, state.hero.stepNoiseCooldownMs - deltaMs),
       droneCooldownMs: Math.max(0, state.hero.droneCooldownMs - deltaMs),
       artifactCooldownMs: Math.max(0, state.hero.artifactCooldownMs - deltaMs),
+      quickSlotCooldownMs: Math.max(0, (state.hero.quickSlotCooldownMs ?? 0) - deltaMs),
       autocastDecisionCooldownMs: Math.max(0, state.hero.autocastDecisionCooldownMs - deltaMs),
       activeSkillCooldowns: Object.fromEntries(
         Object.entries(state.hero.activeSkillCooldowns).map(([skillId, cooldown]) => [
@@ -6905,6 +7387,20 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
   next = tickSamosborSchedule(next);
   next = tickDiscordZones(next);
   next = tickControllers(next);
+
+  // Удерживаемое ускорение тратит дыхание. Отпустил — дыхание восстанавливается
+  // обычным порядком, поэтому ритм получается «шаг → рывок → передышка», без
+  // отдельной системы выносливости.
+  const movementAction = heroAction(next, "movement");
+  if (movementAction.sustained && next.hero.movementHeld && !isIdle(next.hero.moveIntent)) {
+    const drain = (movementAction.breathPerSecond ?? 0) * (deltaMs / 1000);
+    if (drain > 0) {
+      next = {
+        ...next,
+        hero: { ...next.hero, breath: Math.max(0, next.hero.breath - drain), breathIdleMs: 0 },
+      };
+    }
+  }
   // Очередь «остывает», как только герой перестал стрелять: разброс автомата
   // должен восстанавливаться, иначе он только растёт и оружие мертво.
   if (next.hero.consecutiveShots > 0 && next.hero.attackCooldownMs <= 0) {
