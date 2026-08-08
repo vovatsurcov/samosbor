@@ -8,6 +8,9 @@ import {
   type WeaponId,
   WEAPONS,
 } from "./game-items.ts";
+import { type DevProfile } from "./game-dev-profiles.ts";
+export { DEV_PROFILES, devProfileById } from "./game-dev-profiles.ts";
+export type { DevProfile } from "./game-dev-profiles.ts";
 import {
   type DefenceProfile,
   describeDefence,
@@ -3509,6 +3512,21 @@ export function investDirection(
   };
   for (let index = 0; index < points; index += 1) next = allocateSkill(next, branch);
   return next;
+}
+
+/**
+ * Применяет тестовую сборку целиком. Только для разработки: вызывается из
+ * dev-панели, в production-сборке её нет (app/game-dev-profiles.ts).
+ */
+export function applyDevProfile(state: GameState, profile: DevProfile): GameState {
+  let next: GameState = {
+    ...state,
+    hero: { ...state.hero, talents: [], skillPoints: 0 },
+  };
+  for (const [branch, points] of Object.entries(profile.invest)) {
+    next = investDirection(next, branch as SkillBranch, points as number);
+  }
+  return appendLog(next, `Тестовая сборка: ${profile.name}.`);
 }
 
 /** Насколько заявлено ведущее направление: доля очков в нём от всех вложенных. */

@@ -79,7 +79,7 @@ export type ArchetypeDefinition = {
 export const ARCHETYPES: Record<ArchetypeId, ArchetypeDefinition> = {
   power: {
     id: "power",
-    name: "Силач",
+    name: "Разгон",
     range: "melee",
     resourceId: "surge",
     resourceName: "Разгон",
@@ -137,7 +137,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDefinition> = {
   },
   marksman: {
     id: "marksman",
-    name: "Стрелок",
+    name: "Прицел",
     range: "ranged",
     resourceId: "aim",
     resourceName: "Прицел",
@@ -195,7 +195,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDefinition> = {
   },
   bulwark: {
     id: "bulwark",
-    name: "Танк",
+    name: "Опора",
     range: "melee",
     resourceId: "footing",
     resourceName: "Опора",
@@ -253,7 +253,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDefinition> = {
   },
   skirmisher: {
     id: "skirmisher",
-    name: "Ловкач",
+    name: "Темп",
     range: "melee",
     resourceId: "tempo",
     resourceName: "Темп",
@@ -311,7 +311,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDefinition> = {
   },
   heavy_gunner: {
     id: "heavy_gunner",
-    name: "Тяжёлый стрелок",
+    name: "Температура",
     range: "ranged",
     resourceId: "heat",
     resourceName: "Температура",

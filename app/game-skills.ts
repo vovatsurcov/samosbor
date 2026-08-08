@@ -102,13 +102,19 @@ export type ActiveSkillDefinition = {
   description: string;
 };
 
+/**
+ * Канонические названия шести направлений. Имя направления совпадает с именем
+ * его ресурса: игрок видит одно слово везде — в дереве, в панели ресурса и в
+ * читаемом архетипе. Технические идентификаторы (`power`, `agility`, …)
+ * оставлены как есть, чтобы не ломать сохранения.
+ */
 export const SKILL_NAMES: Record<SkillBranch, string> = {
-  power: "Силовое направление",
-  guard: "Защитное направление",
-  agility: "Ловкое направление",
-  precision: "Точное направление",
-  suppression: "Подавляющее направление",
-  resonance: "Резонансное направление",
+  power: "Разгон",
+  guard: "Опора",
+  agility: "Темп",
+  precision: "Прицел",
+  suppression: "Температура",
+  resonance: "Резонанс",
 };
 
 export const SKILL_DESCRIPTIONS: Record<SkillBranch, string> = {

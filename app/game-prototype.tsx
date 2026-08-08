@@ -65,6 +65,9 @@ import {
   type ControlMode,
   HEAT_OVERHEAT,
   COMBAT_STATES,
+  DEV_PROFILES,
+  applyDevProfile,
+  devProfileById,
   TELEGRAPHS,
   windUpProgress,
   RESONANCE_MAX_STACKS,
@@ -1409,6 +1412,29 @@ export default function GamePrototype() {
                 <strong>{hoverInfo.title}</strong>
                 <p>{hoverInfo.description}</p>
                 {hoverInfo.meta ? <small>{hoverInfo.meta}</small> : null}
+              </div>
+            ) : null}
+
+            {/*
+              Панель тестовых сборок. Только для разработки: в production
+              import.meta.env.DEV === false и панель не рендерится вовсе,
+              поэтому dev-инструмент не может попасть в игру.
+            */}
+            {import.meta.env.DEV ? (
+              <div className="dev-profiles" aria-label="Тестовые сборки (разработка)">
+                <span>DEV · сборка</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const profile = devProfileById(event.target.value);
+                    if (profile) setState((current) => applyDevProfile(current, profile));
+                  }}
+                >
+                  <option value="">выбрать…</option>
+                  {DEV_PROFILES.map((profile) => (
+                    <option key={profile.id} value={profile.id}>{profile.name}</option>
+                  ))}
+                </select>
               </div>
             ) : null}
 
