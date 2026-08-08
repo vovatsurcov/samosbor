@@ -9,7 +9,7 @@
 // Модуль чистый: он не знает про состояние мира и работает с числами. Правила
 // и порядок работ — docs/COMBAT_DEPTH_ROADMAP.md §2, этап 1.
 
-export type CombatStateId = "resonance" | "exposure";
+export type CombatStateId = "resonance" | "exposure" | "overload";
 
 export type CombatStateInfo = {
   id: CombatStateId;
@@ -37,6 +37,14 @@ export const COMBAT_STATES: Record<CombatStateId, CombatStateInfo> = {
     consumedBy: "любой урон в упор",
     description:
       "Защита цели разошлась по швам. Пока вскрытие держится, броня почти не работает.",
+  },
+  overload: {
+    id: "overload",
+    name: "Перегрузка",
+    appliedBy: "стрельба на высокой температуре",
+    consumedBy: "любое попадание",
+    description:
+      "В цели накоплен электрический потенциал. Следующее попадание пробивает его на соседние цели — чем плотнее строй, тем дальше уходит пробой.",
   },
 };
 
@@ -82,6 +90,41 @@ export function resonanceImpulse(stacks: number, baseDamage: number): ResonanceI
     radius: 1.6 + 0.4 * spent,
     stanceDamage: 6 + 5 * spent,
     stacksSpent: spent,
+  };
+}
+
+/** Сколько держится перегрузка, если её не пробили. */
+export const OVERLOAD_MS = 5200;
+
+/**
+ * Температура, с которой выстрелы начинают наводить перегрузку.
+ *
+ * Порог намеренно высокий: перегрузка — награда за работу у самого перегрева,
+ * а не бесплатный побочный эффект стрельбы. Направление Температуры про то,
+ * чтобы держаться у верхней границы и вовремя сбрасывать.
+ */
+export const OVERLOAD_HEAT_SHARE = 0.6;
+
+export type OverloadBreach = {
+  /** Урон в цели, на которой пробили потенциал. */
+  damage: number;
+  /** На сколько клеток уходит пробой. */
+  radius: number;
+  /** Сколько целей он способен задеть, включая исходную. */
+  maxTargets: number;
+};
+
+/**
+ * Пробой перегрузки. В отличие от резонансного импульса, он не растёт от
+ * накопления, а расходится по числу целей: перегрузка вознаграждает не
+ * подготовку одной цели, а работу по плотной группе.
+ */
+export function overloadBreach(baseDamage: number, heatShare: number): OverloadBreach {
+  const intensity = Math.min(1, Math.max(0, heatShare));
+  return {
+    damage: Math.round(baseDamage * (0.3 + 0.25 * intensity)),
+    radius: 2.2,
+    maxTargets: 2 + Math.round(intensity * 2),
   };
 }
 

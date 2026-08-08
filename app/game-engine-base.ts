@@ -41,11 +41,17 @@ export {
 } from "./game-telegraph.ts";
 export type { TelegraphResponse, TelegraphTier } from "./game-telegraph.ts";
 import {
+  OVERLOAD_HEAT_SHARE,
+  OVERLOAD_MS,
+  overloadBreach,
   EXPOSURE_MS,
   armorUnderExposure,
   resonanceImpulse,
 } from "./game-combat-states.ts";
 export {
+  OVERLOAD_HEAT_SHARE,
+  OVERLOAD_MS,
+  overloadBreach,
   BLOCKED_REASON_LABELS,
   COMBAT_STATES,
   EXPOSURE_ARMOR_SHARE,
@@ -488,6 +494,8 @@ export type Enemy = {
   resonanceStacks: number;
   /** Вскрытие: слом стойки временно отключает броню (game-combat-states.ts). */
   exposedUntilMs: number;
+  /** Перегрузка: накопленный потенциал, который пробивает следующее попадание. */
+  overloadedUntilMs: number;
   dizzyStacks: number;
   dizzyUntilMs: number;
   stunnedUntilMs: number;
@@ -1072,6 +1080,7 @@ function createPopulationEnemy(
     markedUntilMs: 0,
     resonanceStacks: 0,
     exposedUntilMs: 0,
+    overloadedUntilMs: 0,
     dizzyStacks: 0,
     dizzyUntilMs: 0,
     stunnedUntilMs: 0,
@@ -1171,7 +1180,7 @@ function createStaticEnemy(
     attackCooldownBaseMs: collector ? 1650 : sentry ? 1450 : 980,
     attackCooldownMs: 700, thinkCooldownMs: 0, xpValue: collector ? 24 : sentry ? 12 : 9, rank,
     mode: "patrol", path: [], patrol, patrolIndex: patrol.length > 1 ? 1 : 0,
-    lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, exposedUntilMs: 0, dizzyStacks: 0,
+    lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, exposedUntilMs: 0, overloadedUntilMs: 0, dizzyStacks: 0,
     dizzyUntilMs: 0, stunnedUntilMs: 0, castUntilMs: 0, castTier: "quick", castStartedMs: 0, attackCount: 0,
   };
 }
@@ -4206,6 +4215,7 @@ export function commandHeavyAttack(state: GameState): GameState {
     next,
     `Тяжёлый удар: ${strike.damage} урона, стойка −${strike.stanceDamage}${strike.staggered ? "; цель ошеломлена" : ""}.`,
   );
+  next = breachOverload(next, target.id, hero);
   next = detonateResonance(next, target.id, hero);
   return strike.targetHp <= 0 ? finishEnemy(next, target.id) : next;
 }
@@ -4245,6 +4255,134 @@ function detonateResonance(state: GameState, targetId: string, origin: Point): G
     next,
     `Резонанс сорван: пространственный импульс ${impulse.damage} урона, стеков ${impulse.stacksSpent}` +
       `${caught.length > 1 ? `, задето целей ${caught.length}` : ""}.`,
+  );
+  for (const enemy of caught) {
+    const after = enemyById(next, enemy.id);
+    if (after && after.hp <= 0) next = finishEnemy(next, enemy.id);
+  }
+  return next;
+}
+
+
+/**
+ * Цикл направления на попадании: чем ведущее направление занимается между
+ * подготовкой и расплатой.
+ *
+ * У каждого направления он свой, поэтому одна и та же атака в разных сборках
+ * оставляет на цели разное, и порядок действий имеет разное значение.
+ */
+function applyDirectionLoop(
+  state: GameState,
+  targetId: string,
+  origin: Point,
+  weapon: ReturnType<typeof weaponFor>,
+): GameState {
+  const direction = archetypeFor(state);
+  const target = enemyById(state, targetId);
+  if (!target || target.hp <= 0) return state;
+
+  // Перегрузку пробивает любое попадание, а не только выстрел того, кто её
+  // навёл: это и делает её точкой стыковки между направлениями. Пробой идёт
+  // первым, иначе тот же удар успел бы навести её заново.
+  const breached = breachOverload(state, targetId, origin);
+  if (breached !== state) return breached;
+
+  // Прицел: накопленная неподвижность обменивается на вскрытие. Стрелок сам
+  // создаёт окно, которое ближнему бою даёт слом стойки, — и платит за это
+  // тем, что любое движение сбрасывает прицел.
+  if (direction === "marksman" && weapon.category === "ranged") {
+    const steps = aimStepsFor(state.hero.aimMs);
+    if (steps >= 2 && (target.exposedUntilMs ?? 0) <= state.worldTimeMs) {
+      let next = updateEnemy(state, targetId, (enemy) => ({
+        ...enemy,
+        exposedUntilMs: state.worldTimeMs + EXPOSURE_MS,
+        resonanceStacks: Math.min(RESONANCE_MAX_STACKS, enemy.resonanceStacks + 1),
+      }));
+      next = { ...next, hero: { ...next.hero, aimMs: 0 } };
+      return appendLog(
+        next,
+        `Выверенный выстрел (прицел ${steps}): ${target.name} вскрыт, наведён резонанс. Прицел сброшен.`,
+      );
+    }
+    return state;
+  }
+
+  // Темп: подвижность разносит уже наведённое. Направление не копит состояние
+  // на одной цели, а переносит его на соседей — тем и отличается от Разгона,
+  // который то же состояние срывает в одну точку.
+  if (direction === "skirmisher") {
+    const steps = tempoStepsFor(state.hero.tempoStacks, state.hero.tempoGainedAtMs, state.worldTimeMs);
+    if (steps >= 2 && target.resonanceStacks > 0) {
+      const neighbours = state.enemies.filter(
+        (enemy) =>
+          enemy.hp > 0 &&
+          enemy.zone === state.zone &&
+          enemy.id !== targetId &&
+          distance(enemy.position, target.position) <= 2.4,
+      );
+      if (!neighbours.length) return state;
+      let next = state;
+      for (const enemy of neighbours) {
+        next = updateEnemy(next, enemy.id, (current) => ({
+          ...current,
+          resonanceStacks: Math.min(RESONANCE_MAX_STACKS, current.resonanceStacks + 1),
+        }));
+      }
+      return appendLog(
+        next,
+        `Разнос темпом (${steps}): резонанс перенесён на ${neighbours.length} соседних целей.`,
+      );
+    }
+    return state;
+  }
+
+  // Температура: работа у верхней границы наводит электрический потенциал.
+  // Награда за риск перегрева, а не побочный эффект стрельбы.
+  if (direction === "heavy_gunner" && weapon.category === "ranged") {
+    const heatShare = state.hero.heat / HEAT_OVERHEAT;
+    if (heatShare >= OVERLOAD_HEAT_SHARE && (target.overloadedUntilMs ?? 0) <= state.worldTimeMs) {
+      const next = updateEnemy(state, targetId, (enemy) => ({
+        ...enemy,
+        overloadedUntilMs: state.worldTimeMs + OVERLOAD_MS,
+      }));
+      return appendLog(next, `${target.name}: наведена перегрузка — следующее попадание пробьёт её дальше.`);
+    }
+    return state;
+  }
+
+  return state;
+}
+
+/**
+ * Пробой перегрузки: расходится по плотности строя, а не по накоплению на
+ * одной цели. Поэтому Температура выгодна против групп там, где Резонанс
+ * выгоден против подготовленной одиночной цели.
+ */
+function breachOverload(state: GameState, targetId: string, origin: Point): GameState {
+  const target = enemyById(state, targetId);
+  if (!target || (target.overloadedUntilMs ?? 0) <= state.worldTimeMs) return state;
+
+  const breach = overloadBreach(heroAttackDamage(state), state.hero.heat / HEAT_OVERHEAT);
+  const caught = state.enemies
+    .filter(
+      (enemy) =>
+        enemy.hp > 0 &&
+        enemy.zone === state.zone &&
+        distance(enemy.position, target.position) <= breach.radius,
+    )
+    .slice(0, breach.maxTargets);
+
+  let next = updateEnemy(state, targetId, (enemy) => ({ ...enemy, overloadedUntilMs: 0 }));
+  for (const enemy of caught) {
+    next = updateEnemy(next, enemy.id, (current) => ({
+      ...current,
+      hp: current.hp - breach.damage,
+    }));
+  }
+  next = addEffect(next, origin, target.position, "control", breach.damage);
+  next = appendLog(
+    next,
+    `Пробой перегрузки: ${breach.damage} урона по ${caught.length} целям.`,
   );
   for (const enemy of caught) {
     const after = enemyById(next, enemy.id);
@@ -4422,6 +4560,7 @@ function heroAttackTick(state: GameState): GameState {
       resonanceStacks: Math.min(RESONANCE_MAX_STACKS, enemy.resonanceStacks + 1),
     }));
   }
+  next = applyDirectionLoop(next, target.id, heroPosition, weapon);
   next = addEffect(next, heroPosition, target.position, critical ? "control" : "hero-hit", damage);
   if (critical && strike.criticalEffect) {
     next = appendLog(

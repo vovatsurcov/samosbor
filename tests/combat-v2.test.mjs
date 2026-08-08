@@ -332,12 +332,22 @@ test("прицел стрелка копится неподвижностью и
   let state = heroAt(investDirection(createInitialState(), "precision"), { x: 9, y: 4 });
   assert.equal(archetypeFor(state), "marksman");
 
+  // Прицел проверяется на всём накоплении: выверенный выстрел тратит его на
+  // вскрытие цели, поэтому последний кадр может честно показывать ноль.
   let still = state;
-  for (let frame = 0; frame < 30; frame += 1) still = tickGame(still, 100);
-  assert.ok(still.hero.aimMs > 0, "неподвижность копит прицел");
-  assert.ok(archetypeResourceSteps(still) >= 1);
+  let peakSteps = 0;
+  for (let frame = 0; frame < 30; frame += 1) {
+    still = tickGame(still, 100);
+    peakSteps = Math.max(peakSteps, archetypeResourceSteps(still));
+  }
+  assert.ok(peakSteps >= 1, "неподвижность копит прицел");
+  assert.ok(
+    still.log.some((line) => /Выверенный выстрел/i.test(line)),
+    "накопленный прицел тратится на вскрытие цели",
+  );
 
-  const walking = commandMove(still, { x: 12, y: 5 });
+  const aiming = { ...still, hero: { ...still.hero, aimMs: 2000 } };
+  const walking = commandMove(aiming, { x: 12, y: 5 });
   assert.ok(walking.hero.path.length > 0, "маршрут построен");
   const moved = tickGame(walking, 100);
   assert.equal(moved.hero.aimMs, 0, "движение обнуляет прицел");
