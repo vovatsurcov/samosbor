@@ -8,6 +8,18 @@ import {
   type WeaponId,
   WEAPONS,
 } from "./game-items.ts";
+import {
+  KEYSTONES,
+  type RuleFlag,
+  RULE_INFO,
+} from "./game-rules.ts";
+export {
+  KEYSTONES,
+  RULE_INFO,
+  describeRule,
+  keystoneByFlag,
+} from "./game-rules.ts";
+export type { Keystone, RuleFlag, RuleInfo } from "./game-rules.ts";
 import { type DevProfile } from "./game-dev-profiles.ts";
 export { DEV_PROFILES, devProfileById } from "./game-dev-profiles.ts";
 export type { DevProfile } from "./game-dev-profiles.ts";
@@ -1920,7 +1932,11 @@ export function heroMoveSpeed(state: GameState): number {
   const surge =
     archetypeFor(state) === "power" ? surgeSpeedBonus(surgeStepsFor(state.hero.surgeMs)) : 0;
   // Тяжёлое оружие видно по походке, а не только в листе персонажа.
-  const weaponDrag = (1 - familyOf(weaponFor(state).id).mobilityPenalty) * heroHandCombination(state).mobility;
+  const anchored = hasRule(state, "twohanded:anchored") && heroHandCombination(state).id === "two_handed";
+  const weaponDrag =
+    (1 - familyOf(weaponFor(state).id).mobilityPenalty) *
+    heroHandCombination(state).mobility *
+    (anchored ? 0.55 : 1);
   const deployed =
     archetypeFor(state) === "heavy_gunner" && state.hero.deployedSinceMs > 0
       ? 1 - SET_UP_SPEED_PENALTY
@@ -2086,6 +2102,48 @@ function spendAmmo(state: GameState): GameState {
     );
   }
   return next;
+}
+
+
+/**
+ * Какие правила сейчас изменены. Собирается из ключевых узлов дерева и надетых
+ * предметов; боевое ядро спрашивает про флаг, а не про конкретный предмет.
+ */
+const ITEM_RULES: Partial<Record<ItemId, RuleFlag>> = {
+  launchContour: "charge:instant_costly",
+  pairedTray: "dual:shared_reload",
+  gripMg4: "melee:exposes_resonating",
+  heatShroud: "heat:overheat_discharges",
+  ballastBl9: "twohanded:anchored",
+  reflectorOt1: "parry:yields_resonance",
+  dischargerRz5: "overload:any_hit_applies",
+  platelessArmour: "defence:armour_only",
+};
+
+export function activeRules(state: GameState): RuleFlag[] {
+  const flags = new Set<RuleFlag>();
+  for (const keystone of KEYSTONES) {
+    if (state.hero.talents.includes(keystone.id)) flags.add(keystone.flag);
+  }
+  for (const instanceId of Object.values(state.hero.equipment)) {
+    if (!instanceId) continue;
+    const entry = inventoryEntryById(state, instanceId);
+    const rule = entry ? ITEM_RULES[entry.itemId] : undefined;
+    if (rule) flags.add(rule);
+  }
+  return [...flags];
+}
+
+export function hasRule(state: GameState, flag: RuleFlag): boolean {
+  return activeRules(state).includes(flag);
+}
+
+/** Человекочитаемая сводка изменённых правил для листа персонажа. */
+export function ruleReadout(state: GameState): { name: string; line: string }[] {
+  return activeRules(state).map((flag) => ({
+    name: RULE_INFO[flag].changes,
+    line: `Даёт: ${RULE_INFO[flag].gains} Отнимает: ${RULE_INFO[flag].costs}`,
+  }));
 }
 
 /** Форма исполнения способности при текущих руках. */
@@ -3798,6 +3856,12 @@ function tickArchetypeResource(state: GameState, deltaMs: number, movedTowardTar
     return surgeMs === state.hero.surgeMs ? state : { ...state, hero: { ...state.hero, surgeMs } };
   }
   if (archetype === "marksman") {
+    // «Один выстрел»: прицел набирается мгновенно, но только стоя.
+    if (hasRule(state, "aim:instant_but_rooted")) {
+      const rooted = state.hero.path.length === 0;
+      const aimMs = rooted ? 99999 : 0;
+      return aimMs === state.hero.aimMs ? state : { ...state, hero: { ...state.hero, aimMs } };
+    }
     const still = state.hero.path.length === 0;
     const aimMs = still ? state.hero.aimMs + deltaMs : 0;
     return aimMs === state.hero.aimMs ? state : { ...state, hero: { ...state.hero, aimMs } };
@@ -4204,18 +4268,26 @@ export function heroDefenceProfile(state: GameState): DefenceProfile {
   return {
     // Уклонение — разброс: чаще спасает от череды мелких ударов, но на один
     // тяжёлый на него полагаться нельзя.
-    evasion: Math.min(0.6, talentBonus(state, "evasion") + (inCover ? 0.05 : 0)),
+    // «Пластина без номера»: броня в полную силу, уклонения нет вовсе.
+    evasion: hasRule(state, "defence:armour_only")
+      ? 0
+      : Math.min(0.6, talentBonus(state, "evasion") + (inCover ? 0.05 : 0)),
     // Щит в левой руке даёт блок сам, без нажатия и без вложений в дерево:
     // это свойство снаряжения, а не способность.
-    blockChance: state.hero.guardDownUntilMs > state.worldTimeMs
+    // «Чужой темп» полностью снимает блок и парирование: за постоянный темп
+    // платят тем, что защищаться нечем.
+    blockChance: hasRule(state, "tempo:permanent_no_guard") || state.hero.guardDownUntilMs > state.worldTimeMs
       ? 0
       : Math.min(0.75, talentBonus(state, "block") + heroHandCombination(state).blockChance),
     blockEffectiveness: Math.min(0.8, 0.35 + talentBonus(state, "blockPower")),
     // Парирование реже блока: оно не просто гасит удар, а обращает его.
-    parryChance: Math.min(0.4, talentBonus(state, "parry")),
+    parryChance: hasRule(state, "tempo:permanent_no_guard") ? 0 : Math.min(0.4, talentBonus(state, "parry")),
     // Броня складывается из снаряжения, дерева и укрытия: узлы «+N брони»
     // обязаны доходить до профиля, иначе защитная ветка ничего не даёт.
-    armour: Math.round(equipmentScalar(state, "armor") + talentBonus(state, "armor")) + (inCover ? 6 : 0),
+    armour: Math.round(
+      (equipmentScalar(state, "armor") + talentBonus(state, "armor")) *
+        (hasRule(state, "defence:armour_only") ? 1.6 : 1),
+    ) + (inCover ? 6 : 0),
     resistances: {
       kinetic: talentBonus(state, "resistKinetic"),
       thermal: talentBonus(state, "resistThermal"),
@@ -4530,6 +4602,9 @@ function applyAbilityShape(
 function detonateResonance(state: GameState, targetId: string, origin: Point): GameState {
   const target = enemyById(state, targetId);
   if (!target) return state;
+  // «Нулевая инструкция»: сорвать резонанс ударом больше нельзя — он
+  // сворачивается сам, когда достигнет предела.
+  if (hasRule(state, "resonance:no_direct_consume")) return state;
   const impulse = resonanceImpulse(target.resonanceStacks, heroAttackDamage(state));
   if (!impulse) return state;
 
@@ -5313,21 +5388,41 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
     },
     rawStance,
   );
+  // «Контур обмена»: блок перестаёт быть защитой и становится источником
+  // разгона. Урон при этом проходит почти целиком.
+  const blocked = outcome.steps.some((step) => step.id === "block" && step.applied);
+  if (blocked && hasRule(next, "block:converts_to_surge")) {
+    next = {
+      ...next,
+      hero: { ...next.hero, surgeMs: next.hero.surgeMs + 900 },
+    };
+    next = appendLog(next, "Контур обмена: блок обращён в разгон.");
+  }
   if (outcome.avoided) {
     next = addEffect(next, enemy.position, heroPosition, "miss", 0);
     if (outcome.parried) {
-      // Парирование обращает защиту в атаку: атакующий теряет замах и стойку.
+      const yieldsResonance = hasRule(next, "parry:yields_resonance");
       next = updateEnemy(next, enemy.id, (current) => ({
         ...current,
         castUntilMs: 0,
         castStartedMs: 0,
-        stance: Math.max(0, current.stance - 12),
+        // «Отражатель»: защита начинает готовить цели вместо того, чтобы
+        // просто отменять удар.
+        stance: yieldsResonance ? current.stance : Math.max(0, current.stance - 12),
+        resonanceStacks: yieldsResonance
+          ? Math.min(RESONANCE_MAX_STACKS, current.resonanceStacks + 1)
+          : current.resonanceStacks,
         attackCooldownMs: Math.max(current.attackCooldownMs, 900),
       }));
     }
     return appendLog(next, `${enemy.name}: ${describeDefence(outcome)}.`);
   }
-  const damage = outcome.damage;
+  // «Разгон без тормозов»: накопленное держится, но каждая ступень делает
+  // входящий удар тяжелее — за это и платят.
+  const surgeExposure = hasRule(next, "surge:never_resets")
+    ? 1 + 0.12 * surgeStepsFor(next.hero.surgeMs)
+    : 1;
+  const damage = Math.round(outcome.damage * surgeExposure);
   const incomingStance = outcome.postureDamage;
   const heroStanceAfter = Math.max(0, next.hero.stance - incomingStance);
   const heroStagger = heroStanceAfter <= 0 && next.hero.stance > 0

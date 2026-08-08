@@ -4,6 +4,14 @@ export type WeaponId =
   | "servicePistol"
   | "coilRifle"
   | "horizonCarbine"
+  | "launchContour"
+  | "pairedTray"
+  | "gripMg4"
+  | "heatShroud"
+  | "ballastBl9"
+  | "reflectorOt1"
+  | "dischargerRz5"
+  | "platelessArmour"
   | "breachGun"
   | "suppressor"
   | "sectorMaul";
@@ -274,6 +282,102 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     rarity: "legendary",
     grantedTalents: ["legendary:kinetic-gyro"],
     description: `${WEAPONS.horizonCarbine.description} Открывает внешний талант «Инерционный гироскоп».`,
+  },
+  launchContour: {
+    id: "launchContour",
+    name: "Пусковой контур ПК-7",
+    shortName: "ПК-7",
+    kind: "gear",
+    slot: "back",
+    weight: 2.1,
+    stackable: false,
+    rarity: "legendary",
+    description: "Опытный образец НИИ. Заряд набирается мгновенно, но дыхания на него уходит вдвое больше.",
+    stats: {},
+  },
+  pairedTray: {
+    id: "pairedTray",
+    name: "Спаренный лоток СЛ-2",
+    shortName: "СЛ-2",
+    kind: "gear",
+    slot: "back",
+    weight: 1.9,
+    stackable: false,
+    rarity: "legendary",
+    description: "Ведомственная переделка под две руки. Магазины короче вдвое, зато перезарядка одна на обе руки.",
+    stats: {},
+  },
+  gripMg4: {
+    id: "gripMg4",
+    name: "Захват МГ-4",
+    shortName: "МГ-4",
+    kind: "gear",
+    slot: "hands",
+    weight: 0.8,
+    stackable: false,
+    rarity: "legendary",
+    description: "Ликвидаторский хват. Удар вплотную по резонирующей цели вскрывает её без слома стойки.",
+    stats: {},
+  },
+  heatShroud: {
+    id: "heatShroud",
+    name: "Кожух перегрева КП-3",
+    shortName: "КП-3",
+    kind: "gear",
+    slot: "body",
+    weight: 3.4,
+    stackable: false,
+    rarity: "legendary",
+    description: "Заводская партия с неправильным режимом. Перегрев не глушит оружие, а разряжается во все стороны — и в носителя тоже.",
+    stats: { armor: 2 },
+  },
+  ballastBl9: {
+    id: "ballastBl9",
+    name: "Балласт БЛ-9",
+    shortName: "БЛ-9",
+    kind: "gear",
+    slot: "feet",
+    weight: 5.8,
+    stackable: false,
+    rarity: "legendary",
+    description: "Аварийный груз для работы в сквозняке шахты. Двуручное встаёт намертво: вес уходит в удар, а не в шаг.",
+    stats: {},
+  },
+  reflectorOt1: {
+    id: "reflectorOt1",
+    name: "Отражатель ОТ-1",
+    shortName: "ОТ-1",
+    kind: "gear",
+    slot: "hands",
+    weight: 1.1,
+    stackable: false,
+    rarity: "legendary",
+    description: "Изделие исчезнувшего производства. Парированный удар не сбивает противника, а оставляет на нём резонанс.",
+    stats: {},
+  },
+  dischargerRz5: {
+    id: "dischargerRz5",
+    name: "Разрядник РЗ-5",
+    shortName: "РЗ-5",
+    kind: "gear",
+    slot: "offhand",
+    weight: 1.7,
+    stackable: false,
+    rarity: "legendary",
+    description: "Запрещённая модернизация. Перегрузку наводит любое попадание — и каждое наведение достаётся носителю заражением.",
+    stats: {},
+  },
+  platelessArmour: {
+    id: "platelessArmour",
+    name: "Пластина без номера",
+    shortName: "б/н",
+    kind: "gear",
+    slot: "body",
+    weight: 8.6,
+    stackable: false,
+    rarity: "legendary",
+    description: "Нештатная партия без клейма. Броня работает в полную силу, уклоняться в ней невозможно.",
+    stats: { armor: 14 },
   },
   breachGun: {
     id: "breachGun",

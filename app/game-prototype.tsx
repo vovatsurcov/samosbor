@@ -81,6 +81,7 @@ import {
   heroDefenceProfile,
   inventoryEntryById,
   heroHandCombination,
+  ruleReadout,
   releaseCharge,
   canSpendBreath,
   commandBackstab,
@@ -480,6 +481,7 @@ export default function GamePrototype() {
   const stanceState = heroStanceState(state);
   const defenceProfile = heroDefenceProfile(state);
   const handCombination = heroHandCombination(state);
+  const changedRules = ruleReadout(state);
   const offhandEntry = inventoryEntryById(state, state.hero.equipment.offhand ?? null);
   const chargeTuningNow = heroChargeTuning(state);
   const chargeSteps = heroChargeSteps(state);
@@ -1556,6 +1558,21 @@ export default function GamePrototype() {
               <strong>{handCombination.name}</strong>
               <small>{handCombination.verb}</small>
             </div>
+            {/*
+              Изменённые правила видно на листе персонажа: если механика больше
+              не работает как обычно, профиль не должен выглядеть прежним.
+              Цена правила показывается рядом с выигрышем и не прячется.
+            */}
+            {changedRules.length ? (
+              <div className="rule-readout" aria-label="Изменённые правила">
+                {changedRules.map((rule) => (
+                  <div key={rule.name}>
+                    <strong>{rule.name}</strong>
+                    <small>{rule.line}</small>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="stat-row compact"><span>Защита</span><strong>{heroDefense(state)}</strong></div>
             <div className="survival-stats">
               <span className={carriedWeight > weightLimit ? "danger" : ""}><small>Груз</small><strong>{carriedWeight.toFixed(1)} / {weightLimit.toFixed(0)} кг</strong></span>

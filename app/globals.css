@@ -4485,3 +4485,31 @@ kbd {
   font-size: 0.66rem;
   line-height: 1.3;
 }
+
+/* Изменённые правила: выигрыш и цена показываются вместе, цена не прячется. */
+.rule-readout {
+  display: grid;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.rule-readout > div {
+  padding: 6px 8px;
+  border: 1px solid rgba(174, 138, 208, 0.45);
+  border-left: 3px solid #9e78d6;
+  border-radius: 6px;
+  background: rgba(32, 26, 40, 0.62);
+}
+
+.rule-readout strong {
+  display: block;
+  color: #d9c6ef;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.rule-readout small {
+  color: #a99cb8;
+  font-size: 0.64rem;
+  line-height: 1.3;
+}

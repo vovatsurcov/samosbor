@@ -586,9 +586,10 @@ test("полевая задача и завершение операции вы�
   assert.ok(state.hero.totalXp > afterSensor);
 });
 
-test("дерево содержит 121 базовый узел и четыре внешних легендарных", () => {
+test("дерево содержит 121 базовый узел, шесть ключевых и четыре внешних легендарных", () => {
   assert.equal(BASE_TALENT_COUNT, 121);
   assert.equal(TALENT_NODES.length, 125);
+  assert.equal(TALENT_NODES.filter((node) => node.kind === "keystone").length, 6, "по ключевому узлу на направление");
   assert.equal(TALENT_NODES.filter((node) => node.scope === "legendary").length, 4);
   assert.equal(TALENT_NODES.filter((node) => node.scope === "hybrid").length, 15);
   for (const branch of ["power", "guard", "agility", "precision", "suppression", "resonance"]) {

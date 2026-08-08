@@ -37,9 +37,20 @@ function withEnemy(state, id, patch) {
   return { ...state, enemies: state.enemies.map((enemy) => (enemy.id === id ? { ...enemy, ...patch } : enemy)) };
 }
 
-/** Спарринг: цель рядом, ничего не делает и не умирает от одного удара. */
-function sparring(profileId, extra = {}) {
+/**
+ * Спарринг: цель рядом, ничего не делает и не умирает от одного удара.
+ *
+ * `withoutKeystone` убирает ключевой узел направления: базовое правило и
+ * изменённое правило проверяются отдельно.
+ */
+function sparring(profileId, extra = {}, withoutKeystone = false) {
   let state = applyDevProfile(createInitialState(), devProfileById(profileId));
+  if (withoutKeystone) {
+    state = {
+      ...state,
+      hero: { ...state.hero, talents: state.hero.talents.filter((id) => !/:16$/.test(id)) },
+    };
+  }
   state = heroAt(state, { x: 10, y: 9 });
   state = withEnemy(state, "guard-kl4", {
     position: { x: 11, y: 9 },
@@ -77,7 +88,7 @@ test("перегрузка расходится по строю, а резона
 });
 
 test("Прицел: накопленная неподвижность обменивается на вскрытие цели", () => {
-  let state = sparring("pure-aim");
+  let state = sparring("pure-aim", {}, true);
   state = { ...state, hero: { ...state.hero, aimMs: 4000 } };
   const before = enemyById(state, "guard-kl4");
   assert.ok((before.exposedUntilMs ?? 0) <= state.worldTimeMs, "цель ещё не вскрыта");
@@ -91,7 +102,7 @@ test("Прицел: накопленная неподвижность обмен
 });
 
 test("Прицел без накопления ничего не открывает: порядок действий важен", () => {
-  let state = sparring("pure-aim");
+  let state = sparring("pure-aim", {}, true);
   state = { ...state, hero: { ...state.hero, aimMs: 0 } };
   const after = strike(state, "guard-kl4");
   const foe = enemyById(after, "guard-kl4");
