@@ -184,7 +184,12 @@ test("совместимость определяется предметом, а
 test("двуручное оружие занимает обе руки", () => {
   const rifle = withWeapon(createInitialState(), "coilRifle");
   assert.equal(heroHandCombination(rifle).id, "two_handed");
-  assert.match(heroHandCombination(rifle).weakness, /свободной руки нет/i);
+  const two = heroHandCombination(rifle);
+  assert.match(two.weakness, /ни защитной руки/i);
+  // Двуручное обязано окупать оба слота возможностями, а не уроном.
+  assert.ok(two.stance > 1.2, "вес уходит в стойку");
+  assert.ok(two.stability > 0, "устойчивость: чужой удар хуже сбивает");
+  assert.ok(two.penetration > 0, "пробитие брони");
 });
 
 // --- Новые семейства и способности от рук ---------------------------------
@@ -290,4 +295,91 @@ test("аномальное устройство во второй руке ос�
   assert.equal(combination.id, "mixed_grip");
   assert.equal(combination.stateLoop, true, "одна рука наводит, другая расходует");
   assert.equal(shapeOf(combination).applies, true);
+});
+
+// --- Боезапас и направления через пару рук ---------------------------------
+
+import { canFire, heroAmmoState, tickGame, commandAttack } from "../app/game-engine.ts";
+import { reloadDurationMs } from "../app/game-weapon-families.ts";
+
+test("боезапас считается по рукам, и вторая рука не выпадает из боя", () => {
+  const single = duel(null);
+  const dual = duel("reserveSidearm");
+
+  assert.equal(heroAmmoState(single).length, 1, "одно стреляющее — один магазин");
+  assert.equal(heroAmmoState(dual).length, 2, "у каждой руки свой магазин");
+  assert.ok(reloadDurationMs(WEAPON_FAMILIES.sidearm, false) > 0);
+  assert.equal(reloadDurationMs(WEAPON_FAMILIES.heavy_melee, false), 0, "у ближнего боя перезарядки нет");
+
+  const fire = (start) => {
+    let state = commandAttack(start, "guard-kl4");
+    let shots = 0;
+    let idle = 0;
+    for (let frame = 0; frame < 160; frame += 1) {
+      const before = enemyById(state, "guard-kl4").hp;
+      state = tickGame(state, 100);
+      if (enemyById(state, "guard-kl4").hp < before) shots += 1;
+      else if (!canFire(state)) idle += 1;
+    }
+    return { shots, idle };
+  };
+  const alone = fire(single);
+  const paired = fire(dual);
+  assert.ok(paired.shots > alone.shots, "две руки стреляют дольше без паузы");
+  assert.ok(paired.idle < alone.idle, "пока одна рука перезаряжается, вторая работает");
+});
+
+test("механики направлений проходят через одну и ту же пару рук", () => {
+  // Ключевая проверка: руки задают КАК, направление — ЗАЧЕМ. Специальных
+  // правил под каждое направление в паре нет.
+  const arm = (profile, heroPatch = {}, foePatch = {}) => {
+    const state = duel("pryBar");
+    const built = applyDevProfile(state, devProfileById(profile));
+    return {
+      ...built,
+      hero: { ...built.hero, positions: state.hero.positions, ...heroPatch },
+      enemies: state.enemies.map((enemy) =>
+        enemy.id === "guard-kl4" ? { ...enemy, ...foePatch } : enemy),
+    };
+  };
+  const run = (state, frames = 40) => {
+    let next = commandAttack(state, "guard-kl4");
+    for (let frame = 0; frame < frames; frame += 1) next = tickGame(next, 150);
+    return next;
+  };
+
+  // У каждой пары рук сочетание одно и то же — меняется только направление.
+  for (const profile of ["pure-aim", "pure-heat", "pure-resonance", "pure-tempo", "pure-surge"]) {
+    assert.equal(heroHandCombination(arm(profile)).id, "mixed_grip", `${profile}: пара рук не меняется`);
+  }
+
+  assert.ok(run(arm("pure-aim")).log.some((l) => /Выверенный выстрел/i.test(l)), "Прицел работает в паре");
+  assert.ok(
+    run(arm("pure-heat", { heat: 78 })).log.some((l) => /наведена перегрузка/i.test(l)),
+    "Температура работает в паре",
+  );
+  assert.ok(run(arm("pure-resonance")).discordZones.length > 0, "Резонанс работает в паре");
+
+  const tempo = arm("pure-tempo", {}, { resonanceStacks: 2 });
+  const tempoRun = run({ ...tempo, hero: { ...tempo.hero, tempoStacks: 3, tempoGainedAtMs: tempo.worldTimeMs } }, 8);
+  assert.ok(tempoRun.log.some((l) => /Разнос темпом/i.test(l)), "Темп работает в паре");
+
+  const surge = commandHeavyAttack(arm("pure-surge", {}, { resonanceStacks: 3 }));
+  assert.ok(surge.log.some((l) => /Резонанс сорван/i.test(l)), "Разгон работает в паре");
+});
+
+test("пустая рука уступает полноценному второму слоту", () => {
+  const empty = heroHandCombination(createInitialState());
+  // Преимущества пустой руки намеренно скромные: это запасной вариант.
+  assert.ok(empty.handling > 0.9, "обращение быстрее лишь чуть-чуть");
+  assert.ok(empty.carry <= 2);
+  assert.ok(empty.mobility <= 1.03);
+  assert.equal(empty.blockChance, 0);
+  assert.equal(empty.hits ?? 1, 1);
+
+  // Полноценные пары дают то, чего пустая рука не даёт вовсе.
+  const shielded = heroHandCombination(duel("riotShield"));
+  const dual = heroHandCombination(duel("reserveSidearm"));
+  assert.ok(shielded.blockChance > 0.2, "щит даёт защиту, которой у пустой руки нет");
+  assert.ok(dual.cadence < empty.cadence * 0.8, "вторая рука даёт темп, которого у пустой нет");
 });

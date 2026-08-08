@@ -64,6 +64,10 @@ export type WeaponFamily = {
   sustainPenalty: number;
   /** Наносит ли семейство прямой урон вообще. */
   directDamage: boolean;
+  /** Выстрелов до перезарядки. 0 — боезапас не считается. */
+  magazine: number;
+  /** Сколько занимает перезарядка. */
+  reloadMs: number;
 };
 
 export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
@@ -83,6 +87,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "none",
     sustainPenalty: 0,
     directDamage: true,
+    magazine: 0,
+    reloadMs: 0,
   },
   light_melee: {
     id: "light_melee",
@@ -100,6 +106,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "none",
     sustainPenalty: 0,
     directDamage: true,
+    magazine: 0,
+    reloadMs: 0,
   },
   sidearm: {
     id: "sidearm",
@@ -117,6 +125,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "sustained",
     sustainPenalty: 0,
     directDamage: true,
+    magazine: 8,
+    reloadMs: 1100,
   },
   rifle: {
     id: "rifle",
@@ -134,6 +144,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "sustained",
     sustainPenalty: 0,
     directDamage: true,
+    magazine: 5,
+    reloadMs: 1700,
   },
   industrial: {
     id: "industrial",
@@ -151,6 +163,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "none",
     sustainPenalty: 0,
     directDamage: true,
+    magazine: 0,
+    reloadMs: 0,
   },
   shotgun: {
     id: "shotgun",
@@ -168,6 +182,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "steep",
     sustainPenalty: 0,
     directDamage: true,
+    magazine: 4,
+    reloadMs: 1900,
   },
   automatic: {
     id: "automatic",
@@ -185,6 +201,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "sustained",
     sustainPenalty: 0.12,
     directDamage: true,
+    magazine: 20,
+    reloadMs: 2400,
   },
   anomalous: {
     id: "anomalous",
@@ -202,6 +220,8 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     falloff: "none",
     sustainPenalty: 0,
     directDamage: false,
+    magazine: 0,
+    reloadMs: 0,
   },
 };
 
@@ -275,6 +295,20 @@ export function falloffMultiplier(family: WeaponFamily, distance: number, range:
 export function sustainedSpread(family: WeaponFamily, consecutiveShots: number): number {
   if (family.sustainPenalty <= 0) return 0;
   return Math.min(0.5, family.sustainPenalty * Math.max(0, consecutiveShots - 1));
+}
+
+/**
+ * Перезарядка как часть ритма, а не как симулятор.
+ *
+ * Пара рук меняет её главное свойство — не длительность, а то, остаётся ли
+ * персонаж в бою: пока одна рука перезаряжается, вторая может работать.
+ */
+export function reloadDurationMs(family: WeaponFamily, handsBusy: boolean): number {
+  if (family.magazine <= 0) return 0;
+  // Занятые обе руки перезаряжаются собраннее, но всё это время герой ничего
+  // не делает; свободная вторая рука перезаряжает медленнее, зато не выпадает
+  // из боя.
+  return Math.round(family.reloadMs * (handsBusy ? 1 : 1.2));
 }
 
 /** Насколько семейство доплачивает за удар по уже вскрытой цели. */

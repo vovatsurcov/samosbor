@@ -54,6 +54,7 @@ export {
 export type { AbilityShape, HandCapability, HandCombination, HandItem } from "./game-hands.ts";
 import {
   FAMILY_CAPABILITIES,
+  reloadDurationMs,
   falloffMultiplier,
   sustainedSpread,
   familyCooldown,
@@ -63,6 +64,7 @@ import {
 } from "./game-weapon-families.ts";
 export {
   FAMILY_CAPABILITIES,
+  reloadDurationMs,
   falloffMultiplier,
   sustainedSpread,
   WEAPON_FAMILIES,
@@ -444,6 +446,16 @@ export type Hero = {
   surgeMs: number;
   /** Сколько выстрелов подряд без паузы: разброс автоматического оружия. */
   consecutiveShots: number;
+  /** Боезапас правой руки. -1 — магазин ещё не заряжался в этой сессии. */
+  primaryAmmo: number;
+  /** Боезапас левой руки, если там стреляющее. */
+  secondaryAmmo: number;
+  /** Пока идёт перезарядка правой руки. */
+  primaryReloadUntilMs: number;
+  /** Пока идёт перезарядка левой руки. */
+  secondaryReloadUntilMs: number;
+  /** Какой рукой стреляли в прошлый раз: парная стрельба идёт попеременно. */
+  lastHandFired: "primary" | "secondary";
   /** Прицел стрелка: время неподвижности. */
   aimMs: number;
   scoutUntilMs: number;
@@ -1982,6 +1994,99 @@ const OFFHAND_CAPABILITIES: Partial<Record<ItemId, HandCapability[]>> = {
   riotShield: ["one_handed", "defensive"],
   reserveSidearm: ["one_handed", "ranged", "precise", "applies_state"],
 };
+
+
+/**
+ * Боезапас и перезарядка. Модель намеренно короткая: она нужна ради ритма
+ * оружия, а не ради учёта патронов.
+ *
+ * Главное свойство пары рук здесь не длительность, а то, выпадает ли герой из
+ * боя: пока одна рука перезаряжается, вторая продолжает работать. Именно это
+ * делает два пистолета двумя оружиями, а не ускорителем атаки.
+ */
+export type HandAmmo = {
+  hand: "primary" | "secondary";
+  ammo: number;
+  magazine: number;
+  reloading: boolean;
+};
+
+export function heroAmmoState(state: GameState): HandAmmo[] {
+  const { primary, secondary } = handItems(state);
+  const hands: HandAmmo[] = [];
+  const weapon = weaponFor(state);
+  const primaryFamily = familyOf(weapon.id);
+  if (primaryFamily.magazine > 0) {
+    hands.push({
+      hand: "primary",
+      ammo: state.hero.primaryAmmo < 0 ? primaryFamily.magazine : state.hero.primaryAmmo,
+      magazine: primaryFamily.magazine,
+      reloading: state.hero.primaryReloadUntilMs > state.worldTimeMs,
+    });
+  }
+  // Стреляющая левая рука ведёт собственный магазин.
+  if (secondary && secondary.capabilities.includes("ranged")) {
+    hands.push({
+      hand: "secondary",
+      ammo: state.hero.secondaryAmmo < 0 ? primaryFamily.magazine : state.hero.secondaryAmmo,
+      magazine: primaryFamily.magazine,
+      reloading: state.hero.secondaryReloadUntilMs > state.worldTimeMs,
+    });
+  }
+  void primary;
+  return hands;
+}
+
+/** Может ли герой сейчас выстрелить хоть одной рукой. */
+export function canFire(state: GameState): boolean {
+  const hands = heroAmmoState(state);
+  if (!hands.length) return true;
+  return hands.some((hand) => hand.ammo > 0 && !hand.reloading);
+}
+
+/**
+ * Тратит патрон той руки, чья очередь стрелять, и ставит её на перезарядку,
+ * когда магазин опустел. Вторая рука при этом остаётся в бою.
+ */
+function spendAmmo(state: GameState): GameState {
+  const hands = heroAmmoState(state);
+  if (!hands.length) return state;
+
+  const previous = state.hero.lastHandFired;
+  const ordered = hands.length > 1 && previous === "primary" ? [hands[1], hands[0]] : hands;
+  const firing = ordered.find((hand) => hand.ammo > 0 && !hand.reloading);
+  if (!firing) return state;
+
+  const left = firing.ammo - 1;
+  const family = familyOf(weaponFor(state).id);
+  const busyHands = hands.length === 1;
+  const reloadMs = left <= 0 ? reloadDurationMs(family, busyHands) : 0;
+  let next: GameState = {
+    ...state,
+    hero: {
+      ...state.hero,
+      lastHandFired: firing.hand,
+      ...(firing.hand === "primary"
+        ? {
+            primaryAmmo: left <= 0 ? firing.magazine : left,
+            primaryReloadUntilMs: left <= 0 ? state.worldTimeMs + reloadMs : state.hero.primaryReloadUntilMs,
+          }
+        : {
+            secondaryAmmo: left <= 0 ? firing.magazine : left,
+            secondaryReloadUntilMs: left <= 0 ? state.worldTimeMs + reloadMs : state.hero.secondaryReloadUntilMs,
+          }),
+    },
+  };
+  if (left <= 0) {
+    next = appendLog(
+      next,
+      hands.length > 1
+        ? `${firing.hand === "primary" ? "Правая" : "Левая"} рука на перезарядке — вторая продолжает работать.`
+        : "Магазин пуст: перезарядка.",
+    );
+  }
+  return next;
+}
 
 /** Форма исполнения способности при текущих руках. */
 export function heroAbilityShape(state: GameState) {
@@ -3894,7 +3999,7 @@ export function commandBackstab(state: GameState): GameState {
       ),
       damageType: weapon.damageType,
       kind: "light",
-      penetration: weapon.penetration,
+      penetration: weapon.penetration + heroHandCombination(next).penetration,
       damageBonus: tempoDamageBonus(next.hero.tempoStacks),
     },
     enemyCombatProfile(next, target),
@@ -4117,7 +4222,8 @@ export function heroDefenceProfile(state: GameState): DefenceProfile {
       chemical: talentBonus(state, "resistChemical"),
       anomalous: talentBonus(state, "resistAnomalous"),
     },
-    posture: Math.min(0.75, talentBonus(state, "staggerResist")),
+    // Устойчивость двуручного: вес оружия держит героя на ногах.
+    posture: Math.min(0.75, talentBonus(state, "staggerResist") + heroHandCombination(state).stability),
   };
 }
 
@@ -4184,7 +4290,7 @@ export function releaseCharge(state: GameState): GameState {
       damageType: weapon.damageType,
       kind: "charged",
       chargeSteps: 0,
-      penetration: weapon.penetration,
+      penetration: weapon.penetration + heroHandCombination(next).penetration,
       criticalChance: talentBonus(next, "critical"),
       counterTiming: target.castUntilMs > next.worldTimeMs,
     },
@@ -4315,7 +4421,7 @@ export function commandHeavyAttack(state: GameState): GameState {
       ),
       damageType: weapon.damageType,
       kind: "heavy",
-      penetration: weapon.penetration,
+      penetration: weapon.penetration + heroHandCombination(next).penetration,
       criticalChance: talentBonus(next, "critical"),
       // Встречный удар: цель уже начала собственный замах.
       counterTiming: target.castUntilMs > next.worldTimeMs,
@@ -4725,6 +4831,9 @@ function heroAttackTick(state: GameState): GameState {
   // Перегретый ствол и обратная тень не позволяют атаковать.
   if (state.hero.overheatedUntilMs > state.worldTimeMs) return state;
   if (state.hero.reverseShadowUntilMs > state.worldTimeMs) return state;
+  // Пустой магазин действительно останавливает стрельбу. Пара рук здесь и
+  // окупается: пока одна перезаряжается, вторая ещё может выстрелить.
+  if (!canFire(state)) return state;
 
   const weapon = weaponFor(state);
   // Броска на попадание больше нет: урон разрешается напрямую, а избежать его
@@ -4778,7 +4887,7 @@ function heroAttackTick(state: GameState): GameState {
       ),
       damageType: weapon.damageType,
       kind: "light",
-      penetration: weapon.penetration,
+      penetration: weapon.penetration + heroHandCombination(next).penetration,
       damageBonus:
         (marked ? MARK_DAMAGE_BONUS + talentBonus(next, "markPower") * 0.05 : 0) +
         (archetypeFor(next) === "marksman" ? AIM_DAMAGE_BONUS * aimStepsFor(next.hero.aimMs) : 0) +
@@ -4835,6 +4944,7 @@ function heroAttackTick(state: GameState): GameState {
       consecutiveShots: weapon.category === "ranged" ? next.hero.consecutiveShots + 1 : 0,
     },
   };
+  if (weapon.category === "ranged") next = spendAmmo(next);
   next = applyStrikeToEnemy(next, target.id, strike, heroPosition, "light");
   if (weapon.damageType === "resonant" || archetypeFor(next) === "resonance") {
     next = updateEnemy(next, target.id, (enemy) => ({
@@ -6067,6 +6177,11 @@ export function createInitialState(): GameState {
       chargingSinceMs: 0,
       surgeMs: 0,
     consecutiveShots: 0,
+    primaryAmmo: -1,
+    secondaryAmmo: -1,
+    primaryReloadUntilMs: 0,
+    secondaryReloadUntilMs: 0,
+    lastHandFired: "secondary" as const,
       aimMs: 0,
       scoutUntilMs: 0,
       footingMs: 0,
