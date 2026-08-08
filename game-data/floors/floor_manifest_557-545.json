@@ -1,0 +1,15 @@
+[
+  {"floor":557,"name":"Жилой контур","biome":"RES","role":"dangerous_residential","baselinePressure":28,"lightingProfile":"LP-RES","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":556,"name":"Учебный технический пояс","biome":"UTL","role":"starter_vertical_slice","baselinePressure":22,"lightingProfile":"LP-TECH","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":555,"name":"Ремонтный пояс","biome":"UTL_IND","role":"repair_flooded_workshops","baselinePressure":35,"lightingProfile":"LP-TECH","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":554,"name":"Город 550 · Большой разлом","biome":"HUB","role":"city_550_upper_hub","baselinePressure":12,"lightingProfile":"LP-HUB","keyFloor":true,"runtimeStatus":"implemented_as_city_hub","canonicalStatus":"city_550"},
+  {"floor":553,"name":"Город 550 · жилые кварталы","biome":"HUB_RES","role":"city_550_residential","baselinePressure":10,"lightingProfile":"LP-HUB","keyFloor":false,"runtimeStatus":"abstracted_inside_554","canonicalStatus":"city_550"},
+  {"floor":552,"name":"Город 550 · общественно-служебный уровень","biome":"HUB_ADM","role":"city_550_services","baselinePressure":10,"lightingProfile":"LP-HUB","keyFloor":false,"runtimeStatus":"abstracted_inside_554","canonicalStatus":"city_550"},
+  {"floor":551,"name":"Город 550 · техническое подбрюшье","biome":"HUB_UTL","role":"city_550_infrastructure","baselinePressure":18,"lightingProfile":"LP-TECH","keyFloor":false,"runtimeStatus":"abstracted_inside_554","canonicalStatus":"city_550"},
+  {"floor":550,"name":"Нижний выход Города 550","biome":"TRN","role":"dangerous_city_exit","baselinePressure":32,"lightingProfile":"LP-TRN","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":549,"name":"Кабельный пролёт","biome":"UTL","role":"power_cable_transit","baselinePressure":42,"lightingProfile":"LP-TECH","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":548,"name":"Насосный каскад","biome":"HYD","role":"flood_control","baselinePressure":48,"lightingProfile":"LP-TECH","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":547,"name":"Архив НИИ-547","biome":"NII_ARC","role":"research_archive_void_entry","baselinePressure":58,"lightingProfile":"LP-NII","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":546,"name":"Грузовой узел ГУ-46","biome":"LOG_IND","role":"cargo_boss_floor","baselinePressure":55,"lightingProfile":"LP-IND","keyFloor":true,"runtimeStatus":"implemented","canonicalStatus":"implemented"},
+  {"floor":545,"name":"Город 545 · верхний административно-караванный ярус","biome":"HUB_IND","role":"city_545_upper","baselinePressure":20,"lightingProfile":"LP-HUB","keyFloor":true,"runtimeStatus":"implemented_old_settlement_form","canonicalStatus":"approved_city_545_with_floor_544"}
+]
