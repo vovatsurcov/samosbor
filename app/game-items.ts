@@ -4,6 +4,8 @@ export type WeaponId =
   | "servicePistol"
   | "coilRifle"
   | "horizonCarbine"
+  | "breachGun"
+  | "suppressor"
   | "sectorMaul";
 
 export type GearSlot =
@@ -34,6 +36,9 @@ export type ItemId =
   | "traumaInjector"
   | "filterCartridge"
   | "batteryPack"
+  | "breachGun"
+  | "suppressor"
+  | "resonator"
   | "pryBar"
   | "riotShield"
   | "reserveSidearm"
@@ -169,6 +174,36 @@ export const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     noiseRadius: 7.5,
     description: "Легендарный гиростабилизированный карабин. Сохраняет огонь в движении.",
   },
+  breachGun: {
+    id: "breachGun",
+    name: "Аварийный дробовик АД-9",
+    shortName: "АД-9",
+    category: "ranged",
+    range: 2.6,
+    damage: 46,
+    stanceDamage: 22,
+    damageType: "kinetic",
+    penetration: 2,
+    accuracy: 2,
+    cooldownMs: 700,
+    noiseRadius: 9,
+    description: "Служебный дробовик для вскрытия завалов. В упор сносит строй, за три клетки бесполезен.",
+  },
+  suppressor: {
+    id: "suppressor",
+    name: "Автомат подавления АП-12",
+    shortName: "АП-12",
+    category: "ranged",
+    range: 4.8,
+    damage: 14,
+    stanceDamage: 5,
+    damageType: "kinetic",
+    penetration: 1,
+    accuracy: 3,
+    cooldownMs: 1000,
+    noiseRadius: 11,
+    description: "Ведомственное автоматическое оружие. Берёт объёмом огня, а не точностью.",
+  },
   sectorMaul: {
     id: "sectorMaul",
     name: "Кувалда «Секция двенадцать»",
@@ -239,6 +274,26 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     rarity: "legendary",
     grantedTalents: ["legendary:kinetic-gyro"],
     description: `${WEAPONS.horizonCarbine.description} Открывает внешний талант «Инерционный гироскоп».`,
+  },
+  breachGun: {
+    id: "breachGun",
+    name: WEAPONS.breachGun.name,
+    shortName: WEAPONS.breachGun.shortName,
+    kind: "weapon",
+    slot: "weapon",
+    weight: 4.6,
+    stackable: false,
+    description: WEAPONS.breachGun.description,
+  },
+  suppressor: {
+    id: "suppressor",
+    name: WEAPONS.suppressor.name,
+    shortName: WEAPONS.suppressor.shortName,
+    kind: "weapon",
+    slot: "weapon",
+    weight: 5.4,
+    stackable: false,
+    description: WEAPONS.suppressor.description,
   },
   sectorMaul: {
     id: "sectorMaul",
@@ -406,6 +461,17 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     description: "Мгновенно перезапускает атакующий контур рембота.",
     useLabel: "Подключить",
     consumableCategory: "booster",
+  },
+  resonator: {
+    id: "resonator",
+    name: "Резонатор РН-2",
+    shortName: "РН-2",
+    kind: "gear",
+    slot: "offhand",
+    weight: 1.6,
+    stackable: false,
+    description: "Опытный образец НИИ под левую руку. Сам не бьёт: наводит резонанс и перестраивает уже наведённое.",
+    stats: {},
   },
   pryBar: {
     id: "pryBar",

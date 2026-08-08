@@ -186,3 +186,108 @@ test("двуручное оружие занимает обе руки", () => {
   assert.equal(heroHandCombination(rifle).id, "two_handed");
   assert.match(heroHandCombination(rifle).weakness, /свободной руки нет/i);
 });
+
+// --- Новые семейства и способности от рук ---------------------------------
+
+import { falloffMultiplier, sustainedSpread } from "../app/game-weapon-families.ts";
+import { abilityShape as shapeOf } from "../app/game-hands.ts";
+import { commandHeavyAttack, enemyById, heroAbilityShape } from "../app/game-engine.ts";
+
+function duel(offhandId, weaponId = "servicePistol") {
+  let state = createInitialState();
+  state = withWeapon(state, weaponId);
+  if (offhandId) state = withOffhand(state, offhandId);
+  state = {
+    ...state,
+    hero: { ...state.hero, positions: { ...state.hero.positions, [state.zone]: { x: 10, y: 9 } }, path: [] },
+    enemies: state.enemies.map((enemy) =>
+      enemy.id === "guard-kl4"
+        ? { ...enemy, position: { x: 11, y: 9 }, hp: 9000, maxHp: 9000, stance: 4000, maxStance: 4000, attackCooldownMs: 999999, thinkCooldownMs: 999999 }
+        : enemy.id === "stalker-17"
+          ? { ...enemy, position: { x: 12, y: 9 }, zone: state.zone, hp: 9000, maxHp: 9000, attackCooldownMs: 999999, thinkCooldownMs: 999999 }
+          : enemy),
+  };
+  return state;
+}
+
+test("новые семейства вводят новый язык, а не новые числа", () => {
+  const shotgun = WEAPON_FAMILIES.shotgun;
+  const automatic = WEAPON_FAMILIES.automatic;
+  const anomalous = WEAPON_FAMILIES.anomalous;
+
+  // Дробовик — не короткая винтовка: он теряет почти всё с дистанцией.
+  assert.equal(shotgun.falloff, "steep");
+  assert.ok(falloffMultiplier(shotgun, 0.5, 2.6) > falloffMultiplier(shotgun, 2.5, 2.6) * 1.5);
+  assert.equal(falloffMultiplier(WEAPON_FAMILIES.rifle, 5, 5.8), 1, "у остальных спада нет");
+  assert.ok(shotgun.sweep >= 3, "работает по строю, а не по одной цели");
+
+  // Автомат — не винтовка с меньшим интервалом: у него растёт разброс.
+  assert.ok(automatic.sustainPenalty > 0);
+  assert.ok(sustainedSpread(automatic, 5) > sustainedSpread(automatic, 2));
+  assert.equal(sustainedSpread(WEAPON_FAMILIES.rifle, 5), 0, "у остальных очереди нет");
+
+  // Аномальное — не волшебная палочка: оно вообще не наносит прямого урона.
+  assert.equal(anomalous.directDamage, false);
+  assert.match(anomalous.weakness, /само по себе не убивает/i);
+});
+
+test("одна способность исполняется по-разному в четырёх конфигурациях рук", () => {
+  const configs = {
+    alone: duel(null),
+    dual: duel("reserveSidearm"),
+    shield: duel("riotShield"),
+    bar: duel("pryBar"),
+  };
+  const shapes = Object.fromEntries(
+    Object.entries(configs).map(([key, state]) => [key, heroAbilityShape(state)]),
+  );
+
+  assert.equal(shapes.alone.hits, 1);
+  assert.equal(shapes.dual.hits, 2, "две руки — два попадания");
+  assert.equal(shapes.dual.targets, 2, "парная стрельба может развести цели");
+  assert.equal(shapes.shield.keepsGuard, true, "щит не опускается ради удара");
+  assert.equal(shapes.alone.keepsGuard, false);
+  assert.equal(shapes.bar.applies, true, "смешанный хват сам наводит состояние");
+
+  // Разница не в множителе урона, а в исполнении.
+  const results = Object.fromEntries(
+    Object.entries(configs).map(([key, state]) => {
+      const after = commandHeavyAttack(state);
+      return [key, {
+        neighbour: 9000 - enemyById(after, "stalker-17").hp,
+        stacks: enemyById(after, "guard-kl4").resonanceStacks,
+      }];
+    }),
+  );
+  assert.ok(results.dual.neighbour > 0, "парная стрельба достаёт соседа");
+  assert.equal(results.alone.neighbour, 0, "одна рука — одна цель");
+  assert.ok(results.bar.stacks > 0, "смешанный хват оставляет состояние");
+  assert.equal(results.dual.stacks, 0);
+});
+
+test("щит меняет не запас ОЗ, а возможность бить не открываясь", () => {
+  const guard = applyDevProfile(createInitialState(), devProfileById("pure-footing"));
+  const shielded = { ...duel("riotShield"), hero: { ...duel("riotShield").hero, talents: guard.hero.talents } };
+  const bare = { ...duel(null), hero: { ...duel(null).hero, talents: guard.hero.talents } };
+
+  const shieldedAfter = commandHeavyAttack(shielded);
+  const bareAfter = commandHeavyAttack(bare);
+  assert.ok(heroDefenceProfile(shieldedAfter).blockChance > 0.3, "со щитом защита держится во время удара");
+  assert.equal(heroDefenceProfile(bareAfter).blockChance, 0, "без щита замах открывает защиту");
+});
+
+test("свободная рука имеет собственную выгоду, а не блок по умолчанию", () => {
+  const free = heroHandCombination(createInitialState());
+  assert.equal(free.blockChance, 0, "блок по умолчанию убран");
+  assert.ok(free.handling < 1, "обращение быстрее");
+  assert.ok(free.carry > 0, "ноша легче");
+  assert.ok(free.mobility > 1);
+});
+
+test("аномальное устройство во второй руке остаётся инструментом состояний", () => {
+  const withDevice = duel("resonator");
+  const combination = heroHandCombination(withDevice);
+  assert.equal(combination.id, "mixed_grip");
+  assert.equal(combination.stateLoop, true, "одна рука наводит, другая расходует");
+  assert.equal(shapeOf(combination).applies, true);
+});

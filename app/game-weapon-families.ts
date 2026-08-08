@@ -18,7 +18,10 @@ export type WeaponFamilyId =
   | "light_melee"
   | "sidearm"
   | "rifle"
-  | "industrial";
+  | "industrial"
+  | "shotgun"
+  | "automatic"
+  | "anomalous";
 
 /**
  * Как семейство обращается со стойкой цели.
@@ -26,6 +29,13 @@ export type WeaponFamilyId =
  * почти не трогает, третье работает только по уже сломанной.
  */
 export type StanceBehaviour = "breaker" | "chipper" | "opportunist";
+
+/**
+ * Как семейство обращается с дистанцией. Это не «дальность больше или
+ * меньше», а разный характер: одно теряет всё за парой клеток, другое
+ * работает ровно, третьему дистанция безразлична.
+ */
+export type FalloffBehaviour = "none" | "steep" | "sustained";
 
 export type WeaponFamily = {
   id: WeaponFamilyId;
@@ -49,6 +59,11 @@ export type WeaponFamily = {
   consumes: string;
   weakness: string;
   verb: string;
+  falloff: FalloffBehaviour;
+  /** Растёт ли разброс при непрерывной стрельбе. */
+  sustainPenalty: number;
+  /** Наносит ли семейство прямой урон вообще. */
+  directDamage: boolean;
 };
 
 export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
@@ -65,6 +80,9 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     consumes: "накопленный резонанс",
     weakness: "промах стоит дорого: отменить замах нельзя",
     verb: "вкладывается в один удар и ломает защиту",
+    falloff: "none",
+    sustainPenalty: 0,
+    directDamage: true,
   },
   light_melee: {
     id: "light_melee",
@@ -79,6 +97,9 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     consumes: "почти ничего: расходовать нечем",
     weakness: "не ломает стойку и вязнет в броне",
     verb: "бьёт часто и уходит с линии",
+    falloff: "none",
+    sustainPenalty: 0,
+    directDamage: true,
   },
   sidearm: {
     id: "sidearm",
@@ -93,6 +114,9 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     consumes: "вскрытие — стреляет в открытое",
     weakness: "ничего не решает в одиночку",
     verb: "держит дистанцию и работает по одной цели",
+    falloff: "sustained",
+    sustainPenalty: 0,
+    directDamage: true,
   },
   rifle: {
     id: "rifle",
@@ -107,6 +131,9 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     consumes: "вскрытие и метки",
     weakness: "в упор неудобна, требует места и времени",
     verb: "выцеливает и наказывает подготовленное",
+    falloff: "sustained",
+    sustainPenalty: 0,
+    directDamage: true,
   },
   industrial: {
     id: "industrial",
@@ -121,6 +148,60 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     consumes: "перегрузку — пробивает её дальше",
     weakness: "шумный, неточный, не про одиночную цель",
     verb: "работает по площади и по технике",
+    falloff: "none",
+    sustainPenalty: 0,
+    directDamage: true,
+  },
+  shotgun: {
+    id: "shotgun",
+    name: "Дробовик",
+    preferredRange: "в упор",
+    commitment: 0.65,
+    tempo: 1.5,
+    sweep: 3,
+    stance: "breaker",
+    mobilityPenalty: 0.06,
+    applies: "вскрытие и отбрасывание в упор",
+    consumes: "ничего: работает по неподготовленным",
+    weakness: "за три клетки почти бесполезен",
+    verb: "выбивает пространство перед собой и сносит строй с ног",
+    falloff: "steep",
+    sustainPenalty: 0,
+    directDamage: true,
+  },
+  automatic: {
+    id: "automatic",
+    name: "Автоматическое",
+    preferredRange: "средняя",
+    commitment: 0.5,
+    tempo: 0.45,
+    sweep: 1,
+    stance: "chipper",
+    mobilityPenalty: 0.14,
+    applies: "непрерывное давление на одну точку",
+    consumes: "ничего: берёт объёмом, а не подготовкой",
+    weakness: "разброс растёт с длиной очереди, и остановиться дорого",
+    verb: "льёт очередь, теряя точность тем сильнее, чем дольше держит палец",
+    falloff: "sustained",
+    sustainPenalty: 0.12,
+    directDamage: true,
+  },
+  anomalous: {
+    id: "anomalous",
+    name: "Аномальное устройство",
+    preferredRange: "любая",
+    commitment: 0.3,
+    tempo: 1.1,
+    sweep: 1,
+    stance: "chipper",
+    mobilityPenalty: 0.04,
+    applies: "состояния без единой царапины",
+    consumes: "преобразует уже наведённое",
+    weakness: "само по себе не убивает: без второй руки бой не заканчивается",
+    verb: "не бьёт, а наводит и перестраивает состояния",
+    falloff: "none",
+    sustainPenalty: 0,
+    directDamage: false,
   },
 };
 
@@ -136,6 +217,8 @@ export const WEAPON_FAMILY_OF: Record<WeaponId, WeaponFamilyId> = {
   coilRifle: "rifle",
   horizonCarbine: "rifle",
   sectorMaul: "industrial",
+  breachGun: "shotgun",
+  suppressor: "automatic",
 };
 
 /**
@@ -144,6 +227,9 @@ export const WEAPON_FAMILY_OF: Record<WeaponId, WeaponFamilyId> = {
  */
 export const FAMILY_CAPABILITIES: Record<WeaponFamilyId, HandCapability[]> = {
   heavy_melee: ["two_handed", "melee", "breach", "heavy", "consumes_state"],
+  shotgun: ["two_handed", "ranged", "sweep", "breach"],
+  automatic: ["two_handed", "ranged", "heavy"],
+  anomalous: ["one_handed", "anomalous", "applies_state", "consumes_state"],
   light_melee: ["one_handed", "melee", "light", "applies_state"],
   sidearm: ["one_handed", "ranged", "precise", "applies_state"],
   rifle: ["two_handed", "ranged", "precise", "consumes_state"],
@@ -170,6 +256,25 @@ export function familyStanceDamage(base: number, family: WeaponFamily): number {
   if (family.stance === "breaker") return Math.round(base * 1.8);
   if (family.stance === "chipper") return Math.round(base * 0.5);
   return Math.round(base * 0.8);
+}
+
+/**
+ * Спад урона по дистанции. Дробовик теряет почти всё за парой клеток — это и
+ * делает его не «короткой винтовкой», а оружием, ради которого лезут вплотную.
+ */
+export function falloffMultiplier(family: WeaponFamily, distance: number, range: number): number {
+  if (family.falloff !== "steep" || range <= 0) return 1;
+  const share = Math.min(1, Math.max(0, distance / range));
+  return Math.max(0.3, 1 - share * share * 0.85);
+}
+
+/**
+ * Разброс от длины очереди. Автомат тем хуже попадает, чем дольше не отпускал
+ * палец: его слабость встроена в способ стрельбы, а не в цифру точности.
+ */
+export function sustainedSpread(family: WeaponFamily, consecutiveShots: number): number {
+  if (family.sustainPenalty <= 0) return 0;
+  return Math.min(0.5, family.sustainPenalty * Math.max(0, consecutiveShots - 1));
 }
 
 /** Насколько семейство доплачивает за удар по уже вскрытой цели. */

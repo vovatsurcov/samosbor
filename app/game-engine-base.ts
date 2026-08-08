@@ -43,15 +43,19 @@ export type { TelegraphResponse, TelegraphTier } from "./game-telegraph.ts";
 import {
   type HandCapability,
   type HandItem,
+  abilityShape,
   combineHands,
 } from "./game-hands.ts";
 export {
+  abilityShape,
   combineHands,
   describeCombination,
 } from "./game-hands.ts";
-export type { HandCapability, HandCombination, HandItem } from "./game-hands.ts";
+export type { AbilityShape, HandCapability, HandCombination, HandItem } from "./game-hands.ts";
 import {
   FAMILY_CAPABILITIES,
+  falloffMultiplier,
+  sustainedSpread,
   familyCooldown,
   familyExposureBonus,
   familyOf,
@@ -59,6 +63,8 @@ import {
 } from "./game-weapon-families.ts";
 export {
   FAMILY_CAPABILITIES,
+  falloffMultiplier,
+  sustainedSpread,
   WEAPON_FAMILIES,
   WEAPON_FAMILY_OF,
   familyCooldown,
@@ -428,12 +434,16 @@ export type Hero = {
   blockBrokenUntilMs: number;
   dodgeInvulnerableUntilMs: number;
   dodgeReadyAtMs: number;
+  /** Пока идёт восстановление после удара, защита открыта — если руки заняты. */
+  guardDownUntilMs: number;
   perfectDodgeUntilMs: number;
   riposteUntilMs: number;
   /** Момент начала заряда: удержание команды атаки копит усиленный удар. */
   chargingSinceMs: number;
   /** Разгон силача: время непрерывного движения к цели. */
   surgeMs: number;
+  /** Сколько выстрелов подряд без паузы: разброс автоматического оружия. */
+  consecutiveShots: number;
   /** Прицел стрелка: время неподвижности. */
   aimMs: number;
   scoutUntilMs: number;
@@ -1816,7 +1826,15 @@ export function inventoryWeight(state: GameState): number {
 }
 
 export function carryCapacity(state: GameState): number {
-  return 12 + effectiveAttribute(state, "body") * 2 + equipmentScalar(state, "carry") + talentBonus(state, "carry");
+  // Незанятая рука разгружает снаряжение: это её собственное преимущество, а
+  // не подачка в виде блока по умолчанию.
+  return (
+    12 +
+    effectiveAttribute(state, "body") * 2 +
+    equipmentScalar(state, "carry") +
+    talentBonus(state, "carry") +
+    heroHandCombination(state).carry
+  );
 }
 
 export function weaponEntry(state: GameState): InventoryEntry | null {
@@ -1960,9 +1978,15 @@ function handItems(state: GameState): { primary: HandItem | null; secondary: Han
  */
 const OFFHAND_CAPABILITIES: Partial<Record<ItemId, HandCapability[]>> = {
   pryBar: ["one_handed", "melee", "light", "consumes_state"],
+  resonator: ["one_handed", "anomalous", "applies_state", "consumes_state"],
   riotShield: ["one_handed", "defensive"],
   reserveSidearm: ["one_handed", "ranged", "precise", "applies_state"],
 };
+
+/** Форма исполнения способности при текущих руках. */
+export function heroAbilityShape(state: GameState) {
+  return abilityShape(heroHandCombination(state));
+}
 
 /** Поведение текущего сочетания рук. */
 export function heroHandCombination(state: GameState) {
@@ -4078,7 +4102,9 @@ export function heroDefenceProfile(state: GameState): DefenceProfile {
     evasion: Math.min(0.6, talentBonus(state, "evasion") + (inCover ? 0.05 : 0)),
     // Щит в левой руке даёт блок сам, без нажатия и без вложений в дерево:
     // это свойство снаряжения, а не способность.
-    blockChance: Math.min(0.75, talentBonus(state, "block") + heroHandCombination(state).blockChance),
+    blockChance: state.hero.guardDownUntilMs > state.worldTimeMs
+      ? 0
+      : Math.min(0.75, talentBonus(state, "block") + heroHandCombination(state).blockChance),
     blockEffectiveness: Math.min(0.8, 0.35 + talentBonus(state, "blockPower")),
     // Парирование реже блока: оно не просто гасит удар, а обращает его.
     parryChance: Math.min(0.4, talentBonus(state, "parry")),
@@ -4256,7 +4282,9 @@ export function commandDodge(state: GameState, direction?: Point): GameState {
       destination: null,
       blockingSinceMs: 0,
       dodgeInvulnerableUntilMs: next.worldTimeMs + DODGE.invulnerableMs,
-      dodgeReadyAtMs: next.worldTimeMs + DODGE.recoveryMs,
+      // Обращение зависит от того, чем заняты руки: со свободной рукой герой
+      // собирается быстрее, со щитом — медленнее.
+      dodgeReadyAtMs: next.worldTimeMs + Math.round(DODGE.recoveryMs * heroHandCombination(next).handling),
     },
   };
 }
@@ -4315,7 +4343,77 @@ export function commandHeavyAttack(state: GameState): GameState {
   );
   next = breachOverload(next, target.id, hero);
   next = detonateResonance(next, target.id, hero);
+  next = applyAbilityShape(next, target.id, hero, strike.damage);
+  // Замах открывает защиту — но не у того, кто держит щит: это и есть разница
+  // между «стрелком с запасом ОЗ» и стрельбой из-за прикрытия.
+  if (!heroAbilityShape(next).keepsGuard) {
+    next = {
+      ...next,
+      hero: { ...next.hero, guardDownUntilMs: next.worldTimeMs + Math.round(heroAttackCooldown(next) * 0.6) },
+    };
+  }
   return strike.targetHp <= 0 ? finishEnemy(next, target.id) : next;
+}
+
+/**
+ * Исполнение способности зависит от того, что в обеих руках.
+ *
+ * Способность не превращается в четыре разных умения — меняется её форма:
+ * сколько попаданий, сколько целей, наводится ли состояние, держится ли защита.
+ * Форма выводится из сочетания (game-hands.ts), поэтому новая пара работает без
+ * правок здесь.
+ */
+function applyAbilityShape(
+  state: GameState,
+  targetId: string,
+  origin: Point,
+  baseDamage: number,
+): GameState {
+  const shape = heroAbilityShape(state);
+  if (shape.hits <= 1 && !shape.applies) return state;
+
+  const target = enemyById(state, targetId);
+  if (!target) return state;
+  let next = state;
+
+  // Дополнительные попадания второй руки. Слабее основного: вторая рука
+  // дополняет действие, а не удваивает его.
+  const extraDamage = Math.max(1, Math.round(baseDamage * 0.45));
+  const extras = [target, ...next.enemies.filter(
+    (enemy) =>
+      enemy.hp > 0 &&
+      enemy.id !== targetId &&
+      enemy.zone === next.zone &&
+      distance(enemy.position, target.position) <= 1.8,
+  )].slice(0, shape.targets);
+
+  for (let hit = 1; hit < shape.hits; hit += 1) {
+    const victim = extras[Math.min(hit, extras.length - 1)];
+    if (!victim) break;
+    next = updateEnemy(next, victim.id, (enemy) => ({ ...enemy, hp: enemy.hp - extraDamage }));
+  }
+
+  // Смешанный хват: одна рука наводит состояние, другая его расходует.
+  if (shape.applies) {
+    next = updateEnemy(next, targetId, (enemy) => ({
+      ...enemy,
+      resonanceStacks: Math.min(RESONANCE_MAX_STACKS, enemy.resonanceStacks + 1),
+    }));
+  }
+
+  const combination = heroHandCombination(next);
+  next = appendLog(
+    next,
+    shape.hits > 1
+      ? `${combination.name}: ${shape.hits} попадания${extras.length > 1 ? ` по ${Math.min(shape.targets, extras.length)} целям` : ""}.`
+      : `${combination.name}: ${shape.note}.`,
+  );
+
+  for (const enemy of extras) {
+    const after = enemyById(next, enemy.id);
+    if (after && after.hp <= 0) next = finishEnemy(next, enemy.id);
+  }
+  return next;
 }
 
 /**
@@ -4692,6 +4790,14 @@ function heroAttackTick(state: GameState): GameState {
             ? SET_UP_DAMAGE_BONUS
             : -UNDEPLOYED_DAMAGE_PENALTY
           : 0) +
+        // Спад по дистанции и разброс очереди: слабость семейства встроена в
+        // способ стрельбы, а не в отдельную цифру точности.
+        (falloffMultiplier(
+          familyOf(weapon.id),
+          distance(heroPosition, target.position),
+          weapon.range,
+        ) - 1) +
+        -sustainedSpread(familyOf(weapon.id), next.hero.consecutiveShots) +
         // Выжидающее оружие доплачивает за удар по уже вскрытой цели: винтовка
         // наказывает подготовленное, а не создаёт окно сама.
         ((target.exposedUntilMs ?? 0) > next.worldTimeMs
@@ -4722,6 +4828,13 @@ function heroAttackTick(state: GameState): GameState {
   const damage = strike.damage;
   const critical = strike.critical;
   const hp = strike.targetHp;
+  next = {
+    ...next,
+    hero: {
+      ...next.hero,
+      consecutiveShots: weapon.category === "ranged" ? next.hero.consecutiveShots + 1 : 0,
+    },
+  };
   next = applyStrikeToEnemy(next, target.id, strike, heroPosition, "light");
   if (weapon.damageType === "resonant" || archetypeFor(next) === "resonance") {
     next = updateEnemy(next, target.id, (enemy) => ({
@@ -5948,10 +6061,12 @@ export function createInitialState(): GameState {
       blockBrokenUntilMs: 0,
       dodgeInvulnerableUntilMs: 0,
       dodgeReadyAtMs: 0,
+      guardDownUntilMs: 0,
       perfectDodgeUntilMs: 0,
       riposteUntilMs: 0,
       chargingSinceMs: 0,
       surgeMs: 0,
+    consecutiveShots: 0,
       aimMs: 0,
       scoutUntilMs: 0,
       footingMs: 0,
@@ -6297,6 +6412,11 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
 
   next = tickSamosborSchedule(next);
   next = tickDiscordZones(next);
+  // Очередь «остывает», как только герой перестал стрелять: разброс автомата
+  // должен восстанавливаться, иначе он только растёт и оружие мертво.
+  if (next.hero.consecutiveShots > 0 && next.hero.attackCooldownMs <= 0) {
+    next = { ...next, hero: { ...next.hero, consecutiveShots: 0 } };
+  }
 
   const heroPosition = next.hero.positions[next.zone];
   const combatDirective = combatDirectiveFor(next);
