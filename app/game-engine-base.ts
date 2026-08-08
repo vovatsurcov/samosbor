@@ -9,6 +9,22 @@ import {
   WEAPONS,
 } from "./game-items.ts";
 import {
+  type EnemyDefinition,
+  type EnemyRole,
+  ENCOUNTERS,
+  definitionById,
+  encounterById,
+} from "./game-enemy-roster.ts";
+export {
+  ENCOUNTERS,
+  ENEMY_DEFINITIONS,
+  ROLE_LABELS,
+  ROLE_READING,
+  definitionById,
+  encounterById,
+} from "./game-enemy-roster.ts";
+export type { EncounterDefinition, EnemyDefinition, EnemyRole } from "./game-enemy-roster.ts";
+import {
   KEYSTONES,
   type RuleFlag,
   RULE_INFO,
@@ -591,6 +607,10 @@ export type Enemy = {
   castUntilMs: number;
   /** Какой удар готовится: обычный или телеграфированный тяжёлый. */
   castTier: TelegraphTier;
+  /** Игровая функция противника: читается силуэтом и поведением. */
+  role?: EnemyRole;
+  /** Опасное действие: телеграфированный тяжёлый удар. */
+  dangerous?: boolean;
   /** Сколько ударов противник уже провёл: задаёт ритм тяжёлых замахов. */
   attackCount: number;
   /** Когда начался замах — нужно интерфейсу для заполнения шкалы. */
@@ -1283,6 +1303,112 @@ function createStaticEnemy(
     lastKnownHero: null, memoryMs: 0, markedUntilMs: 0, resonanceStacks: 0, exposedUntilMs: 0, overloadedUntilMs: 0, dizzyStacks: 0,
     dizzyUntilMs: 0, stunnedUntilMs: 0, castUntilMs: 0, castTier: "quick", castStartedMs: 0, attackCount: 0,
   };
+}
+
+
+// --- Противники из описаний -------------------------------------------------
+
+/**
+ * Собирает противника из описания. Новый противник добавляется как данные:
+ * боевое ядро о конкретных существах не знает.
+ */
+export function enemyFromDefinition(
+  definition: EnemyDefinition,
+  id: string,
+  zone: ZoneId,
+  position: Point,
+): Enemy {
+  const scaled = scaleEnemy(
+    { hp: definition.hp, damage: definition.damage, armor: definition.armor, stance: definition.stance },
+    { floor: zoneFloorNumber(zone), rank: definition.rank },
+  );
+  return {
+    id,
+    name: definition.name,
+    kind: definition.kind,
+    role: definition.role,
+    dangerous: definition.dangerousAction,
+    zone,
+    position: copyPoint(position),
+    home: copyPoint(position),
+    hp: scaled.hp,
+    maxHp: scaled.hp,
+    armor: scaled.armor,
+    stance: scaled.stance,
+    maxStance: scaled.stance,
+    stanceIdleMs: 0,
+    staggerImmuneUntilMs: 0,
+    staggerCount: 0,
+    phase: 0,
+    phaseInvulnerableUntilMs: 0,
+    flatAbsorb: scaled.flatAbsorb,
+    visionRadius: definition.visionRadius,
+    hearingRadius: definition.visionRadius + 1,
+    aggroRadius: definition.aggroRadius,
+    attackRange: definition.attackRange,
+    speed: definition.speed,
+    accuracy: 4,
+    damage: scaled.damage,
+    attackCooldownBaseMs: definition.attackCooldownBaseMs,
+    attackCooldownMs: 700,
+    thinkCooldownMs: 0,
+    xpValue: definition.xpValue,
+    rank: definition.rank,
+    mode: "patrol",
+    path: [],
+    patrol: [copyPoint(position)],
+    patrolIndex: 0,
+    lastKnownHero: null,
+    memoryMs: 0,
+    markedUntilMs: 0,
+    resonanceStacks: 0,
+    exposedUntilMs: 0,
+    overloadedUntilMs: 0,
+    dizzyStacks: 0,
+    dizzyUntilMs: 0,
+    stunnedUntilMs: 0,
+    castUntilMs: 0,
+    castTier: "quick",
+    castStartedMs: 0,
+    attackCount: 0,
+  };
+}
+
+/**
+ * Высаживает состав группы рядом с точкой. Состав описан данными, поэтому
+ * новую встречу можно собрать без правок движка — основа для будущего
+ * редактора локаций.
+ */
+export function spawnEncounter(state: GameState, encounterId: string, at: Point): GameState {
+  const encounter = encounterById(encounterId);
+  if (!encounter) return state;
+
+  const spawned: Enemy[] = [];
+  let index = 0;
+  for (const member of encounter.members) {
+    const definition = definitionById(member.defId);
+    if (!definition) continue;
+    for (let copy = 0; copy < member.count; copy += 1) {
+      // Раскладываем по кольцу вокруг точки: группа должна занимать площадь,
+      // а не стоять в одной клетке.
+      const angle = (index * Math.PI * 2) / 7;
+      const spread = 0.9 + copy * 0.7;
+      const raw = {
+        x: at.x + member.offset.x + Math.cos(angle) * spread,
+        y: at.y + member.offset.y + Math.sin(angle) * spread,
+      };
+      const point = isWalkable(state, gridPoint(raw)) ? gridPoint(raw) : gridPoint(at);
+      spawned.push(
+        enemyFromDefinition(definition, `enc-${encounter.id}-${index}`, state.zone, point),
+      );
+      index += 1;
+    }
+  }
+  if (!spawned.length) return state;
+  return appendLog(
+    { ...state, enemies: [...state.enemies.filter((enemy) => !enemy.id.startsWith("enc-")), ...spawned] },
+    `Встреча: ${encounter.name}. ${encounter.question}`,
+  );
 }
 
 /** Номер этажа для масштабирования: войд считается по глубине лабораторного слоя. */
@@ -3807,6 +3933,28 @@ function applyStrikeToEnemy(
 }
 
 /** Стойка противников восстанавливается после паузы без тяжёлых воздействий. */
+
+/**
+ * Помеха работает не уроном: пока диспетчер жив, остальные в его радиусе
+ * действуют быстрее. Это и создаёт вопрос «кого убирать первым» — состав
+ * группы меняет приоритет цели, а не только суммарный урон.
+ */
+function tickControllers(state: GameState): GameState {
+  const controllers = state.enemies.filter(
+    (enemy) => enemy.hp > 0 && enemy.zone === state.zone && enemy.role === "controller" && enemy.mode !== "patrol",
+  );
+  if (!controllers.length) return state;
+  return {
+    ...state,
+    enemies: state.enemies.map((enemy) => {
+      if (enemy.hp <= 0 || enemy.role === "controller" || enemy.zone !== state.zone) return enemy;
+      const urged = controllers.some((controller) => distance(controller.position, enemy.position) <= 6);
+      if (!urged || enemy.attackCooldownMs <= 0) return enemy;
+      return { ...enemy, attackCooldownMs: Math.max(0, enemy.attackCooldownMs - 45) };
+    }),
+  };
+}
+
 function tickEnemyStance(state: GameState, deltaMs: number): GameState {
   return {
     ...state,
@@ -5428,7 +5576,9 @@ function enemyAttackTick(state: GameState, enemyId: string): GameState {
     // Тяжёлый замах — не случайность, а ритм: противник периодически
     // вкладывается в один читаемый удар, и это единственный момент, когда у
     // игрока есть настоящий выбор ответа.
-    const heavy = (enemy.attackCount ?? 0) % 3 === 2;
+    // Телеграфированный тяжёлый удар есть не у всех: у напора его нет вовсе,
+    // иначе поток слэшера превращается в череду пауз.
+    const heavy = (enemy.dangerous ?? true) && (enemy.attackCount ?? 0) % 3 === 2;
     const tier: TelegraphTier = heavy ? "heavy" : "quick";
     return updateEnemy(state, enemy.id, (current) => ({
       ...current,
@@ -6744,6 +6894,7 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
 
   next = tickSamosborSchedule(next);
   next = tickDiscordZones(next);
+  next = tickControllers(next);
   // Очередь «остывает», как только герой перестал стрелять: разброс автомата
   // должен восстанавливаться, иначе он только растёт и оружие мертво.
   if (next.hero.consecutiveShots > 0 && next.hero.attackCooldownMs <= 0) {

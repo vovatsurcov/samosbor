@@ -12,7 +12,7 @@
     "build": "bash scripts/build-verified.sh",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "test:engine": "node --experimental-strip-types --test tests/game-engine.test.mjs tests/region-549-545.test.mjs tests/region-content-544.test.mjs tests/world-systems.test.mjs tests/starter-campaign-professions.test.mjs tests/settlement-arcs-defense.test.mjs tests/main-story.test.mjs tests/samosbor.test.mjs tests/combat-model.test.mjs tests/combat-states.test.mjs tests/telegraph.test.mjs tests/direction-loops.test.mjs tests/weapon-identity.test.mjs tests/build-changers.test.mjs tests/control-model.test.mjs tests/combat-modes.test.mjs tests/combat-v2.test.mjs tests/combat-archetypes.test.mjs tests/talent-tree.test.mjs",
+    "test:engine": "node --experimental-strip-types --test tests/game-engine.test.mjs tests/region-549-545.test.mjs tests/region-content-544.test.mjs tests/world-systems.test.mjs tests/starter-campaign-professions.test.mjs tests/settlement-arcs-defense.test.mjs tests/main-story.test.mjs tests/samosbor.test.mjs tests/combat-model.test.mjs tests/combat-states.test.mjs tests/telegraph.test.mjs tests/direction-loops.test.mjs tests/weapon-identity.test.mjs tests/build-changers.test.mjs tests/control-model.test.mjs tests/enemy-slice.test.mjs tests/combat-modes.test.mjs tests/combat-v2.test.mjs tests/combat-archetypes.test.mjs tests/talent-tree.test.mjs",
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"

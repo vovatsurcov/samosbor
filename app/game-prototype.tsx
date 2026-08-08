@@ -73,6 +73,8 @@ import {
   setMoveIntent,
   setPrimaryAttack,
   DEV_PROFILES,
+  ENCOUNTERS,
+  spawnEncounter,
   applyDevProfile,
   devProfileById,
   TELEGRAPHS,
@@ -1426,8 +1428,19 @@ export default function GamePrototype() {
                       );
                     })() : null}
                     <ellipse cx={iso.x} cy={iso.y + 8} rx="17" ry="7" fill="#100f0e" opacity="0.72" />
-                    <g transform={`translate(${iso.x} ${iso.y + 6})`}>
+                    <g transform={`translate(${iso.x} ${iso.y + 6}) scale(${enemy.role === "heavy" ? 1.35 : enemy.role === "swarm" ? 0.78 : 1})`}>
                       <path d={ENEMY_SILHOUETTES[enemy.kind]} fill="#22201d" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+                      {/*
+                        Роль читается силуэтом до чтения названия: напор мелкий
+                        и низкий, тяжёлый — крупный и широкий, помеха несёт
+                        антенну, дистанция — вынесенный ствол.
+                      */}
+                      {enemy.role === "controller" ? (
+                        <path d="M 0 -30 L 0 -40 M -5 -38 L 5 -38" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
+                      ) : null}
+                      {enemy.role === "ranged" ? (
+                        <path d="M 7 -16 L 17 -16" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" />
+                      ) : null}
                       {enemy.kind === "sentry" ? (
                         // Манипулятор ведомственного автомата: это рабочий
                         // инструмент, применяемый не по назначению.
@@ -1523,6 +1536,23 @@ export default function GamePrototype() {
                   <option value="">выбрать…</option>
                   {DEV_PROFILES.map((profile) => (
                     <option key={profile.id} value={profile.id}>{profile.name}</option>
+                  ))}
+                </select>
+                <span>встреча</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    if (!id) return;
+                    setState((current) => {
+                      const hero = current.hero.positions[current.zone];
+                      return spawnEncounter(current, id, { x: hero.x + 4, y: hero.y });
+                    });
+                  }}
+                >
+                  <option value="">выбрать…</option>
+                  {ENCOUNTERS.map((encounter) => (
+                    <option key={encounter.id} value={encounter.id}>{encounter.name}</option>
                   ))}
                 </select>
               </div>
