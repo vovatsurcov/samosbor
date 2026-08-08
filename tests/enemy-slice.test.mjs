@@ -40,17 +40,28 @@ test("роли покрывают разные игровые функции и 
 });
 
 test("иерархия живучести: слабые умирают быстро, минибосс держит бой", () => {
-  const swarm = ENEMY_DEFINITIONS["shift-runner"];
-  const heavy = ENEMY_DEFINITIONS["loading-frame"];
-  const elite = ENEMY_DEFINITIONS["senior-shift"];
-  const miniboss = ENEMY_DEFINITIONS["line-adjuster"];
+  // Сравнивать нужно **итоговые** числа, а не базовые: ранг и этаж
+  // домножают их, и именно на этой разнице я уже один раз получил минибосса
+  // на шесть тысяч ОЗ.
+  const effective = (id) =>
+    enemyFromDefinition(ENEMY_DEFINITIONS[id], `hp-${id}`, "floor556", { x: 5, y: 5 });
+
+  const swarm = effective("shift-runner");
+  const heavy = effective("loading-frame");
+  const elite = effective("senior-shift");
+  const miniboss = effective("line-adjuster");
 
   assert.ok(swarm.hp < heavy.hp / 3, "напор гибнет быстро");
   assert.ok(heavy.hp < elite.hp, "элита живёт дольше обычного тяжёлого");
-  assert.ok(elite.hp < miniboss.hp, "минибосс даёт сборке раскрыться несколько раз");
+  assert.ok(elite.hp * 2 < miniboss.hp, "минибосс даёт сборке раскрыться несколько раз");
+  // И при этом не превращается в мешок с ОЗ.
+  assert.ok(miniboss.hp < elite.hp * 8, "минибосс — бой, а не стена");
+
   // Плотность боя не должна держаться только на здоровье.
-  assert.ok(swarm.speed > heavy.speed * 2, "разница между ролями не только в живучести");
-  assert.ok(heavy.armor > swarm.armor * 10);
+  const swarmDef = ENEMY_DEFINITIONS["shift-runner"];
+  const heavyDef = ENEMY_DEFINITIONS["loading-frame"];
+  assert.ok(swarmDef.speed > heavyDef.speed * 2, "разница между ролями не только в живучести");
+  assert.ok(heavy.armor > swarm.armor * 3);
 });
 
 test("обычный поток остаётся быстрым: опасное действие есть не у всех", () => {
