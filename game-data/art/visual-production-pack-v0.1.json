@@ -1,0 +1,20 @@
+{
+  "version": "0.1",
+  "visualTarget": "SAMOSBOR_VISUAL_TARGET_01",
+  "assets": [
+    {"id":"CHAR-BASE-01","type":"player","status":"concept-approved","next":"animation-pack"},
+    {"id":"CHAR-NPC-01","type":"npc","name":"Жилец","status":"planned","next":"production-sheet"},
+    {"id":"CHAR-NPC-02","type":"npc","name":"Ремонтник","status":"planned","next":"production-sheet"},
+    {"id":"CHAR-NPC-03","type":"npc","name":"Торговец","status":"planned","next":"production-sheet"},
+    {"id":"MOB-HUM-01","type":"enemy-human","name":"Мародёр","status":"planned","next":"production-sheet"},
+    {"id":"MOB-ALT-01","type":"enemy-altered","name":"Сутулый","status":"planned","next":"production-sheet"},
+    {"id":"MOB-IND-01","type":"enemy-industrial","name":"Ремонтный автомат","status":"planned","next":"production-sheet"}
+  ],
+  "rules": {
+    "sharedHumanoidSkeleton": "SKEL-HUMANOID-01",
+    "isometricCamera": "3/4 top-down",
+    "modularEquipment": true,
+    "sourceRuntimeSeparation": true,
+    "approvedVisualTargetRequired": true
+  }
+}
