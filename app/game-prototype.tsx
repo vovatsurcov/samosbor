@@ -65,6 +65,13 @@ import {
   type ControlMode,
   HEAT_OVERHEAT,
   COMBAT_STATES,
+  MOVE_KEYS,
+  bufferAbility,
+  takeBufferedAbility,
+  moveVectorFromKeys,
+  setAimPoint,
+  setMoveIntent,
+  setPrimaryAttack,
   DEV_PROFILES,
   applyDevProfile,
   devProfileById,
@@ -255,6 +262,19 @@ function pointsForDiamond(cx: number, cy: number): string {
     `${cx},${cy + TILE_HEIGHT}`,
     `${cx - TILE_WIDTH / 2},${cy + TILE_HEIGHT / 2}`,
   ].join(" ");
+}
+
+/**
+ * Обратное изометрическое преобразование: экранная точка курсора в мировые
+ * координаты. Нужно, чтобы мышь задавала прицел независимо от движения.
+ */
+function fromIso(screen: Point, originX: number, originY: number): Point {
+  const dx = screen.x - originX;
+  const dy = screen.y - originY - TILE_HEIGHT / 2;
+  return {
+    x: dx / TILE_WIDTH + dy / TILE_HEIGHT,
+    y: dy / TILE_HEIGHT - dx / TILE_WIDTH,
+  };
 }
 
 function toIso(point: Point, originX: number, originY: number): Point {
@@ -453,6 +473,7 @@ export default function GamePrototype() {
   const stateRef = useRef(state);
   const lastFrameRef = useRef(0);
   const gamepadLockRef = useRef(0);
+  const heldKeysRef = useRef<Set<string>>(new Set());
   const gamepadButtonsRef = useRef<Set<number>>(new Set());
   const okHeldRef = useRef(false);
   const okChordRef = useRef(false);
@@ -615,7 +636,14 @@ export default function GamePrototype() {
       const frameInterval = DESKTOP_FRAME_INTERVAL;
       if (delta >= frameInterval) {
         lastFrameRef.current = now;
-        setState((current) => tickGame(current, delta));
+        setState((current) => {
+          const ticked = tickGame(current, delta);
+          // Отложенное нажатие выполняется, как только оружие позволило.
+          const taken = takeBufferedAbility(ticked);
+          if (taken.slot === 1) return commandHeavyAttack(taken.state);
+          if (taken.slot === 2) return commandFinisher(taken.state);
+          return taken.state;
+        });
       }
       frame = window.requestAnimationFrame(animate);
     };
@@ -683,13 +711,26 @@ export default function GamePrototype() {
     setState((current) => releaseCharge(current));
   }, []);
 
-  const heavyAttackNow = useCallback(() => {
-    setState((current) => commandHeavyAttack(current));
+  /**
+   * Нажатие во время восстановления не теряется: короткий буфер выполнит его,
+   * как только действие станет допустимым. Это буфер, а не очередь команд.
+   */
+  const withBuffer = useCallback((slot: number, run: () => void) => {
+    const current = stateRef.current;
+    if (current.hero.attackCooldownMs > 0 || current.hero.staggeredUntilMs > current.worldTimeMs) {
+      setState((state) => bufferAbility(state, slot));
+      return;
+    }
+    run();
   }, []);
 
+  const heavyAttackNow = useCallback(() => {
+    withBuffer(1, () => setState((current) => commandHeavyAttack(current)));
+  }, [withBuffer]);
+
   const finisherNow = useCallback(() => {
-    setState((current) => commandFinisher(current));
-  }, []);
+    withBuffer(2, () => setState((current) => commandFinisher(current)));
+  }, [withBuffer]);
 
   const dodgeNow = useCallback((direction?: { x: number; y: number }) => {
     setState((current) => commandDodge(current, direction));
@@ -853,27 +894,24 @@ export default function GamePrototype() {
       } else if (key === "shift") {
         event.preventDefault();
         if (!event.repeat) dodgeNow();
-      } else {
-        const current = gridPoint(stateRef.current.hero.positions[stateRef.current.zone]);
-        const direction =
-          key === "w" || key === "arrowup"
-            ? { x: 0, y: -1 }
-            : key === "s" || key === "arrowdown"
-              ? { x: 0, y: 1 }
-              : key === "a" || key === "arrowleft"
-                ? { x: -1, y: 0 }
-                : key === "d" || key === "arrowright"
-                  ? { x: 1, y: 0 }
-                  : null;
-        if (direction) {
-          event.preventDefault();
-          if (okHeldRef.current && key.startsWith("arrow")) okChordRef.current = true;
-          moveTo({ x: current.x + direction.x, y: current.y + direction.y });
+      } else if (MOVE_KEYS[key]) {
+        // Браузерный адаптер: клавиша превращается в намерение движения, а не
+        // в маршрут. Боевая логика про клавиши ничего не знает.
+        event.preventDefault();
+        if (okHeldRef.current && key.startsWith("arrow")) okChordRef.current = true;
+        if (!heldKeysRef.current.has(key)) {
+          heldKeysRef.current.add(key);
+          setState((current) => setMoveIntent(current, moveVectorFromKeys(heldKeysRef.current)));
         }
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (MOVE_KEYS[key] && heldKeysRef.current.delete(key)) {
+        event.preventDefault();
+        setState((current) => setMoveIntent(current, moveVectorFromKeys(heldKeysRef.current)));
+        return;
+      }
       if (key === "1" || key === "f") {
         event.preventDefault();
         finishCharge();
@@ -1080,6 +1118,24 @@ export default function GamePrototype() {
               preserveAspectRatio="xMidYMid slice"
               role="img"
               aria-label={`Карта: ${map.name}`}
+              onPointerMove={(event) => {
+                // Мышь задаёт направление внимания. Движение при этом остаётся
+                // за WASD: стрелок не обязан бежать туда, куда целится.
+                const svg = event.currentTarget;
+                const rect = svg.getBoundingClientRect();
+                const scale = cameraWidth / rect.width;
+                const local = {
+                  x: cameraX + (event.clientX - rect.left) * scale,
+                  y: cameraY + (event.clientY - rect.top) * (cameraHeight / rect.height),
+                };
+                setState((current) => setAimPoint(current, fromIso(local, originX, originY)));
+              }}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                setState((current) => setPrimaryAttack(current, true));
+              }}
+              onPointerUp={() => setState((current) => setPrimaryAttack(current, false))}
+              onPointerLeave={() => setState((current) => setPrimaryAttack(current, false))}
             >
               <defs>
                 <filter id="void-glow" x="-60%" y="-60%" width="220%" height="220%">

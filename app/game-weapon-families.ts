@@ -64,6 +64,12 @@ export type WeaponFamily = {
   sustainPenalty: number;
   /** Наносит ли семейство прямой урон вообще. */
   directDamage: boolean;
+  /**
+   * Какую долю скорости персонаж сохраняет во время действия и восстановления.
+   * Это и есть обязательство в ощущениях: лёгкий выстрел почти не мешает шагу,
+   * тяжёлый замах фиксирует на месте.
+   */
+  movementAllowance: number;
   /** Выстрелов до перезарядки. 0 — боезапас не считается. */
   magazine: number;
   /** Сколько занимает перезарядка. */
@@ -89,6 +95,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: true,
     magazine: 0,
     reloadMs: 0,
+    movementAllowance: 0.15,
   },
   light_melee: {
     id: "light_melee",
@@ -108,6 +115,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: true,
     magazine: 0,
     reloadMs: 0,
+    movementAllowance: 0.8,
   },
   sidearm: {
     id: "sidearm",
@@ -127,6 +135,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: true,
     magazine: 8,
     reloadMs: 1100,
+    movementAllowance: 0.9,
   },
   rifle: {
     id: "rifle",
@@ -146,6 +155,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: true,
     magazine: 5,
     reloadMs: 1700,
+    movementAllowance: 0.55,
   },
   industrial: {
     id: "industrial",
@@ -165,6 +175,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: true,
     magazine: 0,
     reloadMs: 0,
+    movementAllowance: 0.25,
   },
   shotgun: {
     id: "shotgun",
@@ -184,6 +195,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: true,
     magazine: 4,
     reloadMs: 1900,
+    movementAllowance: 0.35,
   },
   automatic: {
     id: "automatic",
@@ -203,6 +215,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: true,
     magazine: 20,
     reloadMs: 2400,
+    movementAllowance: 0.5,
   },
   anomalous: {
     id: "anomalous",
@@ -222,6 +235,7 @@ export const WEAPON_FAMILIES: Record<WeaponFamilyId, WeaponFamily> = {
     directDamage: false,
     magazine: 0,
     reloadMs: 0,
+    movementAllowance: 0.85,
   },
 };
 

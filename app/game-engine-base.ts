@@ -20,6 +20,21 @@ export {
   keystoneByFlag,
 } from "./game-rules.ts";
 export type { Keystone, RuleFlag, RuleInfo } from "./game-rules.ts";
+import {
+  type Vector,
+  bufferIsFresh,
+  isIdle,
+  normalise,
+} from "./game-input.ts";
+export {
+  INPUT_BUFFER_MS,
+  MOVE_KEYS,
+  bufferIsFresh,
+  isIdle,
+  moveVectorFromKeys,
+  normalise,
+} from "./game-input.ts";
+export type { BufferedIntent, PlayerIntent, Vector } from "./game-input.ts";
 import { type DevProfile } from "./game-dev-profiles.ts";
 export { DEV_PROFILES, devProfileById } from "./game-dev-profiles.ts";
 export type { DevProfile } from "./game-dev-profiles.ts";
@@ -458,6 +473,15 @@ export type Hero = {
   surgeMs: number;
   /** Сколько выстрелов подряд без паузы: разброс автоматического оружия. */
   consecutiveShots: number;
+  /** Направление движения от WASD. Нулевой вектор — стоять. */
+  moveIntent: Vector;
+  /** Куда направлено внимание: мировая точка под курсором. */
+  aimPoint: Point | null;
+  /** Удерживается ли основная атака. */
+  primaryHeld: boolean;
+  /** Отложенное нажатие: короткий буфер, а не очередь команд. */
+  bufferedAbilitySlot: number | null;
+  bufferedAtMs: number;
   /** Боезапас правой руки. -1 — магазин ещё не заряжался в этой сессии. */
   primaryAmmo: number;
   /** Боезапас левой руки, если там стреляющее. */
@@ -2469,6 +2493,99 @@ function tickCityNpcs(state: GameState, deltaMs: number): GameState {
     ),
   };
   return appendLog(next, `${pair[0].name}: «${lines[0]}» ${pair[1].name}: «${lines[1]}»`);
+}
+
+
+// --- Намерения игрока -------------------------------------------------------
+
+/**
+ * Направление движения. Заменяет клик-в-точку как основной способ ходить:
+ * персонаж идёт туда, куда нажато, а не туда, куда проложен маршрут.
+ */
+export function setMoveIntent(state: GameState, vector: Vector): GameState {
+  const moveIntent = normalise(vector);
+  if (moveIntent.x === state.hero.moveIntent.x && moveIntent.y === state.hero.moveIntent.y) return state;
+  return {
+    ...state,
+    hero: {
+      ...state.hero,
+      moveIntent,
+      // Прямое управление отменяет старый маршрут: две системы движения не
+      // должны спорить друг с другом.
+      path: isIdle(moveIntent) ? state.hero.path : [],
+      destination: isIdle(moveIntent) ? state.hero.destination : null,
+    },
+  };
+}
+
+/** Куда смотрит персонаж. Независимо от того, куда он идёт. */
+export function setAimPoint(state: GameState, point: Point | null): GameState {
+  return { ...state, hero: { ...state.hero, aimPoint: point ? { ...point } : null } };
+}
+
+/**
+ * Основная атака текущего снаряжения. Что именно произойдёт, решают руки и
+ * оружие — здесь только намерение.
+ *
+ * Удержание означает «продолжай пытаться», а не «игнорируй правила оружия»:
+ * откат, перезарядка и обязательство остаются в силе.
+ */
+export function setPrimaryAttack(state: GameState, held: boolean): GameState {
+  if (state.hero.primaryHeld === held) return state;
+  return { ...state, hero: { ...state.hero, primaryHeld: held } };
+}
+
+/**
+ * Возвращает отложенное нажатие, если оно ещё свежее и действие уже допустимо.
+ * Короткий буфер, а не очередь: слэшер должен быть отзывчивым, но игрок не
+ * выстраивает последовательность заранее.
+ */
+export function takeBufferedAbility(state: GameState): { state: GameState; slot: number | null } {
+  const slot = state.hero.bufferedAbilitySlot;
+  if (slot === null) return { state, slot: null };
+  const buffered = { intent: { kind: "ability" as const, slot }, atMs: state.hero.bufferedAtMs };
+  if (!bufferIsFresh(buffered, state.worldTimeMs)) {
+    return { state: { ...state, hero: { ...state.hero, bufferedAbilitySlot: null } }, slot: null };
+  }
+  if (state.hero.attackCooldownMs > 0 || state.hero.staggeredUntilMs > state.worldTimeMs) {
+    return { state, slot: null };
+  }
+  return { state: { ...state, hero: { ...state.hero, bufferedAbilitySlot: null } }, slot };
+}
+
+/** Запоминает нажатие способности на короткое время. */
+export function bufferAbility(state: GameState, slot: number): GameState {
+  return { ...state, hero: { ...state.hero, bufferedAbilitySlot: slot, bufferedAtMs: state.worldTimeMs } };
+}
+
+/**
+ * Цель под прицелом. Курсор не обязан попадать точно по противнику: мягкое
+ * наведение выбирает ближайшего к точке прицела в пределах допуска.
+ */
+export function aimedTarget(state: GameState): Enemy | null {
+  const aim = state.hero.aimPoint;
+  if (!aim) return null;
+  const candidates = state.enemies.filter(
+    (enemy) => enemy.hp > 0 && enemy.zone === state.zone && enemyVisibleToHero(state, enemy),
+  );
+  if (!candidates.length) return null;
+  const nearest = candidates
+    .map((enemy) => ({ enemy, distance: distance(enemy.position, aim) }))
+    .sort((left, right) => left.distance - right.distance)[0];
+  // Допуск мягкого наведения: курсор рядом с целью считается наведением на
+  // неё, но не «прилипает» к целям на другом конце экрана.
+  return nearest.distance <= 1.6 ? nearest.enemy : null;
+}
+
+/**
+ * Доля скорости, доступная во время действия. Обязательство — свойство оружия
+ * и рук, а не общее правило «во время атаки не двигаться».
+ */
+export function attackMovementAllowance(state: GameState): number {
+  const family = familyOf(weaponFor(state).id);
+  const recovering = state.hero.attackCooldownMs > 0;
+  if (!recovering) return 1;
+  return family.movementAllowance;
 }
 
 export function commandMove(state: GameState, target: Point): GameState {
@@ -6272,6 +6389,11 @@ export function createInitialState(): GameState {
       chargingSinceMs: 0,
       surgeMs: 0,
     consecutiveShots: 0,
+    moveIntent: { x: 0, y: 0 },
+    aimPoint: null,
+    primaryHeld: false,
+    bufferedAbilitySlot: null,
+    bufferedAtMs: 0,
     primaryAmmo: -1,
     secondaryAmmo: -1,
     primaryReloadUntilMs: 0,
@@ -6628,6 +6750,26 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
     next = { ...next, hero: { ...next.hero, consecutiveShots: 0 } };
   }
 
+  // Удержание ЛКМ означает «продолжай пытаться атаковать», а не «игнорируй
+  // правила оружия»: откат, перезарядка и обязательство остаются в силе.
+  if (next.hero.primaryHeld) {
+    const aimed = aimedTarget(next);
+    if (aimed && next.hero.attackTargetId !== aimed.id) {
+      next = { ...next, hero: { ...next.hero, attackTargetId: aimed.id } };
+    } else if (!aimed && !next.hero.attackTargetId) {
+      const nearest = next.enemies
+        .filter((enemy) => enemy.hp > 0 && enemy.zone === next.zone && enemyVisibleToHero(next, enemy))
+        .sort(
+          (left, right) =>
+            distance(left.position, next.hero.positions[next.zone]) -
+            distance(right.position, next.hero.positions[next.zone]),
+        )[0];
+      if (nearest && distance(nearest.position, next.hero.positions[next.zone]) <= heroAttackRange(next)) {
+        next = { ...next, hero: { ...next.hero, attackTargetId: nearest.id } };
+      }
+    }
+  }
+
   const heroPosition = next.hero.positions[next.zone];
   const combatDirective = combatDirectiveFor(next);
   if (
@@ -6656,7 +6798,28 @@ export function tickGame(state: GameState, rawDeltaMs: number): GameState {
     }
   }
 
-  if (next.hero.path.length > 0) {
+  // Прямое управление: персонаж идёт туда, куда нажато. Скорость режется
+  // обязательством текущего оружия — тяжёлый замах действительно фиксирует.
+  if (!isIdle(next.hero.moveIntent)) {
+    const speed = heroMoveSpeed(next) * attackMovementAllowance(next) * (deltaMs / 1000);
+    const from = next.hero.positions[next.zone];
+    const step = { x: from.x + next.hero.moveIntent.x * speed, y: from.y + next.hero.moveIntent.y * speed };
+    // Скольжение вдоль стены: упор в угол не должен останавливать движение.
+    const slid = isWalkable(next, gridPoint(step))
+      ? step
+      : isWalkable(next, gridPoint({ x: step.x, y: from.y }))
+        ? { x: step.x, y: from.y }
+        : isWalkable(next, gridPoint({ x: from.x, y: step.y }))
+          ? { x: from.x, y: step.y }
+          : from;
+    if (slid !== from) {
+      next = {
+        ...next,
+        hero: { ...next.hero, positions: { ...next.hero.positions, [next.zone]: slid } },
+      };
+      next = reveal(next);
+    }
+  } else if (next.hero.path.length > 0) {
     const motion = advanceAlongPath(
       next.hero.positions[next.zone],
       next.hero.path,
